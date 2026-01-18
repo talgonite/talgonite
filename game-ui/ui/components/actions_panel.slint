@@ -1,0 +1,229 @@
+import {
+    GameState,
+    DragDropState,
+    SlotPanelType,
+    Skill,
+    Spell,
+    PopupState,
+} from "../game_state.slint";
+import { Theme } from "../theme.slint";
+import { ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { CancelDrag, DragDropItem } from "drag_drop.slint";
+import { Icon } from "./icon.slint";
+import { BasePanel } from "./base_panel.slint";
+
+component ActionTab inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    callback clicked();
+    height: 32px;
+    background: active ? Theme.accent-subtle : transparent;
+    border-radius: Theme.radius-small;
+    border-width: 1px;
+    border-color: active ? Theme.accent-muted : transparent;
+    Text {
+        text: root.text;
+        color: active ? Theme.accent : Theme.foreground-muted;
+        font-weight: active ? 700 : 400;
+        font-size: Theme.font-size-small;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+component SkillRow inherits Rectangle {
+    in property <Skill> skill;
+    height: 48px;
+    background: Theme.surface-muted;
+    border-radius: Theme.radius-small;
+    border-width: 1px;
+    border-color: Theme.border-muted;
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
+        HorizontalBox {
+            padding-left: Theme.spacing-small;
+            padding-right: Theme.spacing-small;
+            spacing: Theme.spacing-small;
+            Icon {
+                icon: skill.icon;
+                cooldown-total: skill.cooldown.total;
+                cooldown-left: skill.cooldown.time_left;
+            }
+
+            Text {
+                text: skill.name;
+                color: Theme.foreground;
+                vertical-alignment: center;
+                font-size: Theme.font-size-small;
+            }
+        }
+
+        states [
+            dragging when skill-drag.pressed: {
+                background: Theme.surface-card;
+                x: skill-drag.offset-x;
+                y: skill-drag.offset-y;
+                border-width: 2px;
+                border-color: Theme.accent;
+            }
+        ]
+    }
+
+    skill-drag := DragDropItem {
+        slot-index: skill.slot;
+        panel-type: SlotPanelType.skill;
+        double-clicked => {
+            GameState.use-action(SlotPanelType.skill, skill.slot);
+        }
+    }
+
+    property <bool> has-tooltip: skill-drag.has-hover && !skill-drag.pressed;
+    changed has-tooltip => {
+        if (root.has-tooltip) {
+            PopupState.show(skill.name, self.absolute-position.x, self.absolute-position.y, root.width, root.height);
+        } else {
+            PopupState.hide();
+        }
+    }
+    states [
+        hover when skill-drag.has-hover && !skill-drag.pressed: {
+            border-color: Theme.accent-muted;
+            background: Theme.surface-secondary;
+        }
+    ]
+}
+
+component SpellRow inherits Rectangle {
+    in property <Spell> spell;
+    height: 48px;
+    background: Theme.surface-muted;
+    border-radius: Theme.radius-small;
+    border-width: 1px;
+    border-color: Theme.border-muted;
+
+    // Draggable container
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
+        HorizontalBox {
+            padding-left: Theme.spacing-small;
+            padding-right: Theme.spacing-small;
+            spacing: Theme.spacing-small;
+            Icon {
+                icon: spell.icon;
+            }
+
+            Text {
+                text: spell.name;
+                color: Theme.foreground;
+                vertical-alignment: center;
+                font-size: Theme.font-size-small;
+            }
+        }
+
+        states [
+            dragging when spell-drag.pressed: {
+                background: Theme.surface-card;
+                x: spell-drag.offset-x;
+                y: spell-drag.offset-y;
+                border-width: 2px;
+                border-color: Theme.accent;
+            }
+        ]
+    }
+
+    spell-drag := DragDropItem {
+        slot-index: spell.slot;
+        panel-type: SlotPanelType.spell;
+        double-clicked => {
+            GameState.use-action(SlotPanelType.spell, spell.slot);
+        }
+    }
+
+    property <bool> has-tooltip: spell-drag.has-hover && !spell-drag.pressed;
+    changed has-tooltip => {
+        if (root.has-tooltip) {
+            PopupState.show(spell.name, self.absolute-position.x, self.absolute-position.y, root.width, root.height);
+        } else {
+            PopupState.hide();
+        }
+    }
+    states [
+        hover when spell-drag.has-hover && !spell-drag.pressed: {
+            border-color: Theme.accent-muted;
+            background: Theme.surface-secondary;
+        }
+    ]
+}
+
+export component ActionsPanel inherits BasePanel {
+    in-out property <string> active-tab: "skills";
+    title: "Actions";
+    width: 340px;
+    height: 520px;
+    close => {
+        GameState.show-skills = false;
+        GameState.show-spells = false;
+    }
+    VerticalBox {
+        padding: Theme.spacing-medium;
+        spacing: Theme.spacing-medium;
+
+        // Tabs
+        HorizontalLayout {
+            height: 32px;
+            spacing: Theme.spacing-small;
+            ActionTab {
+                text: "Skills";
+                active: root.active-tab == "skills";
+                clicked => {
+                    root.active-tab = "skills";
+                }
+            }
+
+            ActionTab {
+                text: "Spells";
+                active: root.active-tab == "spells";
+                clicked => {
+                    root.active-tab = "spells";
+                }
+            }
+        }
+
+        // List container
+        Rectangle {
+            background: Theme.surface-muted;
+            border-radius: Theme.radius-small;
+            clip: true;
+            ScrollView {
+                width: 100%;
+                height: 100%;
+                viewport-width: self.visible-width;
+                VerticalLayout {
+                    padding: 4px;
+                    spacing: 4px;
+                    alignment: start;
+                    if root.active-tab == "skills": VerticalLayout {
+                        spacing: 4px;
+                        for skill in GameState.skills: SkillRow {
+                            skill: skill;
+                        }
+                    }
+                    if root.active-tab == "spells": VerticalLayout {
+                        spacing: 4px;
+                        for spell in GameState.spells: SpellRow {
+                            spell: spell;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

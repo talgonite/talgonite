@@ -1,0 +1,42 @@
+import { GameScene } from "components/game_scene.slint";
+import { LoginScene } from "components/login_scene.slint";
+export { LoginState, InstallerState } from "login_state.slint";
+export { LobbyState } from "lobby_state.slint";
+export { GameState, DragDropState, Cooldown } from "game_state.slint";
+export { SettingsState } from "settings_state.slint";
+export { LoginBridge } from "login_bridge.slint";
+export { InputBridge } from "input_bridge.slint";
+
+export component MainWindow inherits Window {
+    in property <image> texture <=> i.source;
+    out property <int> requested-texture-width: i.width / 1phx;
+    out property <int> requested-texture-height: i.height / 1phx;
+    in property <bool> use-pixelated-filtering: true;
+    out property <float> texture-scale: 1px / 1phx;
+    in-out property <bool> show-prelogin: true;
+    title: @tr("Talgonite");
+    preferred-width: 1280px;
+    preferred-height: 800px;
+    background: transparent;
+    callback request-snapshot();
+    Rectangle {
+        i := Image {
+            image-fit: fill;
+            image-rendering: use-pixelated-filtering ? pixelated : smooth;
+            width: 100%;
+            height: 100%;
+            preferred-width: self.source.width * 1px;
+            preferred-height: self.source.height * 1px;
+        }
+    }
+
+    if (show-prelogin): LoginScene { }
+    if (!show-prelogin): GameScene {
+        request-snapshot => {
+            root.request-snapshot();
+        }
+    }
+    init => {
+        request-snapshot();
+    }
+}

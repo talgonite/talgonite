@@ -1,0 +1,106 @@
+import { GameState, WorldMapNode } from "../game_state.slint";
+import { Theme } from "../theme.slint";
+import { VerticalBox, ScrollView } from "std-widgets.slint";
+
+export component WorldMapNodeComponent inherits Rectangle {
+    in property <WorldMapNode> node;
+    in property <float> map-scale: 1.0;
+    property <float> ui-scale: Math.min(1.5, map-scale);
+    callback clicked();
+
+    width: 12px * ui-scale;
+    height: 12px * ui-scale;
+    background: transparent;
+    border-width: 2px * ui-scale;
+    border-color: #6e6eff;
+    x: node.x * 1px * map-scale - self.width / 2;
+    y: node.y * 1px * map-scale - self.height / 2;
+
+    area := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    Rectangle {
+        x: parent.width + 4px;
+        y: (parent.height - label.height) / 2;
+        width: label.width + 4px;
+        height: label.height + 2px;
+        background: #00000088;
+        label := Text {
+            text: node.text;
+            color: area.has-hover ? #cd6017 : white;
+            font-size: 10px * ui-scale;
+        }
+    }
+}
+
+export component WorldMap inherits Rectangle {
+    background: #0000003f;
+
+    TouchArea {
+        // Block clicks from going through
+    }
+
+    if (GameState.world-map-image.width > 0): Rectangle {
+        property <float> map-scale: Math.min(root.width / (GameState.world-map-image.width * 1px), root.height / (GameState.world-map-image.height * 1px));
+        width: GameState.world-map-image.width * 1px * map-scale;
+        height: GameState.world-map-image.height * 1px * map-scale;
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+
+        img := Image {
+            width: 100%;
+            height: 100%;
+            source: GameState.world-map-image;
+        }
+
+        for node in GameState.world-map-nodes: WorldMapNodeComponent {
+            node: node;
+            map-scale: map-scale;
+            clicked => {
+                GameState.world-map-click(node.map_id, node.dest_x, node.dest_y, node.check_sum);
+                GameState.show-world-map = false;
+            }
+        }
+    }
+
+    if (GameState.world-map-image.width == 0): Rectangle {
+        width: 400px;
+        height: 300px;
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        background: #333;
+        border-color: #888;
+        border-width: 2px;
+        VerticalBox {
+            alignment: center;
+            Text {
+                text: "Loading map: " + GameState.world-map-name;
+                horizontal-alignment: center;
+            }
+
+            ScrollView {
+                VerticalBox {
+                    for node in GameState.world-map-nodes: Rectangle {
+                        height: 30px;
+                        background: area.has-hover ? #555 : #444;
+                        area := TouchArea {
+                            clicked => {
+                                GameState.world-map-click(node.map_id, node.dest_x, node.dest_y, node.check_sum);
+                                GameState.show-world-map = false;
+                            }
+                        }
+
+                        Text {
+                            text: node.text;
+                            vertical-alignment: center;
+                            x: 10px;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

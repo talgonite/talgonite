@@ -1,0 +1,269 @@
+export struct WorldMapNode {
+    text: string,
+    map_id: int,
+    x: int,
+    y: int,
+    dest_x: int,
+    dest_y: int,
+    check_sum: int,
+}
+
+// Unified menu entry - can be text-only or have an icon
+export struct MenuEntry {
+    text: string,
+    id: int,
+    icon: image,
+    has-icon: bool,
+    cost: int,
+}
+
+export struct InventoryItem {
+    slot: int,
+    name: string,
+    icon: image,
+    quantity: int,
+}
+
+export struct Cooldown {
+    time_left: duration,
+    total: duration}
+
+export struct HotbarEntry {
+    name: string,
+    icon: image,
+    quantity: int,
+    enabled: bool,
+    cooldown: Cooldown,
+}
+
+export struct Skill {
+    name: string,
+    icon: image,
+    slot: int,
+    cooldown: Cooldown,
+}
+
+export struct Spell {
+    name: string,
+    icon: image,
+    slot: int,
+    prompt: string,
+}
+
+export enum SlotPanelType {
+    none,
+    item,
+    skill,
+    spell,
+    hotbar,
+    world
+}
+
+// Central drag/drop state for cross-component dragging
+export global DragDropState {
+    in-out property <SlotPanelType> source-panel: SlotPanelType.none;
+    in-out property <int> source-index: -1;
+    callback action-drag-drop(SlotPanelType, int, SlotPanelType, int, length, length);
+    public function start-drag(panel: SlotPanelType, index: int) {
+        source-panel = panel;
+        source-index = index;
+    }
+    public function cancel-drag() {
+        source-panel = SlotPanelType.none;
+    }
+    public function maybe-drop(panel-id: SlotPanelType, slot-index: int, x: length, y: length) {
+        if source-panel != SlotPanelType.none && (source-panel != panel-id || source-index != slot-index) {
+            action-drag-drop(source-panel, source-index, panel-id, slot-index, x, y);
+            source-panel = SlotPanelType.none;
+        }
+    }
+}
+
+export struct WorldLabel {
+    entity_id: int,
+    text: string,
+    world_x: float,
+    world_y: float,
+    y_offset: float,
+    color_r: float,
+    color_g: float,
+    color_b: float,
+    color_a: float,
+    is_speech: bool,
+    health_percent: int,
+}
+
+export struct WorldListMemberUi {
+    name: string,
+    title: string,
+    class: string,
+    color: color,
+    is_master: bool,
+}
+
+export struct ChatMessage {
+    text: string,
+    color: brush,
+}
+
+// Equipment slot for profile display
+export struct EquipmentSlotData {
+    name: string,
+    icon: image,
+    has-item: bool,
+    durability-percent: float,
+    current-durability: int,
+    max-durability: int,
+}
+
+export struct LegendMarkData {
+    icon-name: string,
+    color: color,
+    text: string,
+}
+
+// Profile data for player/character profile display
+export struct ProfileData {
+    visible: bool,
+    is-self: bool,
+    name: string,
+    class: string,
+    guild: string,
+    guild-rank: string,
+    title: string,
+    town: string,
+    town-banner: image,
+    portrait: image,
+    preview: image,
+    profile-text: string,
+    is-afk: bool,
+    group-requests-enabled: bool,
+    legend-marks: [LegendMarkData],
+    // Equipment slots (22 slots total)
+    // Row 1: Greaves, Boots, Belt
+    eq-greaves: EquipmentSlotData,
+    eq-boots: EquipmentSlotData,
+    eq-belt: EquipmentSlotData,
+    // Row 2: Left Gauntlet, Left Ring, Right Ring, Right Gauntlet
+    eq-left-gauntlet: EquipmentSlotData,
+    eq-left-ring: EquipmentSlotData,
+    eq-right-ring: EquipmentSlotData,
+    eq-right-gauntlet: EquipmentSlotData,
+    // Row 3: Weapon, Shield, Accessory 2
+    eq-weapon: EquipmentSlotData,
+    eq-shield: EquipmentSlotData,
+    eq-accessory2: EquipmentSlotData,
+    // Row 4: Over Armor, Armor, Over Helmet, Overcoat, Accessory 1
+    eq-over-armor: EquipmentSlotData,
+    eq-armor: EquipmentSlotData,
+    eq-over-helmet: EquipmentSlotData,
+    eq-overcoat: EquipmentSlotData,
+    eq-accessory1: EquipmentSlotData,
+    // Row 5: Earrings, Helmet, Necklace
+    eq-earrings: EquipmentSlotData,
+    eq-helmet: EquipmentSlotData,
+    eq-necklace: EquipmentSlotData,
+}
+
+export global GameState {
+    in-out property <string> map_name: "Mileth Village";
+    in-out property <float> player_x: 5;
+    in-out property <float> player_y: 10;
+    in-out property <int> current_hp: 850;
+    in-out property <int> max_hp: 1200;
+    in-out property <int> current_mp: 320;
+    in-out property <int> max_mp: 500;
+    in-out property <int> player_id: 12345;
+    in-out property <string> server_name: "Darkages";
+    in-out property <int> ping_ms: 45;
+    in-out property <string> player_name: "Warrior";
+    in-out property <image> player_portrait: @image-url("");
+
+    // Camera state for world-to-screen coordinate conversion
+    // camera_x/y are in isometric world coordinates
+    in-out property <float> camera_x: 0;
+    in-out property <float> camera_y: 0;
+    // camera_zoom is the zoom applied during GPU rendering (may be < 1.0)
+    in-out property <float> camera_zoom: 1;
+    // viewport_width/height are the render texture dimensions
+    in-out property <float> viewport_width: 800;
+    in-out property <float> viewport_height: 600;
+    // display_scale is how much the render texture is scaled up for display
+    // (display_size / render_size, typically user_zoom for pixel-perfect rendering)
+    in-out property <float> display_scale: 1;
+    in-out property <[WorldLabel]> world_labels: [];
+    in-out property <[ChatMessage]> chat-messages: [];
+    in-out property <[string]> action-bar-messages: [];
+    in-out property <int> action-bar-update-counter: 0;
+    in-out property <string> last_whisper_target: "";
+    in-out property <[WorldMapNode]> world-map-nodes: [];
+    in-out property <image> world-map-image: @image-url("");
+    in-out property <string> world-map-name: "";
+    in-out property <bool> show-world-map: false;
+    in-out property <string> menu_title: "";
+    in-out property <string> menu_text: "";
+    in-out property <[MenuEntry]> menu_entries: [];
+    in-out property <bool> menu_is_shop: false;
+    in-out property <bool> show_menu: false;
+    // Text entry dialog
+    in-out property <bool> show_text_entry: false;
+    in-out property <string> text_entry_args: "";
+    in-out property <int> text_entry_pursuit_id: 0;
+    in-out property <[InventoryItem]> inventory: [];
+    in-out property <[Skill]> skills: [];
+    in-out property <[Spell]> spells: [];
+    in-out property <[HotbarEntry]> hotbar: [];
+    in-out property <bool> show-inventory: false;
+    in-out property <bool> show-skills: false;
+    in-out property <bool> show-spells: false;
+    in-out property <bool> show-world-list: false;
+    in-out property <bool> world-list-loading: false;
+    in-out property <[WorldListMemberUi]> world-list-members: [];
+    in-out property <int> world-list-count: 0;
+    in-out property <int> world-list-total-count: 0;
+    in-out property <ProfileData> profile: {
+        is-self: false,
+        visible: false,
+        name: "Unknown",
+        class: "Peasant",
+        guild: "",
+        guild-rank: "",
+        title: "",
+        town: "Mileth",
+        profile-text: "",
+        is-afk: false,
+        group-requests-enabled: true,
+    };
+    in-out property <int> current-hotbar-panel: 0;
+    callback world-map-click(int, int, int, int);
+    callback menu_select(int, string); // id, name
+    callback set-hotbar-panel(int);
+    callback send-chat(string);
+    callback send-whisper(string, string);
+    callback unequip(int);
+    callback refresh-world-list();
+    callback set-world-list-filter(string, bool, string); // class, master_only, search
+
+    // Use action on slot: panel type, slot index
+    callback use-action(SlotPanelType, int);
+}
+
+export global PopupState {
+    in-out property <string> text: "";
+    in-out property <bool> visible: false;
+    in-out property <length> x: 0px;
+    in-out property <length> y: 0px;
+    in-out property <length> anchor-width: 0px;
+    in-out property <length> anchor-height: 0px;
+    public function show(text: string, x: length, y: length, w: length, h: length) {
+        root.text = text;
+        root.x = x;
+        root.y = y;
+        root.anchor-width = w;
+        root.anchor-height = h;
+        root.visible = true;
+    }
+    public function hide() {
+        root.visible = false;
+    }
+}

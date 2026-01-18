@@ -1,0 +1,9 @@
+export global LoginBridge {
+    callback attempt-login(server-id: int, username: string, password: string, remember: bool);
+    callback use-saved(id: string);
+    callback remove-saved(id: string);
+    callback change-current-server(id: int);
+    callback add-server(name: string, address: string);
+    callback edit-server(id: int, name: string, address: string);
+    callback remove-server(id: int);
+}

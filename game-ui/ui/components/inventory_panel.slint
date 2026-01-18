@@ -1,0 +1,105 @@
+import {
+    GameState,
+    SlotPanelType,
+    DragDropState,
+    InventoryItem,
+    PopupState,
+} from "../game_state.slint";
+import { CancelDrag, DragDropItem } from "drag_drop.slint";
+import { Theme } from "../theme.slint";
+import { ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { Icon } from "./icon.slint";
+import { BasePanel } from "./base_panel.slint";
+
+component InventorySlot inherits Rectangle {
+    in property <InventoryItem> item;
+    in property <int> slot;
+    property <bool> has-item: item.slot > 0;
+    background: Theme.surface-muted;
+    border-radius: Theme.radius-small;
+    border-width: 1px;
+    border-color: Theme.border-muted;
+    if has-item: Rectangle {
+        width: parent.width;
+        height: parent.height;
+        Icon {
+            icon: item.icon;
+        }
+
+        if item.quantity > 1: Text {
+            text: item.quantity;
+            font-size: 11px;
+            font-weight: 700;
+            color: Theme.foreground-strong;
+            x: parent.width - self.width - 4px;
+            y: parent.height - self.height - 2px;
+        }
+        states [
+            dragging when slot-drag.pressed: {
+                x: slot-drag.offset-x;
+                y: slot-drag.offset-y;
+                background: Theme.surface-card;
+                border-radius: Theme.radius-small;
+                border-width: 2px;
+                border-color: Theme.accent;
+            }
+        ]
+    }
+
+    slot-drag := DragDropItem {
+        draggable: has-item;
+        slot-index: slot;
+        panel-type: SlotPanelType.item;
+        double-clicked => {
+            if has-item {
+                GameState.use-action(SlotPanelType.item, slot);
+            }
+        }
+    }
+
+    property <bool> has-tooltip: slot-drag.has-hover && has-item && !slot-drag.pressed;
+    changed has-tooltip => {
+        if (root.has-tooltip) {
+            PopupState.show(item.name, self.absolute-position.x, self.absolute-position.y, root.width, root.height);
+        } else {
+            PopupState.hide();
+        }
+    }
+
+    states [
+        hover when slot-drag.has-hover && !slot-drag.pressed: {
+            border-color: Theme.accent-muted;
+            background: Theme.surface-secondary;
+        }
+    ]
+}
+
+export component InventoryPanel inherits BasePanel {
+    title: "Inventory";
+    visible: true;
+    width: 324px;
+
+    height: 380px;
+    close => {
+        GameState.show-inventory = false;
+    }
+
+    ScrollView {
+        viewport-width: self.visible-width;
+        GridLayout {
+            padding: Theme.spacing-small;
+            spacing: Theme.spacing-small;
+            for slot[i] in GameState.inventory: Rectangle {
+                row: i / 6;
+                col: Math.mod(i, 6);
+                width: 44px;
+                height: 44px;
+
+                InventorySlot {
+                    item: slot;
+                    slot: slot.slot;
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,14 @@
+[package]
+name = "network"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "network"
+path = "src/lib.rs"
+
+[dependencies]
+async-std = "1.13"
+futures-lite = "2.6"
+md5 = "0.8"
+packets.workspace = true

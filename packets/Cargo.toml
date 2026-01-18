@@ -1,0 +1,18 @@
+[package]
+name = "packets"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "packets"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+async-std = "1.13"
+crc.workspace = true
+byteorder = "1.5"
+num_enum = "0.7"
+md5 = "0.8"
+encoding = "0.2"
+rand = "0.9"

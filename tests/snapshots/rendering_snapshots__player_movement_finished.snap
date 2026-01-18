@@ -1,0 +1,6 @@
+---
+source: tests/rendering_snapshots.rs
+expression: png
+extension: png
+snapshot_kind: binary
+---

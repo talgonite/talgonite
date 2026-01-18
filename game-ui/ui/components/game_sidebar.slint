@@ -1,0 +1,123 @@
+import { GameState } from "../game_state.slint";
+import { Theme } from "../theme.slint";
+import { VerticalBox } from "std-widgets.slint";
+
+export component GameSidebar inherits Rectangle {
+    width: 64px;
+    height: 160px;
+    Rectangle {
+        width: parent.width;
+        height: parent.height + 30px;
+        background: @radial-gradient(circle, #00000030 0%, #00000015 40%, #00000000 100%);
+    }
+
+    VerticalBox {
+        padding-top: Theme.spacing-medium;
+        padding-left: Theme.spacing-small;
+        padding-right: Theme.spacing-small;
+        spacing: Theme.spacing-small;
+        alignment: start;
+        inv-btn := Rectangle {
+            width: 48px;
+            height: 48px;
+            background: GameState.show-inventory ? Theme.accent-subtle : Theme.surface-muted;
+            border-radius: Theme.radius-small;
+            border-width: 1px;
+            border-color: GameState.show-inventory ? Theme.accent : Theme.border-muted;
+            Image {
+                source: @image-url("../icons/backpack.svg");
+                width: 28px;
+                height: 28px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                colorize: GameState.show-inventory ? Theme.accent : Theme.foreground-muted;
+            }
+
+            states [
+                hover when inv-btn-touch.has-hover: {
+                    background: Theme.surface-secondary;
+                    border-color: Theme.accent-muted;
+                }
+            ]
+            inv-btn-touch := TouchArea {
+                clicked => {
+                    GameState.show-inventory = !GameState.show-inventory;
+                    GameState.show-skills = false;
+                    GameState.show-spells = false;
+                }
+            }
+        }
+
+        actions-btn := Rectangle {
+            width: 48px;
+            height: 48px;
+            background: (GameState.show-skills || GameState.show-spells) ? Theme.accent-subtle : Theme.surface-muted;
+            border-radius: Theme.radius-small;
+            border-width: 1px;
+            border-color: (GameState.show-skills || GameState.show-spells) ? Theme.accent : Theme.border-muted;
+            Image {
+                source: @image-url("../icons/magic.svg");
+                width: 28px;
+                height: 28px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                colorize: (GameState.show-skills || GameState.show-spells) ? Theme.accent : Theme.foreground-muted;
+            }
+
+            states [
+                hover when actions-btn-touch.has-hover: {
+                    background: Theme.surface-secondary;
+                    border-color: Theme.accent-muted;
+                }
+            ]
+            actions-btn-touch := TouchArea {
+                clicked => {
+                    if (GameState.show-skills || GameState.show-spells) {
+                        GameState.show-skills = false;
+                        GameState.show-spells = false;
+                    } else {
+                        GameState.show-skills = true;
+                        GameState.show-inventory = false;
+                        GameState.show-world-list = false;
+                    }
+                }
+            }
+        }
+
+        world-btn := Rectangle {
+            width: 48px;
+            height: 48px;
+            background: GameState.show-world-list ? Theme.accent-subtle : Theme.surface-muted;
+            border-radius: Theme.radius-small;
+            border-width: 1px;
+            border-color: GameState.show-world-list ? Theme.accent : Theme.border-muted;
+            Image {
+                source: @image-url("../icons/sword.svg");
+                width: 28px;
+                height: 28px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                colorize: GameState.show-world-list ? Theme.accent : Theme.foreground-muted;
+            }
+
+            states [
+                hover when world-btn-touch.has-hover: {
+                    background: Theme.surface-secondary;
+                    border-color: Theme.accent-muted;
+                }
+            ]
+            world-btn-touch := TouchArea {
+                clicked => {
+                    GameState.show-world-list = !GameState.show-world-list;
+                    if (GameState.show-world-list) {
+                        GameState.show-inventory = false;
+                        GameState.show-skills = false;
+                        GameState.show-spells = false;
+                        GameState.world-list-loading = true;
+                        GameState.refresh-world-list();
+                    }
+                }
+            }
+        }
+    }
+}

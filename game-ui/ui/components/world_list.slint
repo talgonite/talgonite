@@ -1,0 +1,150 @@
+import { GameState, WorldListMemberUi } from "../game_state.slint";
+import { Theme } from "../theme.slint";
+import {
+    ScrollView,
+    VerticalBox,
+    HorizontalBox,
+    Button,
+    LineEdit,
+} from "std-widgets.slint";
+import { BasePanel } from "base_panel.slint";
+
+export component WorldListPanel inherits BasePanel {
+    title: "World List";
+    width: 420px;
+    height: 520px;
+    close => {
+        GameState.show-world-list = false;
+    }
+    VerticalBox {
+        padding: Theme.spacing-medium;
+        spacing: Theme.spacing-medium;
+        HorizontalLayout {
+            spacing: Theme.spacing-medium;
+            Text {
+                text: "\{GameState.world-list-count} / \{GameState.world-list-total-count}";
+                color: Theme.foreground-muted;
+                vertical-alignment: center;
+                font-size: Theme.font-size-small;
+            }
+
+            // Spring
+            Rectangle { }
+
+            Button {
+                text: "Refresh";
+                clicked => {
+                    GameState.refresh-world-list();
+                }
+                enabled: !GameState.world-list-loading;
+            }
+        }
+
+        // Filters
+        VerticalBox {
+            spacing: Theme.spacing-small;
+            HorizontalLayout {
+                spacing: Theme.spacing-small;
+                height: 32px;
+                search-input := LineEdit {
+                    placeholder-text: "Search name...";
+                }
+
+                master-toggle := Rectangle {
+                    width: 100px;
+                    height: 32px;
+                    background: self.checked ? Theme.accent-subtle : Theme.surface-muted;
+                    border-radius: Theme.radius-small;
+                    border-width: 1px;
+                    border-color: self.checked ? Theme.accent-muted : Theme.border-muted;
+                    property <bool> checked: false;
+                    Text {
+                        text: "Master Only";
+                        color: parent.checked ? Theme.accent : Theme.foreground-muted;
+                        font-size: Theme.font-size-small;
+                        font-weight: parent.checked ? 700 : 400;
+                    }
+
+                    TouchArea {
+                        clicked => {
+                            parent.checked = !parent.checked;
+                            GameState.set-world-list-filter(class-filter.current-value, parent.checked, search-input.text);
+                        }
+                    }
+                }
+            }
+
+            class-filter := GridLayout {
+                property <string> current-value: "All";
+                spacing: 4px;
+                for class-name[i] in ["All", "Peasant", "Warrior", "Rogue", "Wizard", "Priest", "Monk"]: Button {
+                    text: class-name;
+                    primary: class-filter.current-value == class-name;
+                    row: i / 4;
+                    clicked => {
+                        class-filter.current-value = class-name;
+                        GameState.set-world-list-filter(class-name, master-toggle.checked, search-input.text);
+                    }
+                }
+            }
+        }
+
+        // List
+        Rectangle {
+            background: Theme.surface-muted;
+            border-radius: Theme.radius-medium;
+            if (GameState.world-list-loading): VerticalBox {
+                alignment: center;
+                Text {
+                    text: "Loading...";
+                    horizontal-alignment: center;
+                    color: Theme.accent;
+                }
+            }
+            if (!GameState.world-list-loading): ScrollView {
+                VerticalBox {
+                    alignment: start;
+                    padding: Theme.spacing-small;
+                    spacing: 2px;
+                    for member in GameState.world-list-members: Rectangle {
+                        height: 32px;
+                        background: Theme.surface-card;
+                        border-radius: Theme.radius-small;
+                        HorizontalBox {
+                            padding-left: Theme.spacing-small;
+                            padding-right: Theme.spacing-small;
+                            spacing: Theme.spacing-medium;
+                            Text {
+                                text: member.name;
+                                color: member.color;
+                                font-weight: 700;
+                                width: 80px;
+                                overflow: elide;
+                            }
+
+                            Text {
+                                text: member.title;
+                                color: Theme.foreground;
+                                overflow: elide;
+                                width: 150px;
+                            }
+
+                            Text {
+                                text: member.class;
+                                color: Theme.foreground-muted;
+                                horizontal-alignment: right;
+                            }
+
+                            if member.is_master: Text {
+                                text: "★";
+                                color: #FFD700;
+                                font-family: Theme.icon-font-family;
+                                width: 16px;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

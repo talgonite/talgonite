@@ -1,0 +1,25 @@
+import {
+    DragDropState,
+    SlotPanelType,
+} from "../game_state.slint";
+
+export component DragDropItem inherits TouchArea {
+    in property <bool> draggable: true;
+    in property <int> slot-index;
+    in property <SlotPanelType> panel-type;
+    out property <length> offset-x: self.mouse-x - self.pressed-x;
+    out property <length> offset-y: self.mouse-y - self.pressed-y;
+    mouse-cursor: draggable ? self.pressed ? MouseCursor.grabbing : MouseCursor.pointer : MouseCursor.default;
+    pointer-event(event) => {
+        if draggable && event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
+            DragDropState.start-drag(panel-type, slot-index);
+        }
+        DragDropState.maybe-drop(panel-type, slot-index, self.mouse-x + self.absolute-position.x, self.mouse-y + self.absolute-position.y);
+    }
+}
+
+export component CancelDrag inherits TouchArea {
+    pointer-event(event) => {
+        DragDropState.cancel-drag();
+    }
+}

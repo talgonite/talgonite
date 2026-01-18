@@ -1,0 +1,183 @@
+import {
+    VerticalBox,
+    HorizontalBox,
+    LineEdit,
+    Button,
+    CheckBox,
+} from "std-widgets.slint";
+
+import { Theme } from "../theme.slint";
+import { LoginState } from "../login_state.slint";
+import { LobbyState } from "../lobby_state.slint";
+
+export component LoginModal inherits Rectangle {
+    in property <bool> show: false;
+    in property <bool> can-close: true;
+    callback attempt-login(server-id: int, username: string, password: string, remember: bool);
+    callback open-server-modal();
+    callback close();
+    width: 100%;
+    height: 100%;
+    visible: show;
+    background: Theme.overlay-strong;
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        clicked => {
+            if (can-close) {
+                root.close();
+            }
+        }
+    }
+
+    VerticalLayout {
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: min(360px, parent.width - 40px);
+                height: 340px;
+                background: Theme.surface-modal;
+                border-radius: Theme.radius-large;
+                border-width: 1px;
+                border-color: Theme.border-overlay;
+                TouchArea {
+                    width: 100%;
+                    height: 100%;
+                }
+
+                VerticalBox {
+                    padding: 24px;
+                    spacing: 16px;
+                    HorizontalLayout {
+                        Text {
+                            text: "Login";
+                            font-size: 18px;
+                            font-weight: 700;
+                            color: #E8C77F;
+                            horizontal-stretch: 1;
+                        }
+
+                        if (can-close): Rectangle {
+                            width: 28px;
+                            height: 28px;
+                            background: close-touch.has-hover ? #FFFFFF10 : transparent;
+                            border-radius: 4px;
+                            close-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.close();
+                                }
+                            }
+
+                            Text {
+                                text: "\u{00D7}";
+                                font-size: 18px;
+                                color: close-touch.has-hover ? Theme.foreground : Theme.foreground-subtle;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    VerticalBox {
+                        spacing: 12px;
+                        LineEdit {
+                            placeholder-text: "Username";
+                            text <=> LoginState.username;
+                            enabled: !LoginState.is-submitting;
+                            accepted => {
+                                password-field.focus();
+                            }
+                        }
+
+                        password-field := LineEdit {
+                            placeholder-text: "Password";
+                            text <=> LoginState.password;
+                            input-type: password;
+                            enabled: !LoginState.is-submitting;
+                            accepted => {
+                                if (LoginState.username != "" && LoginState.password != "" && !LoginState.is-submitting) {
+                                    root.attempt-login(
+                                        LobbyState.current-server-id,
+                                        LoginState.username,
+                                        LoginState.password,
+                                        LoginState.remember,
+                                    );
+                                }
+                            }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            CheckBox {
+                                checked <=> LoginState.remember;
+                                enabled: !LoginState.is-submitting;
+                            }
+
+                            Text {
+                                text: "Save Password";
+                                color: Theme.foreground-subtle;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        if (LoginState.login-error-code >= 0): Text {
+                            text: "Login failed (code: " + LoginState.login-error-code + ")";
+                            color: Theme.danger-foreground;
+                            font-size: 13px;
+                            horizontal-alignment: center;
+                        }
+                    }
+
+                    Button {
+                        text: "Login";
+                        enabled: !LoginState.is-submitting && LoginState.username != "" && LoginState.password != "";
+                        clicked => {
+                            root.attempt-login(
+                                LobbyState.current-server-id,
+                                LoginState.username,
+                                LoginState.password,
+                                LoginState.remember,
+                            );
+                        }
+                    }
+
+                    Rectangle {
+                        vertical-stretch: 1;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: "Server:";
+                            font-size: 13px;
+                            color: Theme.foreground-subtle;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            text: LobbyState.current-server-name;
+                            font-size: 13px;
+                            font-weight: 500;
+                            color: Theme.accent;
+                            vertical-alignment: center;
+                        }
+
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+
+                        Button {
+                            text: "Change";
+                            enabled: !LoginState.is-submitting;
+                            clicked => {
+                                root.open-server-modal();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

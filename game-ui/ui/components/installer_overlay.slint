@@ -1,0 +1,58 @@
+import { Theme } from "../theme.slint";
+import { InstallerState } from "../login_state.slint";
+import {
+    VerticalBox,
+    HorizontalBox,
+} from "std-widgets.slint";
+
+export component InstallerOverlay inherits Rectangle {
+    background: black;
+    
+    // Block input while installing
+    TouchArea {
+        width: 100%;
+        height: 100%;
+    }
+
+    VerticalBox {
+        alignment: center;
+        width: 400px;
+        spacing: 16px;
+        Text {
+            text: "Installing Game Assets (" + round(InstallerState.progress * 100) + "%)";
+            font-size: 16px;
+            font-weight: 700;
+            color: Theme.foreground-strong;
+            horizontal-alignment: center;
+        }
+
+        // Progress bar container
+        Rectangle {
+            height: 8px;
+            background: Theme.surface-primary;
+            border-radius: 4px;
+            clip: true;
+            
+            // Progress bar fill
+            Rectangle {
+                x: 0;
+                width: parent.width * InstallerState.progress;
+                height: 100%;
+                background: Theme.accent;
+                border-radius: 4px;
+                animate width {
+                    duration: 300ms;
+                    easing: ease-out;
+                }
+            }
+        }
+
+        Text {
+            text: InstallerState.message;
+            font-size: 13px;
+            color: Theme.foreground-muted;
+            horizontal-alignment: center;
+            overflow: elide;
+        }
+    }
+}

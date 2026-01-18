@@ -1,0 +1,136 @@
+import { GameState } from "../game_state.slint";
+import { Theme } from "../theme.slint";
+import { ScrollView, LineEdit } from "std-widgets.slint";
+
+export component ChatLog inherits Rectangle {
+    width: 420px;
+    height: 180px;
+
+    callback chat-sent();
+
+    property <bool> is-whispering: false;
+    property <bool> is-selecting-target: false;
+    property <string> target-name: "";
+
+    public function focus-input() {
+        is-whispering = false;
+        is-selecting-target = false;
+        input-field.focus();
+    }
+
+    public function enter-whisper-mode() {
+        is-whispering = true;
+        is-selecting-target = true;
+        target-name = "";
+        input-field.text = "";
+        input-field.focus();
+    }
+
+    property <bool> stick-to-bottom: true;
+    property <length> last-content-height: chat-box.height;
+
+    Timer {
+        interval: 50ms;
+        running: true;
+        triggered => {
+            if (stick-to-bottom && last-content-height != chat-box.height) {
+                // Snap to bottom
+                chat-scroll.viewport-y = -(chat-box.height - chat-scroll.visible-height);
+            }
+            last-content-height = chat-box.height;
+        }
+    }
+
+    // Very subtle background - fades out at top and bottom
+    Rectangle {
+        background: @linear-gradient(0deg, #00000000 0%, #00000020 8%, #00000035 15%, #00000035 85%, #00000020 92%, #00000000 100%);
+    }
+
+    VerticalLayout {
+        padding-left: 4px;
+        padding-right: 4px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: 6px;
+
+        chat-scroll := ScrollView {
+            vertical-scrollbar-policy: always-on;
+            chat-box := VerticalLayout {
+                spacing: 2px;
+                for message in GameState.chat-messages: Text {
+                    text: message.text;
+                    color: message.color;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
+            }
+
+            scrolled => {
+                stick-to-bottom = -self.viewport-y >= (chat-box.height - self.visible-height - 10px);
+            }
+        }
+
+        input-row := HorizontalLayout {
+            spacing: 4px;
+            if (is-whispering && !is-selecting-target): Rectangle {
+                background: Theme.surface-secondary;
+                border-radius: 2px;
+                Text {
+                    text: "To " + target-name + ":";
+                    color: Theme.accent;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+            }
+
+            input-field := LineEdit {
+                placeholder-text: is-whispering ? (is-selecting-target ? (GameState.last_whisper_target != "" ? "Whisper to " + GameState.last_whisper_target + "... (or type name)" : "Whisper to...") : "Enter message...") : "Type a message...";
+                font-size: 11px;
+                height: 24px;
+                accepted => {
+                    if (is-whispering) {
+                        if (is-selecting-target) {
+                            if (self.text != "") {
+                                target-name = self.text;
+                                is-selecting-target = false;
+                                self.text = "";
+                                self.focus();
+                            } else if (GameState.last_whisper_target != "") {
+                                target-name = GameState.last_whisper_target;
+                                is-selecting-target = false;
+                                self.text = "";
+                                self.focus();
+                            }
+                        } else {
+                            if (self.text != "") {
+                                GameState.send-whisper(target-name, self.text);
+                                self.text = "";
+                                is-whispering = false;
+                            } else {
+                                is-whispering = false;
+                            }
+                            root.chat-sent();
+                        }
+                    } else {
+                        if (self.text != "") {
+                            GameState.send-chat(self.text);
+                            self.text = "";
+                        }
+                        root.chat-sent();
+                    }
+                }
+
+                key-pressed(event) => {
+                    if (event.text == "\u{001B}") { // Escape
+                        is-whispering = false;
+                        is-selecting-target = false;
+                        self.text = "";
+                        root.chat-sent();
+                        return accept;
+                    }
+                    return reject;
+                }
+            }
+        }
+    }
+}

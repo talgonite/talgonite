@@ -1,0 +1,132 @@
+import { Theme } from "../../theme.slint";
+import { SettingsState } from "../../settings_state.slint";
+import { VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { SectionHeader, RadioOption, LabeledSlider } from "widgets.slint";
+
+export component GraphicsTab inherits VerticalBox {
+    spacing: Theme.spacing-medium;
+    VerticalLayout {
+        spacing: Theme.spacing-small;
+        SectionHeader {
+            title: "Display";
+        }
+
+        Text {
+            text: "X-Ray Size";
+            font-size: Theme.font-size-small;
+            color: Theme.foreground-muted;
+        }
+
+        GridLayout {
+            spacing: 4px;
+            RadioOption {
+                label: "Off";
+                selected: SettingsState.xray-size == 0;
+                horizontal-stretch: 1;
+                clicked => {
+                    SettingsState.xray-size = 0;
+                    SettingsState.xray-size-changed(0);
+                }
+            }
+
+            RadioOption {
+                label: "Small";
+                selected: SettingsState.xray-size == 1;
+                horizontal-stretch: 1;
+                clicked => {
+                    SettingsState.xray-size = 1;
+                    SettingsState.xray-size-changed(1);
+                }
+            }
+
+            RadioOption {
+                label: "Medium";
+                selected: SettingsState.xray-size == 2;
+                horizontal-stretch: 1;
+                clicked => {
+                    SettingsState.xray-size = 2;
+                    SettingsState.xray-size-changed(2);
+                }
+            }
+
+            RadioOption {
+                label: "Large";
+                selected: SettingsState.xray-size == 3;
+                horizontal-stretch: 1;
+                clicked => {
+                    SettingsState.xray-size = 3;
+                    SettingsState.xray-size-changed(3);
+                }
+            }
+        }
+
+        LabeledSlider {
+            label: "Scale";
+            value-text: format-scale(SettingsState.scale);
+            progress: scale-to-progress(SettingsState.scale);
+            value-changed(p) => {
+                SettingsState.scale = progress-to-scale(p);
+                SettingsState.scale-changed(SettingsState.scale);
+            }
+        }
+    }
+
+    VerticalLayout {
+        spacing: Theme.spacing-small;
+        SectionHeader {
+            title: "Audio";
+        }
+
+        LabeledSlider {
+            label: "Sound Effects";
+            value-text: Math.round(SettingsState.sfx-volume * 100) + "%";
+            progress: SettingsState.sfx-volume;
+            value-changed(v) => {
+                SettingsState.sfx-volume = v;
+                SettingsState.sfx-volume-changed(v);
+            }
+        }
+
+        LabeledSlider {
+            label: "Music";
+            value-text: Math.round(SettingsState.music-volume * 100) + "%";
+            progress: SettingsState.music-volume;
+            value-changed(v) => {
+                SettingsState.music-volume = v;
+                SettingsState.music-volume-changed(v);
+            }
+        }
+    }
+
+    // Helper functions for non-linear scale mapping
+    pure function scale-to-progress(val: float) -> float {
+        return (val - 0.5) / 4.5;
+    }
+    pure function progress-to-scale(ratio: float) -> float {
+        if (ratio < 0.0625) {
+            return 0.5;
+        }
+        if (ratio < 0.1875) {
+            return 1.0;
+        }
+        if (ratio < 0.3125) {
+            return 1.5;
+        }
+        if (ratio < 0.4375) {
+            return 2.0;
+        }
+        if (ratio < 0.5625) {
+            return 2.5;
+        }
+        if (ratio < 0.6875) {
+            return 3.0;
+        }
+        if (ratio < 0.8125) {
+            return 4.0;
+        }
+        return 5.0;
+    }
+    pure function format-scale(val: float) -> string {
+        return (Math.round(val) == val) ? Math.round(val) + "x" : (Math.round(val * 10) / 10) + "x";
+    }
+}

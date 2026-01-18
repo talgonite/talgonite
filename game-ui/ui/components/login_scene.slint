@@ -1,0 +1,215 @@
+import { Theme } from "../theme.slint";
+import { LoginState } from "../login_state.slint";
+import { LobbyState } from "../lobby_state.slint";
+import { LoginBridge } from "../login_bridge.slint";
+import { CharacterCard } from "./character_card.slint";
+import { LoginModal } from "./login_modal.slint";
+import { ServerManagerModal } from "./server_manager.slint";
+import { SubmittingOverlay } from "./submitting_overlay.slint";
+import { InstallerOverlay } from "./installer_overlay.slint";
+import { InstallerState } from "../login_state.slint";
+import { ScrollView } from "std-widgets.slint";
+
+import "../CinzelDecorative-Bold.ttf";
+
+export component LoginScene inherits Rectangle {
+    background: Theme.surface-primary;
+    property <bool> has-saved-logins: LobbyState.saved-logins.length > 0;
+    property <int> item-count: LobbyState.saved-logins.length;
+    property <int> card-size: 156;
+    property <int> available-cols: max(1, Math.floor((root.width / 1px) / card-size));
+    property <int> max-cols: 5;
+    property <int> cols: min(max-cols, max(1, min(available-cols, max(1, item-count))));
+
+    // Main content - absolutely positioned to fill
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        visible: !InstallerState.is-installing;
+        ScrollView {
+            x: 0;
+            y: 0;
+            width: 100%;
+            height: 100%;
+            VerticalLayout {
+                padding: 48px;
+                padding-bottom: 24px;
+                spacing: 16px;
+                alignment: start;
+
+                // Title
+                Text {
+                    text: "Talgonite";
+                    font-family: "Cinzel Decorative";
+                    font-size: 42px;
+                    color: #E8C77F;
+                    horizontal-alignment: center;
+                }
+
+                // Server selector
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 6px;
+                    Text {
+                        text: LobbyState.current-server-name;
+                        font-size: 14px;
+                        color: Theme.accent;
+                        vertical-alignment: center;
+                    }
+
+                    Rectangle {
+                        width: 28px;
+                        height: 28px;
+                        background: server-btn.has-hover ? #FFFFFF10 : transparent;
+                        border-radius: 4px;
+                        server-btn := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                server-modal.show = true;
+                            }
+                        }
+
+                        Text {
+                            width: 100%;
+                            height: 100%;
+                            text: "\u{2699}";
+                            font-size: 16px;
+                            color: server-btn.has-hover ? Theme.foreground : Theme.foreground-subtle;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    height: 8px;
+                }
+
+                // Subtitle
+                if has-saved-logins: Text {
+                    text: "Select a character to continue";
+                    font-size: 14px;
+                    color: Theme.foreground-subtle;
+                    horizontal-alignment: center;
+                }
+                Rectangle {
+                    height: 8px;
+                }
+
+                // Character cards grid
+                if item-count > 0: HorizontalLayout {
+                    alignment: center;
+                    GridLayout {
+                        spacing: 16px;
+                        for l[idx] in LobbyState.saved-logins: CharacterCard {
+                            row: Math.floor(idx / cols);
+                            col: Math.mod(idx, cols);
+                            character: l;
+                            disabled: LoginState.is-submitting;
+                            login => {
+                                LoginState.login-error-code = -1;
+                                LoginState.is-submitting = true;
+                                LoginBridge.use-saved(l.id);
+                            }
+                            remove => {
+                                LoginBridge.remove-saved(l.id);
+                            }
+                        }
+                    }
+                }
+                Rectangle {
+                    height: 16px;
+                }
+
+                // Separator
+                HorizontalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 200px;
+                        height: 1px;
+                        background: @linear-gradient(90deg, #FFFFFF00 0%, #FFFFFF20 50%, #FFFFFF00 100%);
+                    }
+                }
+
+                Rectangle {
+                    height: 8px;
+                }
+
+                // New Login link
+                HorizontalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: new-login-text.preferred-width + 32px;
+                        height: 40px;
+                        background: new-login-touch.has-hover ? #FFFFFF08 : transparent;
+                        border-radius: Theme.radius-medium;
+                        new-login-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                LoginState.show-login-modal = true;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 8px;
+                            Text {
+                                text: "+";
+                                font-size: 18px;
+                                font-weight: 500;
+                                color: new-login-touch.has-hover ? Theme.accent : Theme.foreground-subtle;
+                                vertical-alignment: center;
+                            }
+
+                            new-login-text := Text {
+                                text: "New Login";
+                                font-size: 14px;
+                                color: new-login-touch.has-hover ? Theme.accent : Theme.foreground-subtle;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    LoginModal {
+        show: LoginState.show-login-modal || !has-saved-logins;
+        can-close: has-saved-logins;
+        attempt-login(server-id, username, password, remember) => {
+            LoginState.login-error-code = -1;
+            LoginState.is-submitting = true;
+            LoginBridge.attempt-login(server-id, username, password, remember);
+        }
+        open-server-modal => {
+            server-modal.show = true;
+        }
+        close => {
+            LoginState.show-login-modal = false;
+        }
+    }
+
+    server-modal := ServerManagerModal {
+        servers: LobbyState.servers;
+        current-server-id <=> LobbyState.current-server-id;
+        select-server(id) => {
+            LobbyState.current-server-id = id;
+            LoginBridge.change-current-server(id);
+        }
+        add-server(name, address) => {
+            LoginBridge.add-server(name, address);
+        }
+        edit-server(id, name, address) => {
+            LoginBridge.edit-server(id, name, address);
+        }
+        remove-server(id) => {
+            LoginBridge.remove-server(id);
+        }
+    }
+
+    if (LoginState.is-submitting): SubmittingOverlay { }
+    if (InstallerState.is-installing): InstallerOverlay { }
+}

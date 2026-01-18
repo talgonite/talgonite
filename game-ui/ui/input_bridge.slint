@@ -1,0 +1,8 @@
+export global InputBridge {
+    callback key-pressed(event: KeyEvent) -> EventResult;
+    callback key-released(event: KeyEvent) -> EventResult;
+    callback pointer-event(event: PointerEvent, x: length, y: length) -> EventResult;
+    callback double-click(x: length, y: length);
+    callback scroll-event(x: length, y: length, delta-x: float, delta-y: float) -> EventResult;
+    callback rebind-key-event(event: KeyEvent) -> bool;
+}

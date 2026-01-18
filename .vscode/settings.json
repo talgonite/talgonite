@@ -1,0 +1,10 @@
+{
+  "rust-analyzer.cargo.targetDir": "target/analyzer",
+  "files.watcherExclude": {
+    "**/target/**": true
+  },
+  "search.exclude": {
+    "**/target/**": true
+  },
+  "explorer.excludeGitIgnore": false
+}

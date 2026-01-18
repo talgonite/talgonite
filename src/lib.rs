@@ -1,0 +1,83 @@
+use bevy::prelude::*;
+
+pub use game_ui::slint_types::{
+    ChatMessage, Cooldown, DragDropState, EquipmentSlotData, GameState, HotbarEntry, InputBridge,
+    InstallerState, InventoryItem, LegendMarkData, LobbyState, LoginBridge, LoginState, MainWindow,
+    MenuEntry, ProfileData, SavedLoginItem, ServerItem, SettingsState, Skill, SlotPanelType, Spell,
+    WorldLabel, WorldListMemberUi, WorldMapNode,
+};
+
+pub mod app_state;
+pub mod audio;
+pub mod ecs;
+pub mod events;
+pub mod game_files;
+pub mod input;
+pub mod map_store;
+pub mod network;
+pub mod plugins;
+pub mod render_plugin;
+pub mod resources;
+pub mod session;
+pub mod session_prelogin;
+pub mod settings;
+pub mod settings_types;
+pub mod slint_plugin;
+pub mod slint_support;
+pub mod webui;
+
+pub fn storage_dir() -> std::path::PathBuf {
+    let mut path = dirs::data_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    path.push("Talgonite");
+    let _ = std::fs::create_dir_all(&path);
+    path
+}
+
+pub use resources::{
+    Camera, CreatureAssetStoreState, CreatureBatchState, EffectManagerState, ItemAssetStoreState,
+    ItemBatchState, MapRendererState, PlayerAssetStoreState, PlayerBatchState, PlayerPortraitState,
+    RendererState, WindowSurface,
+};
+
+#[derive(Resource)]
+pub struct CurrentSession {
+    pub username: String,
+    pub server_id: u32,
+    pub server_url: String,
+}
+
+pub struct CoreEventsPlugin;
+
+impl Plugin for CoreEventsPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_message::<events::MapEvent>()
+            .add_message::<events::EntityEvent>()
+            .add_message::<events::AudioEvent>()
+            .add_message::<events::InventoryEvent>()
+            .add_message::<events::AbilityEvent>()
+            .add_message::<events::ChatEvent>()
+            .add_message::<events::PlayerAction>()
+            .add_message::<events::SessionEvent>()
+            .add_message::<events::NetworkEvent>()
+            // Interaction events
+            .add_message::<events::EntityHoverEvent>()
+            .add_message::<events::EntityClickEvent>()
+            .add_message::<events::TileClickEvent>();
+    }
+}
+
+pub struct CorePlugin;
+
+impl Plugin for CorePlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins((
+            bevy::state::app::StatesPlugin,
+            CoreEventsPlugin,
+            settings::SettingsPlugin,
+            ecs::plugin::GamePlugin,
+            plugins::input::InputPlugin,
+        ))
+        .insert_resource(map_store::MapStore::new())
+        .init_state::<app_state::AppState>();
+    }
+}

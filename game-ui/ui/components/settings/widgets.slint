@@ -1,0 +1,210 @@
+import { Theme } from "../../theme.slint";
+import { SettingsState } from "../../settings_state.slint";
+import { VerticalBox, HorizontalBox } from "std-widgets.slint";
+
+export component TabButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> active;
+    callback clicked();
+    height: 24px;
+    background: transparent;
+    Text {
+        text: label;
+        font-size: 13px;
+        font-weight: active ? 700 : 500;
+        color: {
+            if active {
+                Theme.foreground-strong
+            } else if touch.has-hover {
+                Theme.foreground
+            } else {
+                Theme.foreground-subtle
+            }
+        };
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    // Subtle underline for active tab
+    if active: Rectangle {
+        y: parent.height - 2px;
+        height: 2px;
+        background: @linear-gradient(90deg, transparent 0%, Theme.accent-muted 20%, Theme.accent-muted 80%, transparent 100%);
+    }
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+export component RadioOption inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked();
+    height: 30px;
+    background: selected ? Theme.accent-subtle : Theme.surface-card;
+    border-radius: Theme.radius-small;
+    border-width: 1px;
+    border-color: selected ? Theme.accent-muted : Theme.border-muted;
+    HorizontalBox {
+        padding-left: Theme.spacing-small;
+        padding-right: Theme.spacing-small;
+        alignment: start;
+        Rectangle {
+            width: 16px;
+            height: 16px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 8px;
+            border-width: 2px;
+            border-color: selected ? Theme.accent : Theme.foreground-subtle;
+            background: transparent;
+            if selected: Rectangle {
+                width: 8px;
+                height: 8px;
+                x: 4px;
+                y: 4px;
+                border-radius: 4px;
+                background: Theme.accent;
+            }
+        }
+
+        Text {
+            text: label;
+            font-size: Theme.font-size-medium;
+            color: selected ? Theme.foreground-strong : Theme.foreground;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    states [
+        hover when touch.has-hover && !selected: {
+            background: Theme.surface-secondary;
+            border-color: Theme.border-overlay;
+        }
+    ]
+}
+
+export component SectionHeader inherits Text {
+    in property <string> title;
+    text: title;
+    font-size: Theme.font-size-medium;
+    font-weight: 600;
+    color: Theme.accent;
+    horizontal-alignment: center;
+}
+
+export component LabeledSlider inherits Rectangle {
+    in property <string> label;
+    in property <string> value-text;
+    in-out property <float> progress: 1.0; // 0.0 to 1.0
+    callback value-changed(float);
+    height: 48px;
+    background: transparent;
+    VerticalBox {
+        spacing: Theme.spacing-xsmall;
+        Text {
+            text: label;
+            font-size: Theme.font-size-medium;
+            color: Theme.foreground;
+        }
+
+        HorizontalBox {
+            spacing: Theme.spacing-xsmall;
+            alignment: stretch;
+            track := Rectangle {
+                vertical-stretch: 0;
+                height: 24px;
+                background: Theme.surface-card;
+                border-radius: Theme.radius-small;
+                border-width: 1px;
+                border-color: Theme.border-subtle;
+                fill := Rectangle {
+                    x: 0;
+                    y: 0;
+                    width: track.width * root.progress;
+                    height: track.height;
+                    background: Theme.accent;
+                    border-radius: Theme.radius-small;
+                }
+
+                TouchArea {
+                    width: track.width;
+                    height: track.height;
+                    pointer-event(event) => {
+                        if (event.kind == PointerEventKind.move && self.pressed) {
+                            root.value-changed(Math.clamp(self.mouse-x / self.width, 0.0, 1.0));
+                        }
+                    }
+                    clicked => {
+                        root.value-changed(Math.clamp(self.mouse-x / self.width, 0.0, 1.0));
+                    }
+                }
+            }
+
+            Text {
+                width: 50px;
+                text: value-text;
+                font-size: Theme.font-size-small;
+                color: Theme.foreground-muted;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+export component KeyBindingRow inherits Rectangle {
+    in property <string> action-label;
+    in property <string> current-key;
+    in property <string> action-id;
+    in property <bool> is-rebinding;
+    callback start-rebind();
+    height: 32px;
+    background: transparent;
+    HorizontalBox {
+        spacing: 8px;
+        Text {
+            text: action-label;
+            font-size: 12px;
+            color: Theme.foreground;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+
+        Rectangle {
+            width: 100px;
+            height: 24px;
+            background: is-rebinding ? Theme.accent-subtle : Theme.surface-card;
+            border-radius: Theme.radius-small;
+            border-width: 1px;
+            border-color: is-rebinding ? Theme.accent : Theme.border-muted;
+            Text {
+                text: is-rebinding ? "Press key..." : current-key;
+                font-size: 11px;
+                color: is-rebinding ? Theme.accent : Theme.foreground-muted;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            key-touch := TouchArea {
+                clicked => {
+                    root.start-rebind();
+                }
+            }
+
+            states [
+                hover when key-touch.has-hover && !is-rebinding: {
+                    background: #00000050;
+                    border-color: #00000080;
+                }
+            ]
+        }
+    }
+}

@@ -1,0 +1,217 @@
+import { GameState } from "../game_state.slint";
+import { SettingsState } from "../settings_state.slint";
+import { Theme } from "../theme.slint";
+
+export component PlayerHUD inherits Rectangle {
+    width: 280px;
+    height: 80px;
+    HorizontalLayout {
+        spacing: 12px;
+
+        // Character portrait
+        Rectangle {
+            width: 64px;
+            height: 64px;
+            y: (parent.height - self.height) / 2;
+
+            // Portrait circle with border
+            Rectangle {
+                width: 64px;
+                height: 64px;
+                border-radius: 32px;
+                background: @radial-gradient(circle, #2a2a3a 0%, #1a1a2a 100%);
+                border-width: 2px;
+                border-color: @linear-gradient(135deg, #4a4a5a 0%, #2a2a3a 100%);
+
+                // Portrait image placeholder
+                Rectangle {
+                    x: 3px;
+                    y: 3px;
+                    width: parent.width - 6px;
+                    height: parent.height - 6px;
+                    border-radius: parent.border-radius - 3px;
+                    background: @radial-gradient(circle, #3a3a4a 0%, #2a2a3a 100%);
+
+                    // Actual player portrait
+                    Image {
+                        source: GameState.player_portrait;
+                        width: 100%;
+                        height: 100%;
+                    }
+                }
+
+                // Subtle inner highlight
+                Rectangle {
+                    x: 3px;
+                    y: 3px;
+                    width: parent.width - 6px;
+                    height: (parent.height - 6px) * 0.4;
+                    border-radius: parent.border-radius - 3px;
+                    background: @linear-gradient(180deg, #ffffff08 0%, transparent 100%);
+                }
+            }
+        }
+
+        // Info panel
+        VerticalLayout {
+            spacing: 4px;
+
+            // Name and settings row
+            HorizontalLayout {
+                height: 24px;
+                spacing: 8px;
+                Text {
+                    text: GameState.player_name;
+                    color: #e0e0e0;
+                    font-size: 14px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+
+                Rectangle {
+                    width: 20px;
+                    height: 20px;
+                    y: (parent.height - self.height) / 2;
+                    background: SettingsState.show-settings ? @radial-gradient(circle, #FFC040 0%, #FF8040 100%) : #2a2a3a80;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: SettingsState.show-settings ? #FFD060 : #3a3a4a;
+                    Image {
+                        source: @image-url("../icons/settings.svg");
+                        width: 12px;
+                        height: 12px;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        colorize: SettingsState.show-settings ? #1a1a2e : #9a9a9a;
+                    }
+
+                    states [
+                        hover when settings-touch.has-hover && !SettingsState.show-settings: {
+                            background: #3a3a4a;
+                            border-color: #FFD060;
+                        }
+                    ]
+                    settings-touch := TouchArea {
+                        clicked => {
+                            SettingsState.show-settings = !SettingsState.show-settings;
+                        }
+                    }
+                }
+            }
+
+            // HP Bar
+            HorizontalLayout {
+                height: 18px;
+                spacing: 6px;
+                Rectangle {
+                    width: 140px;
+                    background: #00000040;
+                    border-radius: 3px;
+                    border-width: 1px;
+                    border-color: #00000060;
+
+                    // Fill
+                    Rectangle {
+                        x: 1px;
+                        y: 1px;
+                        width: max(0px, (parent.width - 2px) * max(0.0, min(1.0, GameState.current_hp / max(1, GameState.max_hp))));
+                        height: parent.height - 2px;
+                        background: @linear-gradient(90deg, #b91c1c 0%, #dc2626 50%, #ef4444 100%);
+                        border-radius: 2px;
+                    }
+
+                    // Subtle overlay
+                    Rectangle {
+                        x: 1px;
+                        y: 1px;
+                        width: parent.width - 2px;
+                        height: (parent.height - 2px) * 0.5;
+                        background: @linear-gradient(180deg, #ffffff20 0%, transparent 100%);
+                        border-radius: 2px;
+                    }
+                }
+
+                Text {
+                    text: GameState.current_hp;
+                    color: #ff6b6b;
+                    font-size: 11px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                    min-width: 40px;
+                    horizontal-alignment: right;
+                }
+            }
+
+            // MP Bar
+            HorizontalLayout {
+                height: 18px;
+                spacing: 6px;
+                Rectangle {
+                    width: 140px;
+                    background: #00000040;
+                    border-radius: 3px;
+                    border-width: 1px;
+                    border-color: #00000060;
+
+                    // Fill
+                    Rectangle {
+                        x: 1px;
+                        y: 1px;
+                        width: max(0px, (parent.width - 2px) * max(0.0, min(1.0, GameState.current_mp / max(1, GameState.max_mp))));
+                        height: parent.height - 2px;
+                        background: @linear-gradient(90deg, #1e40af 0%, #2563eb 50%, #3b82f6 100%);
+                        border-radius: 2px;
+                    }
+
+                    // Subtle overlay
+                    Rectangle {
+                        x: 1px;
+                        y: 1px;
+                        width: parent.width - 2px;
+                        height: (parent.height - 2px) * 0.5;
+                        background: @linear-gradient(180deg, #ffffff20 0%, transparent 100%);
+                        border-radius: 2px;
+                    }
+                }
+
+                Text {
+                    text: GameState.current_mp;
+                    color: #60a5fa;
+                    font-size: 11px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                    min-width: 40px;
+                    horizontal-alignment: right;
+                }
+            }
+
+            // Subtle info row
+            HorizontalLayout {
+                height: 14px;
+                spacing: 8px;
+                Text {
+                    text: GameState.map_name;
+                    color: #8a8a8a;
+                    font-size: 9px;
+                    vertical-alignment: center;
+                }
+
+                Rectangle {
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 3px;
+                    y: (parent.height - self.height) / 2;
+                    background: {
+                        if GameState.ping_ms < 100 {
+                            @radial-gradient(circle, #22c55e 0%, #16a34a 100%)
+                        } else if GameState.ping_ms < 200 {
+                            @radial-gradient(circle, #eab308 0%, #ca8a04 100%)
+                        } else {
+                            @radial-gradient(circle, #ef4444 0%, #dc2626 100%)
+                        }
+                    };
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,117 @@
+cargo-features = ["codegen-backend"]
+
+[profile.dev]
+codegen-backend = "cranelift"
+debug = 0
+
+[profile.dev.build-override]
+opt-level = 3
+
+[package]
+name = "talgonite"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "talgonite"
+path = "src/lib.rs"
+
+[[bin]]
+name = "talgonite"
+path = "src/main.rs"
+
+[dependencies]
+installer.workspace = true
+formats.workspace = true
+rendering.workspace = true
+packets.workspace = true
+crc.workspace = true
+tracing-subscriber.workspace = true
+tracing.workspace = true
+network.workspace = true
+game-types.workspace = true
+game-input.workspace = true
+game-ui.workspace = true
+
+bytemuck = { version = "1.24", features = ["derive"] }
+ktx2 = "0.4"
+glam = "0.30"
+anyhow = "1"
+byteorder = "1.5"
+wgpu = "27.0"
+libarx = { version = "0.4", features = ["zstd"] }
+jubako = "*"
+async-std = "1.13"
+rand = { version = "0.9", features = ["log", "nightly", "std"] }
+md5 = "0.8"
+bevy = { version = "0.17", default-features = false, features = [
+    "bevy_state",
+    "debug",
+] }
+gilrs = "0.11"
+kira = { version = "0.11", default-features = false, features = [
+    "mp3",
+    "cpal",
+] }
+crossbeam-channel = "0.5"
+paste = "1"
+pathfinding = "4.11"
+bevy_tasks = "0.17"
+futures-lite = "2.6"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+dirs = "6"
+base64 = "0.22"
+keyring = { version = "3", features = [
+    "apple-native",
+    "windows-native",
+    "sync-secret-service",
+] }
+bincode = { version = "2.0", features = ["derive"] }
+
+slint = { version = "1.15.0", default-features = false, features = [
+    "backend-default",
+    "compat-1-2",
+    "unstable-wgpu-27",
+    "renderer-femtovg-wgpu",
+] }
+i-slint-core = "=1.15.0"
+toml = "0.9.10"
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+
+[dev-dependencies]
+insta = "1.44"
+pollster = "0.4"
+png = "0.18"
+anyhow = "1"
+
+[workspace]
+members = [
+    "crc",
+    "formats",
+    "installer",
+    "rendering",
+    "packets",
+    "network",
+    "game-types",
+    "game-input",
+    "game-ui",
+]
+
+[workspace.dependencies]
+formats = { path = "formats" }
+installer = { path = "installer" }
+rendering = { path = "rendering" }
+network = { path = "network" }
+packets = { path = "packets" }
+crc = { path = "crc" }
+game-types = { path = "game-types" }
+game-input = { path = "game-input" }
+game-ui = { path = "game-ui" }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[patch.crates-io]
+slint = { git = "https://github.com/slint-ui/slint", rev = "f0e2e6b" }
+slint-build = { git = "https://github.com/slint-ui/slint", rev = "f0e2e6b" }
+i-slint-core = { git = "https://github.com/slint-ui/slint", rev = "f0e2e6b" }

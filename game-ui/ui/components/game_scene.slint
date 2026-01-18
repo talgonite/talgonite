@@ -1,0 +1,150 @@
+import { GameState, DragDropState, SlotPanelType } from "../game_state.slint";
+import { InputBridge } from "../input_bridge.slint";
+import { UiSettings } from "../ui-settings.slint";
+import { SettingsState } from "../settings_state.slint";
+import { MenuDialog, TextEntryDialog } from "./menu_dialog.slint";
+import { SettingsPanel } from "settings/panel.slint";
+import { Theme } from "../theme.slint";
+import { InventoryPanel } from "./inventory_panel.slint";
+import { ActionsPanel } from "./actions_panel.slint";
+import { GameSidebar } from "./game_sidebar.slint";
+import { WorldMap } from "./world_map.slint";
+import { WorldLabels } from "./world_labels.slint";
+import { HotBar } from "./hot_bar.slint";
+import { PlayerHUD } from "./player_hud.slint";
+import { ActionBarMessages } from "./action_bar_messages.slint";
+import { ChatLog } from "./chat_log.slint";
+import { PopupPanel } from "./popup_panel.slint";
+import { ProfilePanel } from "./profile_panel.slint";
+import { WorldListPanel } from "./world_list.slint";
+import { PopupState } from "../game_state.slint";
+import {
+    HorizontalBox,
+    VerticalBox,
+    ScrollView,
+    LineEdit,
+    Button,
+} from "std-widgets.slint";
+
+export component GameScene inherits Rectangle {
+    callback request-snapshot();
+    background: transparent;
+    property <string> actions-tab: "skills";
+    focus-scope := FocusScope {
+        key-pressed(event) => {
+            if (event.text == "\n") {
+                chat-log.focus-input();
+                return accept;
+            }
+            if (event.text == "\"") {
+                chat-log.enter-whisper-mode();
+                return accept;
+            }
+            if (SettingsState.is-rebinding) {
+                if (InputBridge.rebind-key-event(event)) {
+                    return accept;
+                }
+            }
+            return InputBridge.key-pressed(event);
+        }
+        key-released(event) => InputBridge.key-released(event);
+    }
+
+    TouchArea {
+        pointer-event(event) => {
+            InputBridge.pointer-event(event, self.mouse-x, self.mouse-y);
+            DragDropState.maybe-drop(SlotPanelType.world, 0, self.mouse-x, self.mouse-y);
+        }
+        double-clicked => {
+            InputBridge.double-click(self.mouse-x, self.mouse-y);
+        }
+        scroll-event(event) => InputBridge.scroll-event(self.mouse-x, self.mouse-y, event.delta-x / 1px, event.delta-y / 1px);
+        clicked => {
+            focus-scope.focus();
+        }
+    }
+
+    // World-space labels (entity names, speech bubbles) rendered in screen space
+    WorldLabels {
+        width: 100%;
+        height: 100%;
+    }
+
+    MenuDialog {
+        width: 100%;
+        height: 100%;
+    }
+
+    TextEntryDialog {
+        width: 100%;
+        height: 100%;
+    }
+
+    player-hud := PlayerHUD {
+        x: 20px;
+        y: 20px;
+    }
+
+    ActionBarMessages {
+        x: 20px;
+        y: player-hud.y + player-hud.height + 8px;
+    }
+
+    chat-log := ChatLog {
+        x: 20px;
+        y: parent.height - self.height - 20px;
+        chat-sent => {
+            focus-scope.focus();
+        }
+    }
+
+    GameSidebar {
+        x: parent.width - 64px;
+        y: 0px;
+    }
+
+    if (GameState.show-inventory): InventoryPanel {
+        x: parent.width - 420px;
+        y: 60px;
+    }
+    if (GameState.show-world-list): WorldListPanel {
+        x: parent.width - 470px;
+        y: 60px;
+    }
+    if (GameState.show-skills || GameState.show-spells): ActionsPanel {
+        x: parent.width - 490px;
+        y: 60px;
+        active-tab: actions-tab;
+    }
+    if (SettingsState.show-settings): SettingsPanel {
+        x: Theme.spacing-small;
+        y: 80px;
+    }
+
+    // Profile panel (centered modal)
+    if (GameState.profile.visible): ProfilePanel {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+    }
+
+    // Hot bar at bottom right
+    HotBar {
+        x: parent.width - self.width - Theme.spacing-small;
+        y: parent.height - self.height - Theme.spacing-small;
+    }
+
+    // World map overlay (on top of normal UI)
+    if (GameState.show-world-map): WorldMap {
+        width: 100%;
+        height: 100%;
+    }
+
+    PopupPanel {
+        screen-width: parent.width;
+        screen-height: parent.height;
+    }
+
+    init() => {
+        focus-scope.focus();
+    }
+}

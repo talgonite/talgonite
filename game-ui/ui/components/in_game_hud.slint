@@ -1,0 +1,30 @@
+import { Theme } from "../theme.slint";
+
+import {
+    VerticalBox,
+} from "std-widgets.slint";
+
+export component InGameHud inherits Rectangle {
+    in property <string> map-name: "";
+    in property <float> player-x: 0;
+    in property <float> player-y: 0;
+
+    x: 12px;
+    y: 12px;
+    width: 260px;
+    height: 54px;
+    background: Theme.surface-hud;
+    border-radius: Theme.radius-small;
+
+    VerticalBox {
+        padding: 6px;
+        spacing: 4px;
+        Text {
+            text: map-name == "" ? "Map: Unknown" : ("Map: " + map-name);
+        }
+
+        Text {
+            text: "Pos: " + player-x + ", " + player-y;
+        }
+    }
+}

@@ -1,0 +1,48 @@
+import { GameState } from "../game_state.slint";
+import { Theme } from "../theme.slint";
+
+export component ActionBarMessages inherits Rectangle {
+    width: 400px;
+    height: self.preferred-height;
+
+    property <float> message-opacity: 0.0;
+    property <int> countdown: 0;
+    property <int> local-counter: GameState.action-bar-update-counter;
+
+    changed local-counter => {
+        if GameState.action-bar-messages.length > 0 {
+            message-opacity = 1.0;
+            countdown = 25;
+            fade-timer.running = true;
+        }
+    }
+
+    fade-timer := Timer {
+        interval: 100ms;
+        running: false;
+        triggered() => {
+            countdown -= 1;
+            if (countdown <= 0) {
+                self.running = false;
+                message-opacity = 0.0;
+            } else if (countdown <= 5) {
+                message-opacity = countdown / 5.0;
+            }
+        }
+    }
+
+    opacity: message-opacity;
+
+    VerticalLayout {
+        spacing: 2px;
+        padding: 4px;
+
+        for message in GameState.action-bar-messages: Text {
+            text: message;
+            color: #ffffff;
+            font-size: 11px;
+            font-weight: 500;
+            wrap: word-wrap;
+        }
+    }
+}

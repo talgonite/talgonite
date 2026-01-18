@@ -1,0 +1,15 @@
+export global LoginState {
+    in-out property <string> username: "";
+    in-out property <string> password: "";
+    in-out property <bool> remember: true;
+    in-out property <string> selected-login-id: "";
+    in-out property <int> login-error-code: -1;
+    in-out property <bool> is-submitting: false;
+    in-out property <bool> show-login-modal: false;
+}
+
+export global InstallerState {
+    in-out property <float> progress: 0.0;
+    in-out property <string> message: "";
+    in-out property <bool> is-installing: false;
+}

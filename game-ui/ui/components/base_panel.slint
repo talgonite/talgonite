@@ -1,0 +1,86 @@
+import { Theme } from "../theme.slint";
+
+export component BasePanel inherits Rectangle {
+    in property <string> title;
+    in property <bool> show-close: true;
+    callback close();
+
+    background: Theme.panel-background;
+    border-radius: Theme.radius-medium;
+    border-width: 1px;
+    border-color: Theme.border-panel;
+
+    // Inner Highlight
+    // Rectangle {
+    //     x: 1px;
+    //     y: 1px;
+    //     width: parent.width - 2px;
+    //     height: parent.height - 2px;
+    //     border-radius: Theme.radius-medium - 1px;
+    //     border-width: 1px;
+    //     border-color: Theme.border-panel-highlight;
+    // }
+
+    VerticalLayout {
+        padding: 1px;
+        
+        // Header Row
+        Rectangle {
+            height: 48px;
+            background: Theme.panel-header-background;
+            border-top-left-radius: Theme.radius-medium;
+            border-top-right-radius: Theme.radius-medium;
+
+            HorizontalLayout {
+                padding-left: Theme.spacing-medium;
+                padding-right: Theme.spacing-small;
+                spacing: Theme.spacing-small;
+
+                Text {
+                    text: root.title;
+                    font-size: Theme.font-size-medium;
+                    font-weight: 700;
+                    color: Theme.foreground-strong;
+                    vertical-alignment: center;
+                    letter-spacing: 0.5px;
+                }
+
+                // Spring
+                Rectangle { }
+
+                if root.show-close: close-btn := Rectangle {
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 4px;
+                    background: touch.pressed ? Theme.surface-primary : touch.has-hover ? Theme.surface-secondary : transparent;
+                    y: (parent.height - self.height) / 2;
+
+                    Text {
+                        text: "×";
+                        font-size: 24px;
+                        color: touch.has-hover ? Theme.accent : Theme.foreground-muted;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    touch := TouchArea {
+                        clicked => {
+                            root.close();
+                        }
+                    }
+                }
+            }
+
+            // Header Bottom Divider
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.border-panel;
+                width: 100%;
+            }
+        }
+
+        // Content Area
+        @children
+    }
+}

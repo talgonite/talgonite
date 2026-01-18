@@ -1,0 +1,31 @@
+import { Theme } from "../theme.slint";
+import { PopupState } from "../game_state.slint";
+
+export component PopupPanel inherits Rectangle {
+    background: Theme.surface-modal;
+    border-color: Theme.border-accent;
+    border-width: 1px;
+    border-radius: Theme.radius-small;
+    drop-shadow-blur: 8px;
+    drop-shadow-color: Theme.overlay-strong;
+    in property <length> screen-width;
+    in property <length> screen-height;
+    width: layout.preferred-width;
+    height: layout.preferred-height;
+
+    // Horizontal positioning: center on anchor, then clamp to screen
+    x: Math.max(4px, Math.min(PopupState.x + PopupState.anchor-width / 2 - self.width / 2, screen-width - self.width - 4px));
+
+    // Vertical positioning: show above if there's no room below
+    y: (PopupState.y + PopupState.anchor-height + self.height + 10px > screen-height) ? (PopupState.y - self.height - 8px) : (PopupState.y + PopupState.anchor-height + 8px);
+    visible: PopupState.visible && PopupState.text != "";
+    layout := HorizontalLayout {
+        padding: Theme.spacing-small;
+        Text {
+            text: PopupState.text;
+            color: Theme.foreground;
+            font-size: Theme.font-size-small;
+            horizontal-alignment: center;
+        }
+    }
+}

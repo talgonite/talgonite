@@ -1,0 +1,95 @@
+import { GameState, WorldLabel } from "../game_state.slint";
+import { Theme } from "../theme.slint";
+
+component LabelItem inherits Rectangle {
+    in property <WorldLabel> label;
+    in property <float> cam_x;
+    in property <float> cam_y;
+    in property <float> zoom;         // GPU render zoom (camera_zoom)
+    in property <float> vp_w;         // render texture width
+    in property <float> vp_h;         // render texture height
+    in property <float> disp_scale;   // display scale (display_size / render_size)
+
+    pure function world-to-screen-x(world_x: float) -> length {
+        return ((world_x - cam_x) * zoom + vp_w / 2.0) * disp_scale * 1phx;
+    }
+    pure function world-to-screen-y(world_y: float) -> length {
+        return ((world_y - cam_y) * zoom + vp_h / 2.0) * disp_scale * 1phx;
+    }
+    property <length> screen_x: world-to-screen-x(label.world_x);
+    property <length> screen_y: world-to-screen-y(label.world_y + label.y_offset);
+    property <float> total_scale: zoom * disp_scale;
+    property <length> max_text_width: 180px;
+    property <length> label_padding: label.is_speech ? 8px : 4px;
+    property <length> bottom_offset: 8px * total_scale;
+    x: screen_x - self.width / 2;
+    y: screen_y + bottom_offset;
+    width: txt.width + label_padding * 2;
+    height: txt.height + label_padding * 2;
+
+    // Health Bar Container
+    if (label.health_percent >= 0): Rectangle {
+        y: -6px * total_scale;
+        width: 16px * total_scale;
+        height: 3px * total_scale;
+        x: (parent.width - self.width) / 2;
+        background: #000000cc;
+        border-width: Math.floor(Math.max(1, 0.5 * total_scale)) * 1px;
+        border-color: #ffffff33;
+
+        // Health Fill
+        Rectangle {
+            x: parent.border-width;
+            y: parent.border-width;
+            width: (parent.width - 2 * parent.border-width) * min(100, max(0, label.health_percent)) / 100;
+            height: parent.height - 2 * parent.border-width;
+            background: label.health_percent > 50 ? #2ecc71 : (label.health_percent > 25 ? #f1c40f : #e74c3c);
+        }
+    }
+
+    txt := Text {
+        x: label_padding;
+        y: label_padding;
+        width: self.preferred-width;
+        text: label.text;
+        color: rgba(label.color_r * 255, label.color_g * 255, label.color_b * 255, label.color_a);
+        font-size: 11px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        states [
+            speech when label.is_speech: {
+                wrap: word-wrap;
+                width: min(self.preferred-width, max_text_width);
+            }
+            non-speech when !label.is_speech: {
+                stroke: #00000080;
+                stroke-width: 2px;
+            }
+        ]
+    }
+
+    states [
+        speech when label.is_speech: {
+            y: screen_y + bottom_offset - self.height;
+            background: #00000075;
+            border-radius: 10px;
+            border-width: 1px;
+            border-color: #ffffffdd;
+            drop-shadow-blur: 4px;
+            drop-shadow-color: #00000088;
+        }
+    ]
+}
+
+export component WorldLabels inherits Rectangle {
+    background: transparent;
+    for label in GameState.world_labels: LabelItem {
+        label: label;
+        cam_x: GameState.camera_x;
+        cam_y: GameState.camera_y;
+        zoom: GameState.camera_zoom;
+        vp_w: GameState.viewport_width;
+        vp_h: GameState.viewport_height;
+        disp_scale: GameState.display_scale;
+    }
+}

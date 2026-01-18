@@ -1,0 +1,16 @@
+import { ServerItem, SavedLoginItem } from "types.slint";
+
+export global LobbyState {
+    in-out property <[ServerItem]> servers: [
+        { id: 1, name: "Server Loading", address: "127.0.0.1:8080" },
+        { id: 2, name: "Server Loading2", address: "127.0.0.1:8081" }
+    ];
+    in-out property <[SavedLoginItem]> saved-logins: [
+        { id: "Login1", server_id: 1, username: "Loading.", last_used: 2 },
+        { id: "Login2", server_id: 2, username: "Loading..", last_used: 1 },
+        { id: "Login3", server_id: 1, username: "Loading...", last_used: 0 },
+    ];
+    in-out property <int> current-server-id: 1;
+    in-out property <string> current-server-name: "Unknown";
+    in-out property <bool> show-server-modal: false;
+}

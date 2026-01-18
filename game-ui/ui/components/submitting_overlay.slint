@@ -1,0 +1,51 @@
+import { Theme } from "../theme.slint";
+
+import {
+    VerticalBox,
+    HorizontalBox,
+} from "std-widgets.slint";
+
+export component SubmittingOverlay inherits Rectangle {
+    background: Theme.overlay-strong;
+    TouchArea {
+        width: 100%;
+        height: 100%;
+    }
+
+    HorizontalBox {
+        alignment: center;
+        VerticalBox {
+            alignment: center;
+            Rectangle {
+                width: 240px;
+                height: 120px;
+                background: Theme.surface-loading;
+                border-radius: Theme.radius-xlarge;
+                border-width: 2px;
+                border-color: Theme.accent-muted;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000066;
+                drop-shadow-offset-y: 8px;
+                VerticalBox {
+                    padding: 24px;
+                    spacing: 16px;
+                    alignment: center;
+                    Text {
+                        text: "Connecting...";
+                        color: Theme.accent;
+                        font-size: 18px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                    }
+
+                    Text {
+                        text: "Please wait";
+                        color: Theme.foreground-subtle;
+                        font-size: 13px;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+}

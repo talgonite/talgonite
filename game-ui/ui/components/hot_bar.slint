@@ -1,0 +1,208 @@
+import {
+    GameState,
+    DragDropState,
+    SlotPanelType,
+    InventoryItem,
+    Skill,
+    Spell,
+    PopupState,
+} from "../game_state.slint";
+import { CancelDrag, DragDropItem } from "drag_drop.slint";
+import { Theme } from "../theme.slint";
+import { HorizontalBox, VerticalBox } from "std-widgets.slint";
+import { Icon } from "./icon.slint";
+
+component HotBarSlotView inherits Rectangle {
+    in property <SlotPanelType> panel-type;
+    in property <int> key-num;
+    in property <int> slot;
+    in property <image> icon;
+    in property <int> quantity;
+    in property <duration> cooldown-left;
+    in property <duration> cooldown-total;
+    in property <string> name;
+    in property <string> description;
+    width: 44px;
+    height: 44px;
+    background: Theme.surface-muted;
+    border-radius: Theme.radius-small;
+    border-width: 1px;
+    border-color: Theme.border-muted;
+    clip: false;
+    if icon.width > 0: Rectangle {
+        Icon {
+            icon: icon;
+            cooldown-left: cooldown-left;
+            cooldown-total: cooldown-total;
+        }
+
+        // Quantity for items
+        if quantity > 1: Text {
+            text: quantity;
+            font-size: 15px;
+            font-weight: 700;
+            color: Theme.foreground-strong;
+            x: parent.width - self.width - 4px;
+            y: parent.height - self.height - 2px;
+        }
+        states [
+            dragging when slot-drag.pressed: {
+                x: slot-drag.offset-x;
+                y: slot-drag.offset-y;
+                background: Theme.surface-card;
+                border-radius: Theme.radius-small;
+                border-width: 2px;
+                border-color: Theme.accent;
+            }
+        ]
+    }
+    if key-num <= 12: Text {
+        text: key-num < 9 ? key-num + 1 : (key-num == 9 ? "0" : (key-num == 10 ? "-" : "="));
+        font-size: 9px;
+        color: #808080;
+        stroke: #00000080;
+        stroke-width: 2px;
+        x: 2px;
+        y: 1px;
+    }
+    slot-drag := DragDropItem {
+        draggable: slot > 0;
+        slot-index: slot;
+        panel-type: panel-type;
+        double-clicked => {
+            if slot > 0 {
+                GameState.use-action(panel-type, slot);
+            }
+        }
+    }
+
+    states [
+        hovered when slot-drag.has-hover && slot > 0 && !slot-drag.pressed: {
+            border-color: Theme.accent;
+        }
+    ]
+    property <bool> has-tooltip: slot-drag.has-hover && slot > 0 && !slot-drag.pressed;
+    changed has-tooltip => {
+        if (root.has-tooltip) {
+            PopupState.show(name, self.absolute-position.x, self.absolute-position.y, root.width, root.height);
+        } else {
+            PopupState.hide();
+        }
+    }
+    states [
+        hover when slot-drag.has-hover && !slot-drag.pressed: {
+            border-color: Theme.accent-muted;
+            background: Theme.surface-secondary;
+        }
+    ]
+}
+
+component InventorySlots inherits HorizontalLayout {
+    spacing: 4px;
+    for idx in 12: HotBarSlotView {
+        key-num: idx;
+        panel-type: SlotPanelType.item;
+        slot: GameState.inventory[idx].slot;
+        quantity: GameState.inventory[idx].quantity;
+        icon: GameState.inventory[idx].icon;
+        name: GameState.inventory[idx].name;
+    }
+}
+
+component SpellSlots inherits HorizontalLayout {
+    spacing: 4px;
+    for idx in 12: HotBarSlotView {
+        key-num: idx;
+        panel-type: SlotPanelType.spell;
+        slot: GameState.spells[idx].slot;
+        icon: GameState.spells[idx].icon;
+        name: GameState.spells[idx].name;
+    }
+}
+
+component SkillSlots inherits HorizontalLayout {
+    spacing: 4px;
+    for idx in 12: HotBarSlotView {
+        key-num: idx;
+        panel-type: SlotPanelType.skill;
+        slot: GameState.skills[idx].slot;
+        icon: GameState.skills[idx].icon;
+        name: GameState.skills[idx].name;
+        cooldown-left: GameState.skills[idx].cooldown.time_left;
+        cooldown-total: GameState.skills[idx].cooldown.total;
+    }
+}
+
+component CustomHotBarSlots inherits HorizontalLayout {
+    in property <int> offset: 0;
+    spacing: 4px;
+    for idx in 12: HotBarSlotView {
+        key-num: idx;
+        panel-type: SlotPanelType.hotbar;
+        slot: offset + idx;
+        icon: GameState.hotbar[offset + idx].icon;
+        name: GameState.hotbar[offset + idx].name;
+        quantity: GameState.hotbar[offset + idx].quantity;
+        cooldown-left: GameState.hotbar[offset + idx].cooldown.time_left;
+        cooldown-total: GameState.hotbar[offset + idx].cooldown.total;
+    }
+}
+
+export component HotBar inherits Rectangle {
+    width: 596px;
+    height: 50px;
+
+    // Subtle fading background
+    Rectangle {
+        background: @linear-gradient(0deg, #00000025 0%, #00000012 10%, #00000040 20%, #00000040 80%, #00000025 90%, #00000000 100%);
+        border-radius: 6px;
+    }
+
+    CancelDrag { }
+
+    HorizontalBox {
+        padding: 6px;
+        spacing: 4px;
+
+        // Mode selector buttons - minimal dots
+        VerticalLayout {
+            spacing: 1px;
+            alignment: center;
+            for i in 6: Rectangle {
+                width: 16px;
+                height: 6px;
+                background: {
+                    if GameState.current-hotbar-panel == i {
+                        @linear-gradient(90deg, #FFC040 0%, #FF8040 100%)
+                    } else if ta.has-hover {
+                        #40404080
+                    } else {
+                        #30303060
+                    }
+                };
+                border-radius: 2px;
+                border-width: 1px;
+                border-color: GameState.current-hotbar-panel == i ? #FFD06060 : #20202040;
+                ta := TouchArea {
+                    mouse-cursor: MouseCursor.pointer;
+                    clicked => {
+                        GameState.set-hotbar-panel(i);
+                    }
+                }
+            }
+        }
+
+        if GameState.current-hotbar-panel == 0: InventorySlots { }
+        if GameState.current-hotbar-panel == 1: SkillSlots { }
+        if GameState.current-hotbar-panel == 2: SpellSlots { }
+        if GameState.current-hotbar-panel == 3: CustomHotBarSlots {
+            offset: 0;
+        }
+        if GameState.current-hotbar-panel == 4: CustomHotBarSlots {
+            offset: 12;
+        }
+        if GameState.current-hotbar-panel == 5: CustomHotBarSlots {
+            offset: 24;
+        }
+    }
+}
