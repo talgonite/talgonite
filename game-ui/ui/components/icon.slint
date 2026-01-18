@@ -7,23 +7,22 @@ export component Icon inherits Rectangle {
     in property <duration> cooldown-left;
     property <float> cooldown-percent: cooldown-total > 0ms ? cooldown-left / cooldown-total : 0.0;
 
-    Image {
-        image-rendering: pixelated;
-        source: icon;
-        image-fit: fill;
-        width: parent.width;
-        height: parent.height;
-    }
-
     if cooldown-percent > 0: Image {
         image-rendering: pixelated;
         source: icon;
         image-fit: fill;
         width: parent.width;
         height: parent.height;
-        source-clip-y: icon.height * (1 - cooldown-percent);
-        y: parent.height * (1 - cooldown-percent) * (1phx / 1px);
-        colorize: black;
         opacity: 0.5;
+    }
+
+    Image {
+        image-rendering: pixelated;
+        source: icon;
+        image-fit: fill;
+        width: parent.width;
+        height: Math.floor(parent.height * (1.0 - cooldown-percent) / 1px) * 1px;
+        y: 0;
+        source-clip-height: Math.floor(icon.height * (1.0 - cooldown-percent));
     }
 }
