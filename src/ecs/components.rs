@@ -82,7 +82,7 @@ pub struct ItemBundle {
     pub sprite: ItemSprite,
 }
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 pub struct ItemSprite {
     pub id: u16,
     pub color: u8,
@@ -263,8 +263,12 @@ impl Hitbox {
                     && test_tile.y < bounds_max.y
             }
             HitboxType::ScreenSpace => {
-                let entity_screen =
-                    rendering::scene::utils::tile_to_screen(entity_pos, camera_pos, window_size, zoom);
+                let entity_screen = rendering::scene::utils::tile_to_screen(
+                    entity_pos,
+                    camera_pos,
+                    window_size,
+                    zoom,
+                );
                 let bounds_min = entity_screen
                     + self.min
                         * Vec2::new(

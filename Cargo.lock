@@ -6723,6 +6723,7 @@ dependencies = [
  "png 0.18.0",
  "pollster",
  "rand 0.9.2",
+ "rangemap",
  "rendering",
  "serde",
  "serde_json",

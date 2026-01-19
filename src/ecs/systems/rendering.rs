@@ -3,12 +3,12 @@
 use super::super::animation::{Animation, AnimationMode, AnimationType};
 use super::super::components::*;
 use crate::resources::LobbyPortraits;
+use crate::resources::PlayerPortraitState;
 use crate::{
     CreatureAssetStoreState, CreatureBatchState, ItemAssetStoreState, ItemBatchState,
     PlayerAssetStoreState, PlayerBatchState, RendererState, game_files::GameFiles,
     settings_types::Settings,
 };
-use crate::resources::PlayerPortraitState;
 use bevy::prelude::*;
 use formats::epf::EpfAnimationType;
 use glam::Vec3;
@@ -27,13 +27,16 @@ pub fn sync_lobby_portraits(
     _win: Res<crate::slint_support::state_bridge::SlintWindow>,
 ) {
     // Only run if portraits are complete and we have saved credentials
-    if settings.saved_credentials.iter().all(|c| c.preview.is_none() || portrait_state.textures.contains_key(&c.id)) {
+    if settings
+        .saved_credentials
+        .iter()
+        .all(|c| c.preview.is_none() || portrait_state.textures.contains_key(&c.id))
+    {
         return;
     }
 
     let portrait_size = 64;
-    let batch =
-        rendering::scene::players::PlayerBatch::new(&renderer.device, &player_store.store);
+    let batch = rendering::scene::players::PlayerBatch::new(&renderer.device, &player_store.store);
 
     let depth_texture = rendering::texture::Texture::create_depth_texture(
         &renderer.device,
@@ -64,23 +67,51 @@ pub fn sync_lobby_portraits(
             };
 
             let mut slots = vec![
-                (PlayerPieceType::Body, preview.body.max(1), preview.shield_color as u8),
+                (
+                    PlayerPieceType::Body,
+                    preview.body.max(1),
+                    preview.shield_color as u8,
+                ),
                 (PlayerPieceType::Face, 1, 0), // Standard face
-                (PlayerPieceType::HelmetBg, preview.helmet, preview.helmet_color as u8),
-                (PlayerPieceType::HelmetFg, preview.helmet, preview.helmet_color as u8),
-                (PlayerPieceType::Boots, preview.boots, preview.boots_color as u8),
+                (
+                    PlayerPieceType::HelmetBg,
+                    preview.helmet,
+                    preview.helmet_color as u8,
+                ),
+                (
+                    PlayerPieceType::HelmetFg,
+                    preview.helmet,
+                    preview.helmet_color as u8,
+                ),
+                (
+                    PlayerPieceType::Boots,
+                    preview.boots,
+                    preview.boots_color as u8,
+                ),
                 (PlayerPieceType::Shield, preview.shield, 0),
                 (PlayerPieceType::Weapon, preview.weapon, 0),
-                (PlayerPieceType::Accessory1Bg, preview.accessory1, preview.accessory1_color as u8),
-                (PlayerPieceType::Accessory1Fg, preview.accessory1, preview.accessory1_color as u8),
+                (
+                    PlayerPieceType::Accessory1Bg,
+                    preview.accessory1,
+                    preview.accessory1_color as u8,
+                ),
+                (
+                    PlayerPieceType::Accessory1Fg,
+                    preview.accessory1,
+                    preview.accessory1_color as u8,
+                ),
             ];
 
             if preview.pants_color > 0 {
-                slots.push((PlayerPieceType::Pants, preview.pants_color as u16, 0));
+                slots.push((PlayerPieceType::Pants, preview.pants_color as u16, 1));
             }
 
             if preview.overcoat > 0 {
-                slots.push((PlayerPieceType::Armor, preview.overcoat, preview.overcoat_color as u8));
+                slots.push((
+                    PlayerPieceType::Armor,
+                    preview.overcoat,
+                    preview.overcoat_color as u8,
+                ));
             } else {
                 slots.push((PlayerPieceType::Arms, preview.armor, 0));
                 slots.push((PlayerPieceType::Armor, preview.armor, 0)); // Assuming same sprite for now, common for basic armors
@@ -286,16 +317,14 @@ pub fn update_player_sprites(
     shared_state: Res<RendererState>,
     store_state: Res<PlayerAssetStoreState>,
     batch_state: Res<PlayerBatchState>,
-    parent_query: Query<
-        (
-            &Position,
-            &Direction,
-            Option<&Animation>,
-            Option<&TargetingHover>,
-            &Children,
-            &EntityId,
-        ),
-    >,
+    parent_query: Query<(
+        &Position,
+        &Direction,
+        Option<&Animation>,
+        Option<&TargetingHover>,
+        &Children,
+        &EntityId,
+    )>,
     changed_query: Query<
         Entity,
         Or<(
@@ -308,7 +337,9 @@ pub fn update_player_sprites(
     mut removed_hovers: RemovedComponents<TargetingHover>,
     children_query: Query<(&PlayerSprite, &PlayerSpriteInstance)>,
 ) {
-    let mut to_update = changed_query.iter().collect::<std::collections::HashSet<_>>();
+    let mut to_update = changed_query
+        .iter()
+        .collect::<std::collections::HashSet<_>>();
     for entity in removed_hovers.read() {
         to_update.insert(entity);
     }
@@ -354,16 +385,14 @@ pub fn update_player_sprites(
 /// Syncs creature positions and animations to the GPU.
 pub fn creature_movement_sync(
     renderer: Res<RendererState>,
-    query: Query<
-        (
-            &CreatureInstance,
-            &Position,
-            &Direction,
-            &Animation,
-            Option<&TargetingHover>,
-            &EntityId,
-        ),
-    >,
+    query: Query<(
+        &CreatureInstance,
+        &Position,
+        &Direction,
+        &Animation,
+        Option<&TargetingHover>,
+        &EntityId,
+    )>,
     changed_query: Query<
         Entity,
         Or<(
@@ -379,7 +408,9 @@ pub fn creature_movement_sync(
 ) {
     use formats::mpf::MpfAnimationType;
 
-    let mut to_update = changed_query.iter().collect::<std::collections::HashSet<_>>();
+    let mut to_update = changed_query
+        .iter()
+        .collect::<std::collections::HashSet<_>>();
     for entity in removed_hovers.read() {
         to_update.insert(entity);
     }
@@ -590,4 +621,3 @@ pub fn sync_profile_portrait(
         }
     }
 }
-

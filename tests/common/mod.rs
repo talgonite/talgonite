@@ -6,8 +6,7 @@ use packets::server;
 use std::sync::Arc;
 use std::time::Duration;
 use talgonite::{
-    Camera, CreatureManagerState, ItemManagerState, PlayerAssetStoreState, PlayerBatchState,
-    RendererState,
+    Camera, PlayerBatchState, RendererState,
     events::{EntityEvent, MapEvent},
 };
 use wgpu;

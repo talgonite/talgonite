@@ -10,7 +10,7 @@ use crate::slint_support::input_bridge::{
     SharedKeyEventQueue, SharedPointerEventQueue, SharedScrollEventQueue,
 };
 use crate::slint_support::state_bridge::{
-    SlintUiChannels, SlintWindow, apply_core_to_slint, drain_slint_inbound,
+    SlintAssetLoaderRes, SlintUiChannels, SlintWindow, apply_core_to_slint, drain_slint_inbound,
     sync_installer_to_slint, sync_map_name_to_slint, sync_world_labels_to_slint,
 };
 use crate::{RendererState, WindowSurface};
@@ -78,6 +78,7 @@ impl Plugin for SlintBridgePlugin {
 /// System that syncs PlayerProfileState to Slint whenever it changes
 fn sync_profile_to_slint(
     win: Option<Res<SlintWindow>>,
+    asset_loader: Option<Res<SlintAssetLoaderRes>>,
     game_files: Option<Res<crate::game_files::GameFiles>>,
     eq_state: Option<Res<crate::webui::plugin::EquipmentState>>,
     profile_state: Option<Res<crate::webui::plugin::PlayerProfileState>>,
@@ -94,6 +95,10 @@ fn sync_profile_to_slint(
     let Some(ps) = profile_state else {
         return;
     };
+    let Some(asset_loader) = asset_loader else {
+        return;
+    };
+    let asset_loader = &asset_loader.0;
 
     let mut portrait_image = None;
     if let (Some(mut portrait), Some(renderer)) = (portrait_state, renderer) {
@@ -166,7 +171,8 @@ fn sync_profile_to_slint(
                     if let Some(item) = ps.equipment.get(&slot_type) {
                         return crate::EquipmentSlotData {
                             name: slint::SharedString::default(),
-                            icon: crate::slint_support::assets::load_item_icon(gf, item.sprite)
+                            icon: asset_loader
+                                .load_item_icon(gf, item.sprite)
                                 .unwrap_or_default(),
                             has_item: true,
                             durability_percent: 1.0,
@@ -183,7 +189,8 @@ fn sync_profile_to_slint(
                         };
                         return crate::EquipmentSlotData {
                             name: slint::SharedString::from(item.name.as_str()),
-                            icon: crate::slint_support::assets::load_item_icon(gf, item.sprite)
+                            icon: asset_loader
+                                .load_item_icon(gf, item.sprite)
                                 .unwrap_or_default(),
                             has_item: true,
                             durability_percent,
@@ -223,6 +230,7 @@ fn sync_profile_to_slint(
 fn handle_show_self_profile(
     mut reader: MessageReader<ShowSelfProfileEvent>,
     win: Option<Res<SlintWindow>>,
+    asset_loader: Option<Res<SlintAssetLoaderRes>>,
     game_files: Option<Res<crate::game_files::GameFiles>>,
     eq_state: Option<Res<crate::webui::plugin::EquipmentState>>,
     mut profile_state: Option<ResMut<crate::webui::plugin::PlayerProfileState>>,
@@ -234,6 +242,10 @@ fn handle_show_self_profile(
     let Some(strong) = win.0.upgrade() else {
         return;
     };
+    let Some(asset_loader) = asset_loader else {
+        return;
+    };
+    let asset_loader = &asset_loader.0;
 
     for event in reader.read() {
         let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
@@ -347,7 +359,8 @@ fn handle_show_self_profile(
                         if let Some(item) = ps.equipment.get(&slot_type) {
                             return crate::EquipmentSlotData {
                                 name: slint::SharedString::default(),
-                                icon: crate::slint_support::assets::load_item_icon(gf, item.sprite)
+                                icon: asset_loader
+                                    .load_item_icon(gf, item.sprite)
                                     .unwrap_or_default(),
                                 has_item: true,
                                 durability_percent: 1.0,
@@ -369,7 +382,8 @@ fn handle_show_self_profile(
                         };
                         return crate::EquipmentSlotData {
                             name: slint::SharedString::from(item.name.as_str()),
-                            icon: crate::slint_support::assets::load_item_icon(gf, item.sprite)
+                            icon: asset_loader
+                                .load_item_icon(gf, item.sprite)
                                 .unwrap_or_default(),
                             has_item: true,
                             durability_percent,

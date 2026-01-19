@@ -411,7 +411,7 @@ impl EffectManager {
         let (offset_x, offset_y) = *loaded.frame_offsets.get(frame_index)?;
 
         let world_pos = get_isometric_coordinate(x, y);
-        let z = (x + y * 256.0) / 65536.0 + z_offset;
+        let z = (x + y) / 65536.0 + z_offset;
 
         let atlas_w = ATLAS_WIDTH as f32;
         let atlas_h = ATLAS_HEIGHT as f32;
