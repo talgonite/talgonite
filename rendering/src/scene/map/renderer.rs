@@ -217,7 +217,7 @@ impl MapRenderer {
             let tilemap_x = tile_id - (tilemap_y * TILEMAP_COLUMNS);
             let coord = FloorTile::get_position(x as f32, y as f32);
             Instance {
-                position: coord.extend(0.),
+                position: coord.extend(-0.75),
                 tex_min: Vec2::new(
                     tilemap_x as f32 * TILEMAP_TILE_WIDTH,
                     tilemap_y as f32 * TILEMAP_TILE_HEIGHT,
@@ -390,6 +390,15 @@ impl MapRenderer {
             }
         }
         let build_wall_instance = |wall: Wall, x: f32, y: f32, a: &Allocation| -> Instance {
+            if x < 10. && y < 10. {
+                tracing::info!(
+                    "Building wall instance for wall ID {} at ({}, {})",
+                    wall.id,
+                    x,
+                    y
+                );
+            }
+
             let height = a.rectangle.max.y - a.rectangle.min.y;
 
             let coord = wall.side.get_position(x, y, height as f32);

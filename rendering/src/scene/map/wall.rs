@@ -29,7 +29,7 @@ pub struct Wall {
 
 impl Wall {
     pub fn show(&self) -> bool {
-        (self.id % 10000) > 1
+        (self.id % 10000) > 2
     }
 
     pub fn palette_index(&self) -> u16 {

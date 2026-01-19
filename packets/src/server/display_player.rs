@@ -315,7 +315,7 @@ impl TryFromBytes for DisplayPlayer {
 
         let head_sprite_read = cursor.read_u16::<BigEndian>()?;
         let args = if head_sprite_read == u16::MAX {
-            let sprite = cursor.read_u16::<BigEndian>()? - CREATURE_SPRITE_OFFSET;
+            let sprite = cursor.read_u16::<BigEndian>()? & !CREATURE_SPRITE_OFFSET;
             let head_color = cursor.read_u8()?;
             let boots_color = cursor.read_u8()?;
             // skip 6 unknown bytes

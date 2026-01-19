@@ -114,7 +114,7 @@ impl ItemBatch {
         let batch = SharedInstanceBatch::new(device, vertices, store.bind_group.clone());
         Self {
             instances: batch,
-            item_order_counter: 0,
+            item_order_counter: 1,
         }
     }
 
@@ -197,9 +197,7 @@ impl ItemBatch {
 
         let item_offset = Vec2::new(offset_x, offset_y);
 
-        let item_base_z = 0.00001;
-        let order_offset = self.item_order_counter as f32 * 0.000001;
-        let z = item_base_z + order_offset;
+        let z = -0.5 + self.item_order_counter as f32 * 0.000001;
 
         let instance = Instance::with_texture_atlas(
             (world_pos + item_offset).extend(z),
