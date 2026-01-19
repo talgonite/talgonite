@@ -1,11 +1,19 @@
 cargo-features = ["codegen-backend"]
 
 [profile.dev]
-codegen-backend = "cranelift"
+opt-level = 1
 debug = 0
 
-[profile.dev.build-override]
+# Optimize everything including dependencies and workspace members
+[profile.dev.package."*"]
 opt-level = 3
+debug-assertions = false
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
 
 [package]
 name = "talgonite"
@@ -44,10 +52,7 @@ jubako = "*"
 async-std = "1.13"
 rand = { version = "0.9", features = ["log", "nightly", "std"] }
 md5 = "0.8"
-bevy = { version = "0.17", default-features = false, features = [
-    "bevy_state",
-    "debug",
-] }
+bevy = { version = "0.17", default-features = false, features = ["bevy_state"] }
 gilrs = "0.11"
 kira = { version = "0.11", default-features = false, features = [
     "mp3",

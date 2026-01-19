@@ -1,19 +1,12 @@
 [target.x86_64-unknown-linux-gnu]
-rustflags = [
-    "-Clink-arg=-fuse-ld=mold",
-    "-Zshare-generics=n",
-    "-Zthreads=0"
-]
-rustdocflags = [
-  "-Clink-arg=-fuse-ld=mold",
-]
+rustflags = ["-Clink-arg=-fuse-ld=mold", "-Zshare-generics=n", "-Zthreads=0"]
+rustdocflags = ["-Clink-arg=-fuse-ld=mold"]
 
 [target.x86_64-pc-windows-msvc]
 linker = "rust-lld.exe"
-rustdocflags = [
-    "-Clinker=rust-lld.exe"
-]
-rustflags = [
-    "-Zshare-generics=n",
-    "-Zthreads=0"
-]
+rustdocflags = ["-Clinker=rust-lld.exe"]
+rustflags = ["-Zshare-generics=n", "-Zthreads=0"]
+
+[env]
+WGPU_VALIDATION = "0"
+WGPU_DEBUG = "0"
