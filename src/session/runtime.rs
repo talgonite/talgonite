@@ -306,7 +306,7 @@ fn process_net_packets(
                     if let Some(q) = parse_packet::<server::DisplayDialog>(data) {
                         tracing::info!("Received DisplayDialog: {:?}", q);
                         match q {
-                            server::DisplayDialog::Normal { header } => {
+                            server::DisplayDialog::Show { header, .. } => {
                                 outbox.send(&client::DialogInteraction {
                                     entity_type: header.entity_type,
                                     entity_id: header.source_id,

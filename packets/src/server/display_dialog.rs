@@ -54,28 +54,21 @@ pub struct TextEntryInfo {
 }
 
 #[derive(Debug, Clone)]
+pub enum DisplayDialogPayload {
+    Normal,
+    DialogMenu { options: Vec<String> },
+    TextEntry { info: TextEntryInfo },
+    Speak,
+    CreatureMenu { options: Vec<String> },
+    Protected,
+}
+
+#[derive(Debug, Clone)]
 pub enum DisplayDialog {
-    CloseDialog,
-    Normal {
+    Close,
+    Show {
         header: DisplayDialogHeader,
-    },
-    DialogMenu {
-        header: DisplayDialogHeader,
-        options: Vec<String>,
-    },
-    TextEntry {
-        header: DisplayDialogHeader,
-        info: TextEntryInfo,
-    },
-    Speak {
-        header: DisplayDialogHeader,
-    },
-    CreatureMenu {
-        header: DisplayDialogHeader,
-        options: Vec<String>,
-    },
-    Protected {
-        header: DisplayDialogHeader,
+        payload: DisplayDialogPayload,
     },
 }
 
@@ -88,7 +81,7 @@ impl TryFromBytes for DisplayDialog {
             .map_err(|_| anyhow!("Invalid dialog type: {}", dialog_type_byte))?;
 
         if matches!(dialog_type, DialogType::CloseDialog) {
-            return Ok(DisplayDialog::CloseDialog);
+            return Ok(DisplayDialog::Close);
         }
 
         let entity_type_byte = cursor.read_u8()?;
@@ -150,27 +143,24 @@ impl TryFromBytes for DisplayDialog {
         };
 
         let payload = match dialog_type {
-            DialogType::Normal => DisplayDialog::Normal { header },
-            DialogType::DialogMenu => DisplayDialog::DialogMenu {
-                header,
+            DialogType::Normal => DisplayDialogPayload::Normal,
+            DialogType::DialogMenu => DisplayDialogPayload::DialogMenu {
                 options: decode_options(&mut cursor)?,
             },
-            DialogType::TextEntry => DisplayDialog::TextEntry {
-                header,
+            DialogType::TextEntry => DisplayDialogPayload::TextEntry {
                 info: TextEntryInfo {
                     prompt: decode_string(&mut cursor, "text entry prompt")?,
                     length: cursor.read_u8()?,
                 },
             },
-            DialogType::Speak => DisplayDialog::Speak { header },
-            DialogType::CreatureMenu => DisplayDialog::CreatureMenu {
-                header,
+            DialogType::Speak => DisplayDialogPayload::Speak,
+            DialogType::CreatureMenu => DisplayDialogPayload::CreatureMenu {
                 options: decode_options(&mut cursor)?,
             },
-            DialogType::Protected => DisplayDialog::Protected { header },
+            DialogType::Protected => DisplayDialogPayload::Protected,
             DialogType::CloseDialog => unreachable!(),
         };
 
-        Ok(payload)
+        Ok(DisplayDialog::Show { header, payload })
     }
 }
