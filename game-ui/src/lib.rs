@@ -1,10 +1,8 @@
-pub mod assets;
 pub mod frame_exchange;
 pub mod input_bridge;
 pub mod ipc;
 pub mod state;
 
-pub use assets::*;
 pub use frame_exchange::*;
 pub use input_bridge::*;
 pub use ipc::*;

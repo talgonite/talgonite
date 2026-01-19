@@ -1,11 +1,11 @@
 pub mod types;
 pub use types::*;
 
-use std::collections::HashMap;
 use bincode::config::Configuration;
 use etagere::AtlasAllocator;
 use formats::epf::EpfImage;
 use glam::Vec2;
+use std::collections::HashMap;
 use tracing::error;
 
 use crate::{
@@ -24,6 +24,7 @@ pub struct ItemAssetStore {
     pub(crate) diffuse: texture::Texture,
     pub(crate) loaded_sheets: HashMap<u32, LoadedItemSheet>,
     pub(crate) bind_group: wgpu::BindGroup,
+    palette_table: rangemap::RangeMap<u16, u16>,
 }
 
 pub struct ItemBatch {
@@ -48,9 +49,16 @@ impl ItemAssetStore {
         )
         .unwrap();
 
-        let palette_data = archive.get_file_or_panic("seo/mpt.ktx2");
+        let palette_data = archive.get_file_or_panic("Legend/item.ktx2");
         let palette =
             texture::Texture::from_ktx2_rgba8(device, queue, "item_palette", &palette_data)
+                .unwrap();
+
+        let palette_table_data = archive
+            .get_file("Legend/item.tbl.bin")
+            .expect("item palette table missing");
+        let (palette_table, _): (rangemap::RangeMap<u16, u16>, usize) =
+            bincode::serde::decode_from_slice(&palette_table_data, bincode::config::standard())
                 .unwrap();
 
         let tb = TextureBind::default();
@@ -69,6 +77,7 @@ impl ItemAssetStore {
             diffuse,
             loaded_sheets: HashMap::new(),
             bind_group,
+            palette_table,
         }
     }
 
@@ -86,7 +95,8 @@ impl ItemAssetStore {
             &bytes,
             bincode::config::standard(),
         )?;
-        let mut allocations: Vec<Option<etagere::Allocation>> = Vec::with_capacity(epf.frames.len());
+        let mut allocations: Vec<Option<etagere::Allocation>> =
+            Vec::with_capacity(epf.frames.len());
         allocations.resize(epf.frames.len(), None);
         self.loaded_sheets
             .insert(sheet_index, LoadedItemSheet { epf, allocations });
@@ -202,7 +212,12 @@ impl ItemBatch {
                 (allocation.rectangle.min.y as f32 + frame_h) / atlas_h,
             ),
             Vec2::new(frame_w / 512., frame_h / 512.),
-            item.color as f32 / 256.,
+            store
+                .palette_table
+                .get(&item.sprite)
+                .copied()
+                .unwrap_or_default() as f32
+                / 256.,
             -1.,
             false,
             false,
@@ -226,7 +241,13 @@ impl ItemBatch {
         }
     }
 
-    pub fn update_item(&self, queue: &wgpu::Queue, store: &ItemAssetStore, handle: &ItemInstanceHandle, item: Item) {
+    pub fn update_item(
+        &self,
+        queue: &wgpu::Queue,
+        store: &ItemAssetStore,
+        handle: &ItemInstanceHandle,
+        item: Item,
+    ) {
         let sheet_index = ((item.sprite - 1) as u32 / ITEMS_PER_EPF_FILE) + 1;
         let frame_index = ((item.sprite - 1) as u32 % ITEMS_PER_EPF_FILE) as usize;
 

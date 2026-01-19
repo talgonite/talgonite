@@ -1,8 +1,6 @@
 use crate::{
     resources::{PlayerPortraitState, RendererState, ZoomState},
-    slint_support::assets::{
-        load_item_icon, load_skill_icon, load_spell_icon, load_world_map_image,
-    },
+    slint_support::assets::SlintAssetLoader,
 };
 use bevy::prelude::*;
 use game_types::SlotPanelType;
@@ -114,9 +112,13 @@ fn parse_color_hex(hex: &str) -> slint::Brush {
 #[derive(Resource, Clone)]
 pub struct SlintWindow(pub slint::Weak<crate::MainWindow>);
 
+#[derive(Resource)]
+pub struct SlintAssetLoaderRes(pub SlintAssetLoader);
+
 pub fn apply_core_to_slint(
     mut reader: MessageReader<crate::webui::plugin::UiOutbound>,
     win: Option<Res<SlintWindow>>,
+    asset_loader: Option<Res<SlintAssetLoaderRes>>,
     game_files: Option<Res<crate::game_files::GameFiles>>,
     inventory: Option<Res<crate::webui::plugin::InventoryState>>,
     ability: Option<Res<crate::webui::plugin::AbilityState>>,
@@ -131,6 +133,10 @@ pub fn apply_core_to_slint(
     let Some(strong) = win.0.upgrade() else {
         return;
     };
+    let Some(asset_loader) = asset_loader else {
+        return;
+    };
+    let asset_loader = &asset_loader.0;
 
     let mut hotbar_dirty = false;
     if let Some(i) = &inventory {
@@ -147,7 +153,9 @@ pub fn apply_core_to_slint(
                 let inventory_state = game_state.get_inventory();
                 let mut slint_items = vec![crate::InventoryItem::default(); 60];
                 for item in &i.0 {
-                    let icon = load_item_icon(game_files, item.sprite).unwrap_or_default();
+                    let icon = asset_loader
+                        .load_item_icon(game_files, item.sprite)
+                        .unwrap_or_default();
                     slint_items[(item.slot - 1) as usize] = crate::InventoryItem {
                         slot: item.slot as i32,
                         name: slint::SharedString::from(item.name.as_str()),
@@ -181,7 +189,9 @@ pub fn apply_core_to_slint(
                 let skills_state = game_state.get_skills();
                 let mut si = 0;
                 for s in &a.skills {
-                    let icon = load_skill_icon(game_files, s.sprite).unwrap_or_default();
+                    let icon = asset_loader
+                        .load_skill_icon(game_files, s.sprite)
+                        .unwrap_or_default();
                     let skill = crate::Skill {
                         name: slint::SharedString::from(s.name.as_str()),
                         icon,
@@ -213,7 +223,9 @@ pub fn apply_core_to_slint(
                 let spells_state = game_state.get_spells();
                 let mut spi = 0;
                 for s in &a.spells {
-                    let icon = load_spell_icon(game_files, s.sprite).unwrap_or_default();
+                    let icon = asset_loader
+                        .load_spell_icon(game_files, s.sprite)
+                        .unwrap_or_default();
                     let spell = crate::Spell {
                         name: slint::SharedString::from(s.panel_name.as_str()),
                         icon,
@@ -376,7 +388,7 @@ pub fn apply_core_to_slint(
                 let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
 
                 if let Some(ref game_files) = game_files {
-                    if let Ok(img) = load_world_map_image(game_files, &field_name) {
+                    if let Ok(img) = asset_loader.load_world_map_image(game_files, &field_name) {
                         game_state.set_world_map_image(img);
                     }
                 }
@@ -419,13 +431,13 @@ pub fn apply_core_to_slint(
                         if let Some(ref gf) = game_files {
                             let result = match entry_type {
                                 crate::webui::ipc::MenuEntryType::Items => {
-                                    load_item_icon(gf, entry.sprite)
+                                    asset_loader.load_item_icon(gf, entry.sprite)
                                 }
                                 crate::webui::ipc::MenuEntryType::Spells => {
-                                    load_spell_icon(gf, entry.sprite)
+                                    asset_loader.load_spell_icon(gf, entry.sprite)
                                 }
                                 crate::webui::ipc::MenuEntryType::Skills => {
-                                    load_skill_icon(gf, entry.sprite)
+                                    asset_loader.load_skill_icon(gf, entry.sprite)
                                 }
                                 _ => Ok(slint::Image::default()),
                             };
@@ -625,9 +637,15 @@ pub fn apply_core_to_slint(
 
                         let icon = if let Some(ref game_files) = game_files {
                             match action_id.panel_type() {
-                                SlotPanelType::Item => load_item_icon(game_files, sprite),
-                                SlotPanelType::Skill => load_skill_icon(game_files, sprite),
-                                SlotPanelType::Spell => load_spell_icon(game_files, sprite),
+                                SlotPanelType::Item => {
+                                    asset_loader.load_item_icon(game_files, sprite)
+                                }
+                                SlotPanelType::Skill => {
+                                    asset_loader.load_skill_icon(game_files, sprite)
+                                }
+                                SlotPanelType::Spell => {
+                                    asset_loader.load_spell_icon(game_files, sprite)
+                                }
                                 _ => Ok(slint::Image::default()),
                             }
                             .unwrap_or_default()

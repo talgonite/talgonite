@@ -318,7 +318,7 @@ fn spawn_player_sprites(
             parent.spawn(PlayerSprite {
                 id: pants_color as u16,
                 slot: PlayerPieceType::Pants,
-                color: 0,
+                color: 1,
             });
         }
         parent.spawn(PlayerSprite {

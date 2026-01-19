@@ -83,6 +83,7 @@ slint = { version = "1.15.0", default-features = false, features = [
 i-slint-core = "=1.15.0"
 toml = "0.9.10"
 windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+rangemap = { version = "1.7", features = ["serde1"] }
 
 [dev-dependencies]
 insta = "1.44"

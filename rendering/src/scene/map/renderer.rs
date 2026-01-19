@@ -395,7 +395,7 @@ impl MapRenderer {
             let coord = wall.side.get_position(x, y, height as f32);
             let palette_offset = *wall_palette_table.get(&wall.palette_index()).unwrap_or(&0);
             Instance {
-                position: coord.extend((x as f32 + y as f32) / 2048.0),
+                position: coord.extend((x as f32 + y as f32) / 65536.0),
                 tex_min: Vec2::new(
                     a.rectangle.min.x as f32 / WALL_ATLAS_WIDTH as f32,
                     a.rectangle.min.y as f32 / WALL_ATLAS_HEIGHT as f32,
