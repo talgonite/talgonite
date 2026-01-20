@@ -78,6 +78,21 @@ impl Plugin for CorePlugin {
             plugins::input::InputPlugin,
         ))
         .insert_resource(map_store::MapStore::new())
-        .init_state::<app_state::AppState>();
+        .init_state::<app_state::AppState>()
+        .add_systems(
+            OnEnter(app_state::AppState::MainMenu),
+            app_state::setup_game_files,
+        )
+        .add_systems(
+            OnEnter(app_state::AppState::Installing),
+            app_state::cleanup_game_files,
+        )
+        .add_systems(
+            OnExit(app_state::AppState::InGame),
+            (
+                app_state::cleanup_ingame_world,
+                app_state::cleanup_ingame_resources,
+            ),
+        );
     }
 }

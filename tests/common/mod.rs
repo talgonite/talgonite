@@ -3,10 +3,12 @@ use bevy::time::TimeUpdateStrategy;
 use formats::game_files::ArxArchive;
 use glam::UVec2;
 use packets::server;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use talgonite::{
     Camera, PlayerBatchState, RendererState,
+    app_state::AppState,
     events::{EntityEvent, MapEvent},
 };
 use wgpu;
@@ -66,14 +68,21 @@ impl TestScene {
         ));
 
         app.insert_resource(talgonite::settings::Settings {
-            music_volume: 0.0,
-            sfx_volume: 0.0,
-            scale: 2.,
-            xray_size: talgonite::settings::XRaySize::Off,
+            audio: talgonite::settings::AudioSettings {
+                music_volume: 0.0,
+                sfx_volume: 0.0,
+            },
+            graphics: talgonite::settings::GraphicsSettings {
+                xray_size: talgonite::settings::XRaySize::Off,
+                scale: 2.0,
+            },
+            gameplay: talgonite::settings::GameplaySettings {
+                current_server_id: None,
+            },
             key_bindings: talgonite::settings::KeyBindings::default(),
             servers: vec![],
-            current_server_id: None,
             saved_credentials: vec![],
+            hotbars: HashMap::new(),
         });
 
         app.insert_resource(RendererState {
@@ -85,6 +94,10 @@ impl TestScene {
 
         app.finish();
         app.cleanup();
+
+        app.world_mut()
+            .resource_mut::<NextState<AppState>>()
+            .set(AppState::InGame);
 
         // Run one update to initialize render managers via RenderManagersPlugin
         app.update();
@@ -261,14 +274,14 @@ impl TestScene {
                 map_renderer_state.map_renderer.render(&mut render_pass);
             }
 
-            if let Some(item_manager_state) = world.get_resource::<ItemManagerState>() {
-                item_manager_state.item_manager.render(&mut render_pass);
+            if let Some(item_batch_state) = world.get_resource::<talgonite::ItemBatchState>() {
+                item_batch_state.batch.render(&mut render_pass);
             }
 
-            if let Some(creature_manager_state) = world.get_resource::<CreatureManagerState>() {
-                creature_manager_state
-                    .creature_manager
-                    .render(&mut render_pass);
+            if let Some(creature_batch_state) =
+                world.get_resource::<talgonite::CreatureBatchState>()
+            {
+                creature_batch_state.batch.render(&mut render_pass);
             }
 
             if let Some(player_batch_state) = world.get_resource::<PlayerBatchState>() {

@@ -2,6 +2,7 @@
 
 use bevy::prelude::*;
 
+use crate::app_state::AppState;
 use crate::resources::ZoomState;
 use crate::slint_support::frame_exchange::{BackBufferPool, ControlMessage, FrameChannels};
 use crate::WindowSurface;
@@ -41,7 +42,13 @@ pub fn handle_before_rendering<W: slint::ComponentHandle>(
     set_pixelated_filtering(slint_app, is_pixel_perfect);
 
     if let Some(ch) = app.world().get_resource::<FrameChannels>() {
-        if render_size.0 > 0 && render_size.1 > 0 {
+        let in_game = app
+            .world()
+            .get_resource::<State<AppState>>()
+            .map(|s| *s.get() == AppState::InGame)
+            .unwrap_or(false);
+
+        if in_game && render_size.0 > 0 && render_size.1 > 0 {
             let needs_resize = app
                 .world()
                 .get_non_send_resource::<WindowSurface>()

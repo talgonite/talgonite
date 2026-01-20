@@ -91,4 +91,19 @@ pub fn wire_settings_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
             }
         });
     }
+
+    // Return to main menu (logout)
+    {
+        let tx = tx.clone();
+        settings_state.on_logout_requested(move || {
+            let _ = tx.send(UiToCore::ReturnToMainMenu);
+        });
+    }
+
+    {
+        let tx = tx.clone();
+        settings_state.on_exit_requested(move || {
+            let _ = tx.send(UiToCore::ExitApplication);
+        });
+    }
 }

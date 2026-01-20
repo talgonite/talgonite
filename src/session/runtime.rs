@@ -1,4 +1,6 @@
 use bevy::prelude::*;
+
+use crate::app_state::AppState;
 use bevy::tasks::Task;
 use crc::crc16;
 use std::any::type_name;
@@ -52,17 +54,17 @@ impl Plugin for SessionRuntimePlugin {
         app.init_resource::<NetSessionState>()
             .init_resource::<crate::network::PacketOutbox>()
             .init_resource::<crate::resources::PlayerAttributes>()
-            .add_systems(PreUpdate, drain_net_events)
+            .add_systems(
+                PreUpdate,
+                drain_net_events.run_if(in_state(AppState::InGame)),
+            )
             .add_systems(Update, (process_net_packets, send_client_actions))
             .add_systems(PostUpdate, crate::network::flush_packet_outbox);
     }
 }
 
 // Drain the crossbeam receiver into Bevy events
-fn drain_net_events(rx: Option<Res<NetEventRx>>, mut writer: MessageWriter<NetworkEvent>) {
-    let Some(rx) = rx else {
-        return;
-    };
+fn drain_net_events(rx: Res<NetEventRx>, mut writer: MessageWriter<NetworkEvent>) {
     while let Ok(evt) = rx.0.try_recv() {
         writer.write(evt);
     }

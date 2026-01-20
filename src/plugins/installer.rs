@@ -6,9 +6,6 @@ use installer::InstallProgress;
 use tracing::debug;
 
 use crate::app_state::AppState;
-use crate::game_files::GameFiles;
-use crate::slint_support::assets::SlintAssetLoader;
-use crate::slint_support::state_bridge::SlintAssetLoaderRes;
 use crate::storage_dir;
 
 #[derive(Message, Debug, Clone)]
@@ -46,8 +43,12 @@ impl Plugin for InstallerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MaybeStartedInstaller>()
             .add_message::<InstallerProgressEvent>()
-            .add_systems(Startup, start_installer_once)
-            .add_systems(Update, (forward_installer_events, switch_on_complete));
+            .add_systems(OnEnter(AppState::Installing), start_installer_once)
+            .add_systems(
+                Update,
+                (forward_installer_events, switch_on_complete)
+                    .run_if(in_state(AppState::Installing)),
+            );
     }
 }
 
@@ -114,15 +115,10 @@ fn forward_installer_events(
 
 fn switch_on_complete(
     mut reader: MessageReader<InstallerProgressEvent>,
-    mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     for evt in reader.read() {
         if evt.percent >= 1.0 {
-            // Initialize game files now that installation has finished
-            let game_files = GameFiles::new();
-            commands.insert_resource(SlintAssetLoaderRes(SlintAssetLoader::new(&game_files)));
-            commands.insert_resource(game_files);
             next_state.set(AppState::MainMenu);
         }
     }

@@ -132,6 +132,7 @@ fn spawn_display_entities(
                             color: *color,
                         },
                     },
+                    InGameScoped,
                     MapScoped,
                     Hitbox::default(),
                 ));
@@ -159,6 +160,7 @@ fn spawn_display_entities(
                             y: *y as f32,
                         },
                     },
+                    InGameScoped,
                     MapScoped,
                     Hitbox::screen_space(Vec2::new(-0.45, -1.25), Vec2::new(0.45, 0.65)),
                     HoverName {
@@ -223,6 +225,7 @@ fn spawn_display_player(
             direction: Direction::from(player.direction),
             entity_id: EntityId { id: player.id },
         },
+        InGameScoped,
         MapScoped,
         Hitbox::screen_space(Vec2::new(-0.25, -1.25), Vec2::new(0.25, 0.65)),
     ));

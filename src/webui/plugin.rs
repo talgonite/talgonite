@@ -51,6 +51,8 @@ impl Plugin for UiBridgePlugin {
             .init_resource::<WorldListState>()
             .init_resource::<EquipmentState>()
             .init_resource::<PlayerProfileState>()
+            .init_resource::<crate::ecs::hotbar::HotbarState>()
+            .init_resource::<crate::ecs::hotbar::HotbarPanelState>()
             .init_resource::<ActiveMenuContext>()
             .add_message::<LoginResultEvt>()
             .init_resource::<CursorPosition>()
@@ -67,7 +69,8 @@ impl Plugin for UiBridgePlugin {
                     bridge_session_events,
                     update_world_list_filtered,
                     forward_outbound_to_webview,
-                    handle_ui_inbound,
+                    handle_ui_inbound_login.run_if(not(in_state(AppState::InGame))),
+                    handle_ui_inbound_ingame.run_if(in_state(AppState::InGame)),
                     handle_login_tasks,
                     handle_login_results,
                     update_skill_cooldowns,
@@ -120,16 +123,16 @@ fn emit_snapshot_on_state_change(
 
 #[derive(bevy::ecs::system::SystemParam)]
 struct HotbarResources<'w> {
-    hotbar_state: Option<ResMut<'w, crate::ecs::hotbar::HotbarState>>,
-    hotbar_panel_state: Option<ResMut<'w, crate::ecs::hotbar::HotbarPanelState>>,
-    session: Option<Res<'w, crate::CurrentSession>>,
+    hotbar_state: ResMut<'w, crate::ecs::hotbar::HotbarState>,
+    hotbar_panel_state: ResMut<'w, crate::ecs::hotbar::HotbarPanelState>,
+    session: Res<'w, crate::CurrentSession>,
 }
 
 #[derive(bevy::ecs::system::SystemParam)]
 struct InteractionResources<'w, 's> {
     camera: Res<'w, crate::Camera>,
-    window_surface: Option<NonSend<'w, crate::WindowSurface>>,
-    zoom_state: Option<ResMut<'w, crate::resources::ZoomState>>,
+    window_surface: NonSend<'w, crate::WindowSurface>,
+    zoom_state: ResMut<'w, crate::resources::ZoomState>,
     entity_query: Query<
         'w,
         's,
@@ -147,25 +150,25 @@ struct InteractionResources<'w, 's> {
 
 #[derive(bevy::ecs::system::SystemParam)]
 struct UiStateResources<'w> {
-    inv_state: Option<Res<'w, InventoryState>>,
-    ability_state: Option<Res<'w, AbilityState>>,
-    world_list_state: Option<ResMut<'w, WorldListState>>,
+    inv_state: Res<'w, InventoryState>,
+    ability_state: Res<'w, AbilityState>,
+    world_list_state: ResMut<'w, WorldListState>,
 }
 
 #[derive(bevy::ecs::system::SystemParam)]
 struct InputBindingResources<'w> {
-    input_bindings: Option<ResMut<'w, crate::input::InputBindings>>,
-    unified_bindings: Option<ResMut<'w, crate::input::UnifiedInputBindings>>,
+    input_bindings: ResMut<'w, crate::input::InputBindings>,
+    unified_bindings: ResMut<'w, crate::input::UnifiedInputBindings>,
 }
 
-fn handle_ui_inbound(
+fn handle_ui_inbound_ingame(
     mut inbound: MessageReader<UiInbound>,
     mut outbound: MessageWriter<UiOutbound>,
     mut settings: ResMut<SettingsFile>,
-    mut commands: Commands,
     mut inventory_events: MessageWriter<InventoryEvent>,
     mut ability_events: MessageWriter<AbilityEvent>,
     mut chat_events: MessageWriter<ChatEvent>,
+    mut next_state: ResMut<NextState<AppState>>,
     outbox: Res<crate::network::PacketOutbox>,
     ui_state: UiStateResources,
     menu_ctx: Res<ActiveMenuContext>,
@@ -277,6 +280,382 @@ fn handle_ui_inbound(
                     key_bindings: (&settings.key_bindings).into(),
                 }));
             }
+            UiToCore::SettingsChange { xray_size } => {
+                settings.graphics.xray_size = crate::settings_types::XRaySize::from_u8(*xray_size);
+            }
+            UiToCore::VolumeChange { sfx, music } => {
+                if let Some(sfx_vol) = sfx {
+                    settings.audio.sfx_volume = *sfx_vol;
+                }
+                if let Some(music_vol) = music {
+                    settings.audio.music_volume = *music_vol;
+                }
+            }
+            UiToCore::ScaleChange { scale } => {
+                settings.graphics.scale = *scale;
+                zoom_state.set_zoom(*scale);
+            }
+            UiToCore::RebindKey { action, new_key } => {
+                use crate::input::{GameAction, InputSource};
+
+                match action.as_str() {
+                    "move_up" => settings.key_bindings.move_up = new_key.clone(),
+                    "move_down" => settings.key_bindings.move_down = new_key.clone(),
+                    "move_left" => settings.key_bindings.move_left = new_key.clone(),
+                    "move_right" => settings.key_bindings.move_right = new_key.clone(),
+                    "inventory" => settings.key_bindings.inventory = new_key.clone(),
+                    "skills" => settings.key_bindings.skills = new_key.clone(),
+                    "spells" => settings.key_bindings.spells = new_key.clone(),
+                    "settings" => settings.key_bindings.settings = new_key.clone(),
+                    "refresh" => settings.key_bindings.refresh = new_key.clone(),
+                    "basic_attack" => settings.key_bindings.basic_attack = new_key.clone(),
+                    _ => {}
+                }
+
+                if let Some(game_action) = GameAction::from_action_id(action) {
+                    if let Some(input_source) = InputSource::from_string(new_key) {
+                        unified_bindings.set_binding(game_action, input_source.clone());
+
+                        if let InputSource::Keyboard(kb) = input_source {
+                            input_bindings.set(game_action, kb);
+                        }
+                    }
+                }
+            }
+            UiToCore::ExitApplication => {
+                let _ = slint::quit_event_loop();
+            }
+            UiToCore::ReturnToMainMenu => {
+                next_state.set(AppState::MainMenu);
+            }
+            UiToCore::SetHotbarPanel { panel_num } => {
+                hotbar_panel_state.current_panel =
+                    crate::ecs::hotbar::HotbarPanel::from_u8(*panel_num);
+            }
+            UiToCore::RequestWorldList => {
+                outbox.send(&packets::client::WorldListRequest);
+            }
+            UiToCore::SetWorldListFilter { filter } => {
+                world_list_state.filter = filter.clone();
+                world_list_state.version = world_list_state.version.wrapping_add(1);
+            }
+            UiToCore::Unequip { slot } => {
+                inventory_events.write(InventoryEvent::Unequip { slot: *slot });
+            }
+            UiToCore::ActivateAction { category, index } => match category {
+                SlotPanelType::Item => {
+                    inventory_events.write(InventoryEvent::Use { slot: *index as u8 });
+                }
+                SlotPanelType::Skill => {
+                    ability_events.write(AbilityEvent::UseSkill { slot: *index as u8 });
+                }
+                SlotPanelType::Spell => {
+                    ability_events.write(AbilityEvent::UseSpell { slot: *index as u8 });
+                }
+                SlotPanelType::Hotbar => {
+                    let bar = *index / 12;
+                    let slot_in_bar = *index % 12;
+
+                    if let Some(config_slot) = hotbar_state.config.get_slot(bar, slot_in_bar) {
+                        if !config_slot.action_id.is_empty() {
+                            let action_id = ActionId::from_str(&config_slot.action_id);
+
+                            match action_id.panel_type() {
+                                SlotPanelType::Item => {
+                                    if let Some(item) =
+                                        inv_state.0.iter().find(|item| item.id == action_id)
+                                    {
+                                        inventory_events
+                                            .write(InventoryEvent::Use { slot: item.slot });
+                                    }
+                                }
+                                SlotPanelType::Skill => {
+                                    if let Some(skill) =
+                                        ability_state.skills.iter().find(|s| s.id == action_id)
+                                    {
+                                        ability_events
+                                            .write(AbilityEvent::UseSkill { slot: skill.slot });
+                                    }
+                                }
+                                SlotPanelType::Spell => {
+                                    if let Some(spell) =
+                                        ability_state.spells.iter().find(|s| s.id == action_id)
+                                    {
+                                        ability_events
+                                            .write(AbilityEvent::UseSpell { slot: spell.slot });
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                SlotPanelType::World => {}
+                SlotPanelType::None => {}
+            },
+            UiToCore::DragDropAction {
+                src_category,
+                src_index,
+                dst_category,
+                dst_index,
+                x,
+                y,
+            } => match (src_category, dst_category) {
+                (SlotPanelType::Item, SlotPanelType::Item) => {
+                    outbox.send(&packets::client::SwapSlot {
+                        panel_type: packets::client::SwapSlotPanelType::Inventory,
+                        slot1: *src_index as u8,
+                        slot2: *dst_index as u8,
+                    });
+                }
+                (SlotPanelType::Skill, SlotPanelType::Skill) => {
+                    outbox.send(&packets::client::SwapSlot {
+                        panel_type: packets::client::SwapSlotPanelType::Skill,
+                        slot1: *src_index as u8,
+                        slot2: *dst_index as u8,
+                    });
+                }
+                (SlotPanelType::Spell, SlotPanelType::Spell) => {
+                    outbox.send(&packets::client::SwapSlot {
+                        panel_type: packets::client::SwapSlotPanelType::Spell,
+                        slot1: *src_index as u8,
+                        slot2: *dst_index as u8,
+                    });
+                }
+                (SlotPanelType::Item, SlotPanelType::Hotbar) => {
+                    if let Some(item) = inv_state.0.iter().find(|i| i.slot == *src_index as u8) {
+                        hotbar_state.assign_slot(*dst_index, item.id.as_str().to_string());
+
+                        settings.set_hotbars(
+                            session.server_id,
+                            &session.username,
+                            hotbar_state.config.clone(),
+                        );
+                    }
+                }
+                (SlotPanelType::Skill, SlotPanelType::Hotbar) => {
+                    if let Some(skill) = ability_state
+                        .skills
+                        .iter()
+                        .find(|s| s.slot == *src_index as u8)
+                    {
+                        hotbar_state.assign_slot(*dst_index, skill.id.as_str().to_string());
+
+                        settings.set_hotbars(
+                            session.server_id,
+                            &session.username,
+                            hotbar_state.config.clone(),
+                        );
+                    }
+                }
+                (SlotPanelType::Spell, SlotPanelType::Hotbar) => {
+                    if let Some(spell) = ability_state
+                        .spells
+                        .iter()
+                        .find(|s| s.slot == *src_index as u8)
+                    {
+                        hotbar_state.assign_slot(*dst_index, spell.id.as_str().to_string());
+
+                        settings.set_hotbars(
+                            session.server_id,
+                            &session.username,
+                            hotbar_state.config.clone(),
+                        );
+                    }
+                }
+                (SlotPanelType::Hotbar, SlotPanelType::Hotbar) => {
+                    let bar1 = *src_index / 12;
+                    let slot1 = *src_index % 12;
+                    let bar2 = *dst_index / 12;
+                    let slot2 = *dst_index % 12;
+
+                    let slot1_action = hotbar_state.config.bars[bar1][slot1].action_id.clone();
+                    let slot2_action = hotbar_state.config.bars[bar2][slot2].action_id.clone();
+
+                    hotbar_state.config.set_slot(bar2, slot2, slot1_action);
+                    hotbar_state.config.set_slot(bar1, slot1, slot2_action);
+
+                    settings.set_hotbars(
+                        session.server_id,
+                        &session.username,
+                        hotbar_state.config.clone(),
+                    );
+                }
+                (_, SlotPanelType::World) => {
+                    let camera = &interaction_res.camera;
+                    let cam_pos = camera.camera.position();
+                    let cam_zoom = camera.camera.zoom();
+                    let win_size = Vec2::new(
+                        interaction_res.window_surface.width as f32,
+                        interaction_res.window_surface.height as f32,
+                    );
+
+                    let cursor_scale = zoom_state.cursor_to_render_scale();
+                    let screen = Vec2::new(*x * cursor_scale, *y * cursor_scale);
+                    let tile = screen_to_iso_tile(screen, cam_pos, win_size, cam_zoom);
+                    let tile_i = (tile.x.floor() as i32, tile.y.floor() as i32);
+
+                    // Manual hit testing
+                    let mut hits: Vec<(
+                        Entity,
+                        Option<&crate::ecs::components::EntityId>,
+                        bool, // is_creature
+                        bool, // is_local
+                        f32,  // Y-sort height
+                    )> = Vec::new();
+                    for (entity, pos, hitbox, entity_id, npc, player, local) in
+                        interaction_res.entity_query.iter()
+                    {
+                        if hitbox.check_hit(
+                            Vec2::new(pos.x, pos.y),
+                            tile,
+                            screen,
+                            cam_pos,
+                            win_size,
+                            cam_zoom,
+                        ) {
+                            let is_creature = npc.is_some() || player.is_some();
+                            let is_local = local.is_some();
+                            hits.push((entity, entity_id, is_creature, is_local, pos.x + pos.y));
+                        }
+                    }
+                    hits.sort_by(|a, b| b.4.partial_cmp(&a.4).unwrap_or(std::cmp::Ordering::Equal));
+
+                    // If dropping an item, ignore hit-testing against yourself
+                    if matches!(src_category, SlotPanelType::Item) {
+                        hits.retain(|h| !h.3);
+                    }
+
+                    let hovered_info = if let Some((entity, entity_id, _, _, _)) = hits.first() {
+                        if let Some(eid) = entity_id {
+                            format!("entity {} (ID {})", entity.index(), eid.id)
+                        } else {
+                            format!("entity {}", entity.index())
+                        }
+                    } else {
+                        "nothing".to_string()
+                    };
+
+                    tracing::info!(
+                        "Dropped {:?} slot {} onto world at tile ({}, {}) over {}",
+                        src_category,
+                        src_index,
+                        tile_i.0,
+                        tile_i.1,
+                        hovered_info
+                    );
+
+                    if matches!(src_category, SlotPanelType::Item) {
+                        if let Some(item) = inv_state.0.iter().find(|i| i.slot == *src_index as u8)
+                        {
+                            if let Some((_, entity_id, is_creature, _, _)) = hits.first() {
+                                if *is_creature {
+                                    if let Some(eid) = entity_id {
+                                        outbox.send(&client::ItemDroppedOnCreature {
+                                            source_slot: item.slot,
+                                            target_id: eid.id,
+                                            count: 1, // Only drop 1 as requested
+                                        });
+                                    }
+                                } else {
+                                    outbox.send(&client::ItemDrop {
+                                        source_slot: item.slot,
+                                        destination_point: (
+                                            tile_i.0.max(0) as u16,
+                                            tile_i.1.max(0) as u16,
+                                        ),
+                                        count: 1, // Only drop 1 as requested
+                                    });
+                                }
+                            } else {
+                                // Drop on empty tile
+                                outbox.send(&client::ItemDrop {
+                                    source_slot: item.slot,
+                                    destination_point: (
+                                        tile_i.0.max(0) as u16,
+                                        tile_i.1.max(0) as u16,
+                                    ),
+                                    count: 1, // Only drop 1 as requested
+                                });
+                            }
+                        }
+                    }
+
+                    if matches!(src_category, SlotPanelType::Hotbar) {
+                        let bar = *src_index / 12;
+                        let slot = *src_index % 12;
+                        hotbar_state.config.set_slot(bar, slot, "".to_string());
+
+                        settings.set_hotbars(
+                            session.server_id,
+                            &session.username,
+                            hotbar_state.config.clone(),
+                        );
+                        tracing::info!("Deallocated hotbar slot {} (dropped on world)", src_index);
+                    }
+                }
+                (SlotPanelType::Hotbar, SlotPanelType::None) => {
+                    let bar = *src_index / 12;
+                    let slot = *src_index % 12;
+                    hotbar_state.config.set_slot(bar, slot, "".to_string());
+
+                    settings.set_hotbars(
+                        session.server_id,
+                        &session.username,
+                        hotbar_state.config.clone(),
+                    );
+                    tracing::info!("Deallocated hotbar slot {}", src_index);
+                }
+                (_, SlotPanelType::None) => {
+                    tracing::info!("Drag action cancelled (dropped over safe UI background)");
+                }
+                _ => {
+                    tracing::warn!(
+                        "[webui] DragDropAction: unsupported category combination: {:?} -> {:?}",
+                        src_category,
+                        dst_category
+                    );
+                }
+            },
+            _ => {}
+        }
+    }
+}
+
+fn handle_ui_inbound_login(
+    mut inbound: MessageReader<UiInbound>,
+    mut outbound: MessageWriter<UiOutbound>,
+    mut settings: ResMut<SettingsFile>,
+    mut commands: Commands,
+    bindings: InputBindingResources,
+) {
+    let mut input_bindings = bindings.input_bindings;
+    let mut unified_bindings = bindings.unified_bindings;
+
+    for UiInbound(msg) in inbound.read() {
+        match msg {
+            UiToCore::InputKeyboard { .. } | UiToCore::InputPointer { .. } => {}
+            UiToCore::ExitApplication => {
+                let _ = slint::quit_event_loop();
+            }
+            UiToCore::ReturnToMainMenu => {}
+            UiToCore::RequestSnapshot => {
+                let logins_public: Vec<SavedCredentialPublic> =
+                    settings.saved_credentials.iter().map(to_public).collect();
+                outbound.write(UiOutbound(CoreToUi::Snapshot {
+                    servers: settings.servers.clone(),
+                    current_server_id: settings.gameplay.current_server_id,
+                    logins: logins_public,
+                    login_error: None,
+                }));
+                outbound.write(UiOutbound(CoreToUi::SettingsSync {
+                    xray_size: settings.graphics.xray_size as u8,
+                    sfx_volume: settings.audio.sfx_volume,
+                    music_volume: settings.audio.music_volume,
+                    scale: settings.graphics.scale,
+                    key_bindings: (&settings.key_bindings).into(),
+                }));
+            }
             UiToCore::LoginSubmit {
                 server_id,
                 username,
@@ -288,7 +667,6 @@ fn handle_ui_inbound(
                     server_id, username
                 );
                 // Stay on the login screen and start background login task
-                // Start async login hitting pre_login.rs
                 let server = settings
                     .servers
                     .iter()
@@ -311,7 +689,7 @@ fn handle_ui_inbound(
                                 Ok((rx, tx)) => Ok((rx, tx)),
                                 Err(code) => Err(code),
                             },
-                            Err(_) => Err(LoginError::Unknown), // network/connect error
+                            Err(_) => Err(LoginError::Unknown),
                         }
                     });
                     commands.spawn(LoginTaskEntity(LoginTaskInner {
@@ -328,7 +706,6 @@ fn handle_ui_inbound(
                         server_id
                     );
                 }
-                // Emit snapshot update (include logins)
                 let logins_public: Vec<SavedCredentialPublic> =
                     settings.saved_credentials.iter().map(to_public).collect();
                 outbound.write(UiOutbound(CoreToUi::Snapshot {
@@ -340,7 +717,6 @@ fn handle_ui_inbound(
             }
             UiToCore::LoginUseSaved { id } => {
                 println!("[webui] LoginUseSaved: id={}", id);
-                // Bump last_used and attempt login using saved password
                 let mut emitted_snapshot = false;
                 let (cred_id, server_id, username) = {
                     let now = std::time::SystemTime::now()
@@ -355,7 +731,6 @@ fn handle_ui_inbound(
                         continue;
                     }
                 };
-                // Start login task using keyring password
                 match keyring::get_password(&cred_id) {
                     Ok(password) => {
                         if let Some(server) =
@@ -400,7 +775,6 @@ fn handle_ui_inbound(
                                 "[webui] LoginUseSaved: server {} not found in settings",
                                 server_id
                             );
-                            // Emit an error snapshot since we cannot proceed
                             let logins_public: Vec<SavedCredentialPublic> =
                                 settings.saved_credentials.iter().map(to_public).collect();
                             outbound.write(UiOutbound(CoreToUi::Snapshot {
@@ -419,7 +793,6 @@ fn handle_ui_inbound(
                             "[webui] LoginUseSaved: keyring missing password for id={} ({}). Prompting user to re-enter.",
                             cred_id, err
                         );
-                        // Let the UI show an error to re-enter password
                         let logins_public: Vec<SavedCredentialPublic> =
                             settings.saved_credentials.iter().map(to_public).collect();
                         outbound.write(UiOutbound(CoreToUi::Snapshot {
@@ -445,7 +818,6 @@ fn handle_ui_inbound(
                 }
             }
             UiToCore::LoginRemoveSaved { id } => {
-                // Optimistically remove from settings and persist
                 let _ = keyring::delete_password(id);
                 settings.remove_credential(id);
 
@@ -476,7 +848,6 @@ fn handle_ui_inbound(
                     name: server.name.clone(),
                     address: server.address.clone(),
                 });
-                // If nothing selected, select the first
                 if settings.gameplay.current_server_id.is_none() {
                     settings.gameplay.current_server_id = Some(new_id);
                 }
@@ -530,9 +901,6 @@ fn handle_ui_inbound(
             }
             UiToCore::ScaleChange { scale } => {
                 settings.graphics.scale = *scale;
-                if let Some(zoom) = zoom_state.as_mut() {
-                    zoom.set_zoom(*scale);
-                }
             }
             UiToCore::RebindKey { action, new_key } => {
                 use crate::input::{GameAction, InputSource};
@@ -553,370 +921,14 @@ fn handle_ui_inbound(
 
                 if let Some(game_action) = GameAction::from_action_id(action) {
                     if let Some(input_source) = InputSource::from_string(new_key) {
-                        if let Some(ref mut unified_bindings) = unified_bindings {
-                            unified_bindings.set_binding(game_action, input_source.clone());
-                        }
-
-                        if let Some(ref mut bindings) = input_bindings {
-                            if let InputSource::Keyboard(kb) = input_source {
-                                bindings.set(game_action, kb);
-                            }
+                        unified_bindings.set_binding(game_action, input_source.clone());
+                        if let InputSource::Keyboard(kb) = input_source {
+                            input_bindings.set(game_action, kb);
                         }
                     }
                 }
             }
-            UiToCore::SetHotbarPanel { panel_num } => {
-                if let Some(ref mut state) = hotbar_panel_state {
-                    state.current_panel = crate::ecs::hotbar::HotbarPanel::from_u8(*panel_num);
-                }
-            }
-            UiToCore::RequestWorldList => {
-                outbox.send(&packets::client::WorldListRequest);
-            }
-            UiToCore::SetWorldListFilter { filter } => {
-                if let Some(state) = world_list_state.as_mut() {
-                    state.filter = filter.clone();
-                    state.version = state.version.wrapping_add(1);
-                }
-            }
-            UiToCore::Unequip { slot } => {
-                inventory_events.write(InventoryEvent::Unequip { slot: *slot });
-            }
-            UiToCore::ActivateAction { category, index } => match category {
-                SlotPanelType::Item => {
-                    inventory_events.write(InventoryEvent::Use { slot: *index as u8 });
-                }
-                SlotPanelType::Skill => {
-                    ability_events.write(AbilityEvent::UseSkill { slot: *index as u8 });
-                }
-                SlotPanelType::Spell => {
-                    ability_events.write(AbilityEvent::UseSpell { slot: *index as u8 });
-                }
-                SlotPanelType::Hotbar => {
-                    if let Some(ref h) = hotbar_state {
-                        let bar = *index / 12;
-                        let slot_in_bar = *index % 12;
-
-                        if let Some(config_slot) = h.config.get_slot(bar, slot_in_bar) {
-                            if !config_slot.action_id.is_empty() {
-                                let action_id = ActionId::from_str(&config_slot.action_id);
-
-                                match action_id.panel_type() {
-                                    SlotPanelType::Item => {
-                                        if let Some(ref i) = inv_state {
-                                            if let Some(item) =
-                                                i.0.iter().find(|item| item.id == action_id)
-                                            {
-                                                inventory_events
-                                                    .write(InventoryEvent::Use { slot: item.slot });
-                                            }
-                                        }
-                                    }
-                                    SlotPanelType::Skill => {
-                                        if let Some(ref a) = ability_state {
-                                            if let Some(skill) =
-                                                a.skills.iter().find(|s| s.id == action_id)
-                                            {
-                                                ability_events.write(AbilityEvent::UseSkill {
-                                                    slot: skill.slot,
-                                                });
-                                            }
-                                        }
-                                    }
-                                    SlotPanelType::Spell => {
-                                        if let Some(ref a) = ability_state {
-                                            if let Some(spell) =
-                                                a.spells.iter().find(|s| s.id == action_id)
-                                            {
-                                                ability_events.write(AbilityEvent::UseSpell {
-                                                    slot: spell.slot,
-                                                });
-                                            }
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
-                }
-                SlotPanelType::World => {}
-                SlotPanelType::None => {}
-            },
-            UiToCore::DragDropAction {
-                src_category,
-                src_index,
-                dst_category,
-                dst_index,
-                x,
-                y,
-            } => match (src_category, dst_category) {
-                (SlotPanelType::Item, SlotPanelType::Item) => {
-                    outbox.send(&packets::client::SwapSlot {
-                        panel_type: packets::client::SwapSlotPanelType::Inventory,
-                        slot1: *src_index as u8,
-                        slot2: *dst_index as u8,
-                    });
-                }
-                (SlotPanelType::Skill, SlotPanelType::Skill) => {
-                    outbox.send(&packets::client::SwapSlot {
-                        panel_type: packets::client::SwapSlotPanelType::Skill,
-                        slot1: *src_index as u8,
-                        slot2: *dst_index as u8,
-                    });
-                }
-                (SlotPanelType::Spell, SlotPanelType::Spell) => {
-                    outbox.send(&packets::client::SwapSlot {
-                        panel_type: packets::client::SwapSlotPanelType::Spell,
-                        slot1: *src_index as u8,
-                        slot2: *dst_index as u8,
-                    });
-                }
-                (SlotPanelType::Item, SlotPanelType::Hotbar) => {
-                    if let Some(ref inv_state) = inv_state {
-                        if let Some(item) = inv_state.0.iter().find(|i| i.slot == *src_index as u8)
-                        {
-                            if let Some(ref mut hotbar_state) = hotbar_state {
-                                hotbar_state.assign_slot(*dst_index, item.id.as_str().to_string());
-
-                                if let Some(ref session) = session {
-                                    settings.set_hotbars(
-                                        session.server_id,
-                                        &session.username,
-                                        hotbar_state.config.clone(),
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-                (SlotPanelType::Skill, SlotPanelType::Hotbar) => {
-                    if let Some(ref ability_state) = ability_state {
-                        if let Some(skill) = ability_state
-                            .skills
-                            .iter()
-                            .find(|s| s.slot == *src_index as u8)
-                        {
-                            if let Some(ref mut hotbar_state) = hotbar_state {
-                                hotbar_state.assign_slot(*dst_index, skill.id.as_str().to_string());
-
-                                if let Some(ref session) = session {
-                                    settings.set_hotbars(
-                                        session.server_id,
-                                        &session.username,
-                                        hotbar_state.config.clone(),
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-                (SlotPanelType::Spell, SlotPanelType::Hotbar) => {
-                    if let Some(ref ability_state) = ability_state {
-                        if let Some(spell) = ability_state
-                            .spells
-                            .iter()
-                            .find(|s| s.slot == *src_index as u8)
-                        {
-                            if let Some(ref mut hotbar_state) = hotbar_state {
-                                hotbar_state.assign_slot(*dst_index, spell.id.as_str().to_string());
-
-                                if let Some(ref session) = session {
-                                    settings.set_hotbars(
-                                        session.server_id,
-                                        &session.username,
-                                        hotbar_state.config.clone(),
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-                (SlotPanelType::Hotbar, SlotPanelType::Hotbar) => {
-                    if let Some(ref mut hotbar_state) = hotbar_state {
-                        let bar1 = *src_index / 12;
-                        let slot1 = *src_index % 12;
-                        let bar2 = *dst_index / 12;
-                        let slot2 = *dst_index % 12;
-
-                        let slot1_action = hotbar_state.config.bars[bar1][slot1].action_id.clone();
-                        let slot2_action = hotbar_state.config.bars[bar2][slot2].action_id.clone();
-
-                        hotbar_state.config.set_slot(bar2, slot2, slot1_action);
-                        hotbar_state.config.set_slot(bar1, slot1, slot2_action);
-
-                        if let Some(ref session) = session {
-                            settings.set_hotbars(
-                                session.server_id,
-                                &session.username,
-                                hotbar_state.config.clone(),
-                            );
-                        }
-                    }
-                }
-                (_, SlotPanelType::World) => {
-                    let camera = &interaction_res.camera;
-                    let window_surface = &interaction_res.window_surface;
-
-                    if let (Some(window_surface), Some(zoom_res)) =
-                        (window_surface, zoom_state.as_ref())
-                    {
-                        let cam_pos = camera.camera.position();
-                        let cam_zoom = camera.camera.zoom();
-                        let win_size =
-                            Vec2::new(window_surface.width as f32, window_surface.height as f32);
-
-                        let cursor_scale = zoom_res.cursor_to_render_scale();
-                        let screen = Vec2::new(*x * cursor_scale, *y * cursor_scale);
-                        let tile = screen_to_iso_tile(screen, cam_pos, win_size, cam_zoom);
-                        let tile_i = (tile.x.floor() as i32, tile.y.floor() as i32);
-
-                        // Manual hit testing
-                        let mut hits: Vec<(
-                            Entity,
-                            Option<&crate::ecs::components::EntityId>,
-                            bool, // is_creature
-                            bool, // is_local
-                            f32,  // Y-sort height
-                        )> = Vec::new();
-                        for (entity, pos, hitbox, entity_id, npc, player, local) in
-                            interaction_res.entity_query.iter()
-                        {
-                            if hitbox.check_hit(
-                                Vec2::new(pos.x, pos.y),
-                                tile,
-                                screen,
-                                cam_pos,
-                                win_size,
-                                cam_zoom,
-                            ) {
-                                let is_creature = npc.is_some() || player.is_some();
-                                let is_local = local.is_some();
-                                hits.push((
-                                    entity,
-                                    entity_id,
-                                    is_creature,
-                                    is_local,
-                                    pos.x + pos.y,
-                                ));
-                            }
-                        }
-                        hits.sort_by(|a, b| {
-                            b.4.partial_cmp(&a.4).unwrap_or(std::cmp::Ordering::Equal)
-                        });
-
-                        // If dropping an item, ignore hit-testing against yourself
-                        if matches!(src_category, SlotPanelType::Item) {
-                            hits.retain(|h| !h.3);
-                        }
-
-                        let hovered_info = if let Some((entity, entity_id, _, _, _)) = hits.first()
-                        {
-                            if let Some(eid) = entity_id {
-                                format!("entity {} (ID {})", entity.index(), eid.id)
-                            } else {
-                                format!("entity {}", entity.index())
-                            }
-                        } else {
-                            "nothing".to_string()
-                        };
-
-                        tracing::info!(
-                            "Dropped {:?} slot {} onto world at tile ({}, {}) over {}",
-                            src_category,
-                            src_index,
-                            tile_i.0,
-                            tile_i.1,
-                            hovered_info
-                        );
-
-                        if matches!(src_category, SlotPanelType::Item) {
-                            if let Some(ref inv_state) = inv_state {
-                                if let Some(item) =
-                                    inv_state.0.iter().find(|i| i.slot == *src_index as u8)
-                                {
-                                    if let Some((_, entity_id, is_creature, _, _)) = hits.first() {
-                                        if *is_creature {
-                                            if let Some(eid) = entity_id {
-                                                outbox.send(&client::ItemDroppedOnCreature {
-                                                    source_slot: item.slot,
-                                                    target_id: eid.id,
-                                                    count: 1, // Only drop 1 as requested
-                                                });
-                                            }
-                                        } else {
-                                            outbox.send(&client::ItemDrop {
-                                                source_slot: item.slot,
-                                                destination_point: (
-                                                    tile_i.0.max(0) as u16,
-                                                    tile_i.1.max(0) as u16,
-                                                ),
-                                                count: 1, // Only drop 1 as requested
-                                            });
-                                        }
-                                    } else {
-                                        // Drop on empty tile
-                                        outbox.send(&client::ItemDrop {
-                                            source_slot: item.slot,
-                                            destination_point: (
-                                                tile_i.0.max(0) as u16,
-                                                tile_i.1.max(0) as u16,
-                                            ),
-                                            count: 1, // Only drop 1 as requested
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if matches!(src_category, SlotPanelType::Hotbar) {
-                        if let Some(ref mut hotbar_state) = hotbar_state {
-                            let bar = *src_index / 12;
-                            let slot = *src_index % 12;
-                            hotbar_state.config.set_slot(bar, slot, "".to_string());
-
-                            if let Some(ref session) = session {
-                                settings.set_hotbars(
-                                    session.server_id,
-                                    &session.username,
-                                    hotbar_state.config.clone(),
-                                );
-                            }
-                            tracing::info!(
-                                "Deallocated hotbar slot {} (dropped on world)",
-                                src_index
-                            );
-                        }
-                    }
-                }
-                (SlotPanelType::Hotbar, SlotPanelType::None) => {
-                    if let Some(ref mut hotbar_state) = hotbar_state {
-                        let bar = *src_index / 12;
-                        let slot = *src_index % 12;
-                        hotbar_state.config.set_slot(bar, slot, "".to_string());
-
-                        if let Some(ref session) = session {
-                            settings.set_hotbars(
-                                session.server_id,
-                                &session.username,
-                                hotbar_state.config.clone(),
-                            );
-                        }
-                        tracing::info!("Deallocated hotbar slot {}", src_index);
-                    }
-                }
-                (_, SlotPanelType::None) => {
-                    tracing::info!("Drag action cancelled (dropped over safe UI background)");
-                }
-                _ => {
-                    tracing::warn!(
-                        "[webui] DragDropAction: unsupported category combination: {:?} -> {:?}",
-                        src_category,
-                        dst_category
-                    );
-                }
-            },
+            _ => {}
         }
     }
 }
@@ -997,15 +1009,13 @@ fn bridge_session_events(
     ability_state: Res<AbilityState>,
     mut profile_state: ResMut<PlayerProfileState>,
     mut show_profile: MessageWriter<crate::slint_plugin::ShowSelfProfileEvent>,
-    mut world_list_state: Option<ResMut<WorldListState>>,
+    mut world_list_state: ResMut<WorldListState>,
 ) {
     for evt in session_events.read() {
         match evt {
             SessionEvent::WorldList(pkt) => {
-                if let Some(state) = world_list_state.as_mut() {
-                    state.raw = Some(pkt.clone());
-                    state.version = state.version.wrapping_add(1);
-                }
+                world_list_state.raw = Some(pkt.clone());
+                world_list_state.version = world_list_state.version.wrapping_add(1);
             }
             SessionEvent::SelfProfile(pkt) => {
                 profile_state.is_self = true;
@@ -1263,10 +1273,7 @@ fn bridge_inventory_events(
     }
 }
 
-fn update_world_list_filtered(state: Option<ResMut<WorldListState>>, mut last_version: Local<u32>) {
-    let Some(mut state) = state else {
-        return;
-    };
+fn update_world_list_filtered(mut state: ResMut<WorldListState>, mut last_version: Local<u32>) {
     if state.version == *last_version {
         return;
     }
@@ -1498,17 +1505,14 @@ fn bridge_ability_events(
 
 fn handle_input_bridge(
     mut inbound: MessageReader<UiInbound>,
-    mut kb: Option<ResMut<ButtonInput<KeyCode>>>,
-    mut mb: Option<ResMut<ButtonInput<MouseButton>>>,
+    mut kb: ResMut<ButtonInput<KeyCode>>,
+    mut mb: ResMut<ButtonInput<MouseButton>>,
     mut cursor: ResMut<CursorPosition>,
     mut edges: ResMut<KeyboardEdges>,
 ) {
     for UiInbound(msg) in inbound.read() {
         match msg {
             UiToCore::InputKeyboard { action, code } => {
-                let Some(kb) = kb.as_mut() else {
-                    continue;
-                };
                 if let Some(key) = dom_code_to_keycode(code) {
                     tracing::trace!("ui->core key {:?} {}", key, action);
                     if action == "down" {
@@ -1529,20 +1533,18 @@ fn handle_input_bridge(
             } => {
                 cursor.x = *x;
                 cursor.y = *y;
-                if let Some(mb) = mb.as_mut() {
-                    if let Some(b) = button {
-                        let btn = match b {
-                            0 => MouseButton::Left,
-                            1 => MouseButton::Middle,
-                            2 => MouseButton::Right,
-                            _ => MouseButton::Other(*b as u16),
-                        };
-                        tracing::trace!("ui->core pointer {:?} at ({:.1},{:.1})", action, x, y);
-                        match action.as_str() {
-                            "down" => mb.press(btn),
-                            "up" => mb.release(btn),
-                            _ => {}
-                        }
+                if let Some(b) = button {
+                    let btn = match b {
+                        0 => MouseButton::Left,
+                        1 => MouseButton::Middle,
+                        2 => MouseButton::Right,
+                        _ => MouseButton::Other(*b as u16),
+                    };
+                    tracing::trace!("ui->core pointer {:?} at ({:.1},{:.1})", action, x, y);
+                    match action.as_str() {
+                        "down" => mb.press(btn),
+                        "up" => mb.release(btn),
+                        _ => {}
                     }
                 }
             }
@@ -1592,17 +1594,15 @@ fn dom_code_to_keycode(code: &str) -> Option<KeyCode> {
 }
 
 fn clear_just_input(
-    mut kb: Option<ResMut<ButtonInput<KeyCode>>>,
-    _: Option<ResMut<ButtonInput<MouseButton>>>,
+    mut kb: ResMut<ButtonInput<KeyCode>>,
+    _: ResMut<ButtonInput<MouseButton>>,
     edges: Res<KeyboardEdges>,
 ) {
-    if let Some(kb) = kb.as_mut() {
-        for &k in &edges.just_pressed {
-            kb.clear_just_pressed(k);
-        }
-        for &k in &edges.just_released {
-            kb.clear_just_released(k);
-        }
+    for &k in &edges.just_pressed {
+        kb.clear_just_pressed(k);
+    }
+    for &k in &edges.just_released {
+        kb.clear_just_released(k);
     }
 }
 

@@ -101,6 +101,10 @@ pub enum UiToCore {
         action: String,
         new_key: String,
     },
+    /// Quit the application.
+    ExitApplication,
+    /// Return to the main menu from in-game UI.
+    ReturnToMainMenu,
     SetHotbarPanel {
         panel_num: u8,
     },

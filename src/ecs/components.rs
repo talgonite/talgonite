@@ -201,6 +201,11 @@ pub struct MapPrepared {
 #[derive(Component)]
 pub struct MapScoped;
 
+// Marker component: entity is tied to the current in-game session and should
+// be despawned when leaving AppState::InGame.
+#[derive(Component)]
+pub struct InGameScoped;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HitboxType {
     /// Hitbox in isometric tile space (min/max are tile offsets from entity position)

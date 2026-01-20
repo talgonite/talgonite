@@ -26,16 +26,22 @@ impl Plugin for GamePlugin {
                 OnEnter(crate::app_state::AppState::InGame),
                 audio::setup_audio_settings,
             )
+            .add_systems(
+                Update,
+                systems::sync_lobby_portraits
+                    .run_if(in_state(crate::app_state::AppState::MainMenu))
+                    .run_if(resource_exists::<crate::PlayerAssetStoreState>)
+                    .run_if(resource_exists::<crate::RendererState>)
+                    .run_if(resource_exists::<crate::game_files::GameFiles>),
+            )
             // === Event Processing Systems ===
             // These don't need renderer resources
             .add_systems(
                 Update,
                 (
                     systems::initialize_game_world,
-                    load_collision_table
-                        .run_if(resource_exists::<crate::game_files::GameFiles>)
-                        .run_if(not(resource_exists::<WallCollisionTable>)),
-                    audio::play_sound.run_if(resource_exists::<crate::game_files::GameFiles>),
+                    load_collision_table.run_if(not(resource_exists::<WallCollisionTable>)),
+                    audio::play_sound,
                     audio::sync_audio_settings,
                     spell_casting::start_spell_cast,
                     spell_casting::update_spell_casting,
@@ -49,13 +55,14 @@ impl Plugin for GamePlugin {
                     systems::expire_chant_labels,
                     systems::expire_health_bars,
                 )
+                    .run_if(in_state(crate::app_state::AppState::InGame))
                     .in_set(GameSet::EventProcessing),
             )
             // === Spawning Systems ===
             .add_systems(
                 Update,
                 (
-                    systems::map_system.run_if(resource_exists::<crate::game_files::GameFiles>),
+                    systems::map_system,
                     systems::spawn_entities_system,
                     systems::dedupe_entities_by_id,
                     systems::health_bar_system,
@@ -63,12 +70,15 @@ impl Plugin for GamePlugin {
                         .run_if(resource_exists::<crate::CreatureAssetStoreState>),
                 )
                     .chain()
+                    .run_if(in_state(crate::app_state::AppState::InGame))
                     .in_set(GameSet::Spawning),
             )
             // === Despawning Systems ===
             .add_systems(
                 Update,
-                systems::handle_remove_entity_event.in_set(GameSet::Despawning),
+                systems::handle_remove_entity_event
+                    .run_if(in_state(crate::app_state::AppState::InGame))
+                    .in_set(GameSet::Despawning),
             )
             // === Movement Systems ===
             .add_systems(
@@ -80,17 +90,21 @@ impl Plugin for GamePlugin {
                     systems::player_animation_start_system,
                     systems::entity_effect_system,
                 )
+                    .run_if(in_state(crate::app_state::AppState::InGame))
                     .in_set(GameSet::Movement),
             )
             // === Physics Systems ===
             .add_systems(
                 Update,
-                systems::movement_tween_system.in_set(GameSet::Physics),
+                systems::movement_tween_system
+                    .run_if(in_state(crate::app_state::AppState::InGame))
+                    .in_set(GameSet::Physics),
             )
             // === Animation Systems ===
             .add_systems(
                 Update,
                 (animation::animation_system, systems::map_animation_system)
+                    .run_if(in_state(crate::app_state::AppState::InGame))
                     .in_set(GameSet::Animation),
             )
             // === Camera Systems ===
@@ -102,6 +116,7 @@ impl Plugin for GamePlugin {
                     systems::camera_xray_sync,
                 )
                     .chain()
+                    .run_if(in_state(crate::app_state::AppState::InGame))
                     .in_set(GameSet::Camera),
             )
             // === Render Sync Systems ===
@@ -117,10 +132,10 @@ impl Plugin for GamePlugin {
                     systems::creature_movement_sync,
                     systems::sync_player_portrait,
                     systems::sync_profile_portrait,
-                    systems::sync_lobby_portraits,
                 )
                     .run_if(resource_exists::<crate::CreatureAssetStoreState>)
                     .run_if(resource_exists::<crate::PlayerBatchState>)
+                    .run_if(in_state(crate::app_state::AppState::InGame))
                     .in_set(GameSet::RenderSync),
             )
             // === Effect Systems ===
@@ -134,6 +149,7 @@ impl Plugin for GamePlugin {
                 )
                     .chain()
                     .run_if(resource_exists::<crate::EffectManagerState>)
+                    .run_if(in_state(crate::app_state::AppState::InGame))
                     .in_set(GameSet::RenderSync),
             );
     }

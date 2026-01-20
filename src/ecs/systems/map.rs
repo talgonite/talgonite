@@ -143,6 +143,7 @@ fn handle_map_set_info(
             },
             loaded: MapLoaded,
         },
+        InGameScoped,
         MapScoped,
     ));
 

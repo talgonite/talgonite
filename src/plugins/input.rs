@@ -1,4 +1,5 @@
 use crate::{
+    app_state::AppState,
     ecs::components::{Direction, LocalPlayer, MovementTween},
     ecs::spell_casting::SpellCastingState,
     ecs::systems::GameSet,
@@ -47,7 +48,7 @@ impl Plugin for InputPlugin {
                     sync_rebinding_state_from_slint,
                     gamepad_rebinding_system,
                     crate::input::gamepad::gamepad_connection_system,
-                    input_handling_system,
+                    input_handling_system.run_if(in_state(AppState::InGame)),
                 )
                     .chain()
                     .after(InputPumpSet)
@@ -144,8 +145,8 @@ fn initialize_input_bindings(
 pub fn input_handling_system(
     time: Res<Time>,
     mut input_timer: ResMut<InputTimer>,
-    keyboard_input: Option<Res<ButtonInput<KeyCode>>>,
-    unified_bindings: Option<Res<UnifiedInputBindings>>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    unified_bindings: Res<UnifiedInputBindings>,
     gamepad_query: Query<&Gamepad>,
     gamepad_config: Res<GamepadConfig>,
     mut player_actions: MessageWriter<PlayerAction>,
@@ -153,24 +154,14 @@ pub fn input_handling_system(
         (&mut LocalPlayer, &mut Direction, Option<&MovementTween>),
         With<LocalPlayer>,
     >,
-    outbox: Option<Res<PacketOutbox>>,
-    mut hotbar_panel_state: Option<ResMut<crate::ecs::hotbar::HotbarPanelState>>,
+    outbox: Res<PacketOutbox>,
+    mut hotbar_panel_state: ResMut<crate::ecs::hotbar::HotbarPanelState>,
     mut ui_inbound: MessageWriter<crate::webui::plugin::UiInbound>,
     mut inventory_events: MessageWriter<crate::events::InventoryEvent>,
     mut ability_events: MessageWriter<crate::events::AbilityEvent>,
     mut spell_casting: ResMut<SpellCastingState>,
 ) {
-    if keyboard_input.is_none() {
-        // tracing::warn!("keyboard_input is None");
-        return;
-    }
-    let keyboard_input = keyboard_input.unwrap();
-
-    if unified_bindings.is_none() {
-        // tracing::warn!("unified_bindings is None");
-        return;
-    }
-    let bindings = unified_bindings.unwrap();
+    let bindings = unified_bindings;
 
     if bindings.is_just_pressed(
         GameAction::Refresh,
@@ -179,9 +170,7 @@ pub fn input_handling_system(
         Some(&gamepad_config),
     ) {
         tracing::info!("Refresh triggered");
-        if let Some(outbox) = &outbox {
-            outbox.send(&RefreshRequest);
-        }
+        outbox.send(&RefreshRequest);
     }
 
     if bindings.is_just_pressed(
@@ -192,9 +181,7 @@ pub fn input_handling_system(
     ) {
         tracing::info!("Basic attack triggered");
         spell_casting.active_cast = None;
-        if let Some(outbox) = &outbox {
-            outbox.send(&Spacebar);
-        }
+        outbox.send(&Spacebar);
     }
 
     // Panel switching
@@ -232,9 +219,7 @@ pub fn input_handling_system(
             Some(&gamepad_query),
             Some(&gamepad_config),
         ) {
-            if let Some(ref mut state) = hotbar_panel_state {
-                state.current_panel = *panel;
-            }
+            hotbar_panel_state.current_panel = *panel;
         }
     }
 
@@ -261,49 +246,47 @@ pub fn input_handling_system(
             Some(&gamepad_query),
             Some(&gamepad_config),
         ) {
-            if let Some(ref state) = hotbar_panel_state {
-                let panel = state.current_panel as u8;
-                let slot_index = match panel {
-                    0..=2 => i,
-                    3..=5 => (panel - 3) as usize * 12 + i,
-                    _ => continue,
-                };
+            let panel = hotbar_panel_state.current_panel as u8;
+            let slot_index = match panel {
+                0..=2 => i,
+                3..=5 => (panel - 3) as usize * 12 + i,
+                _ => continue,
+            };
 
-                let category = match panel {
-                    0 => SlotPanelType::Item,
-                    1 => SlotPanelType::Skill,
-                    2 => SlotPanelType::Spell,
-                    3..=5 => SlotPanelType::Hotbar,
-                    _ => continue,
-                };
+            let category = match panel {
+                0 => SlotPanelType::Item,
+                1 => SlotPanelType::Skill,
+                2 => SlotPanelType::Spell,
+                3..=5 => SlotPanelType::Hotbar,
+                _ => continue,
+            };
 
-                match category {
-                    SlotPanelType::Item => {
-                        inventory_events.write(crate::events::InventoryEvent::Use {
-                            slot: (slot_index + 1) as u8,
-                        });
-                    }
-                    SlotPanelType::Skill => {
-                        ability_events.write(crate::events::AbilityEvent::UseSkill {
-                            slot: (slot_index + 1) as u8,
-                        });
-                    }
-                    SlotPanelType::Spell => {
-                        ability_events.write(crate::events::AbilityEvent::UseSpell {
-                            slot: (slot_index + 1) as u8,
-                        });
-                    }
-                    SlotPanelType::Hotbar => {
-                        ui_inbound.write(crate::webui::plugin::UiInbound(
-                            crate::webui::ipc::UiToCore::ActivateAction {
-                                category,
-                                index: slot_index,
-                            },
-                        ));
-                    }
-                    SlotPanelType::World => {}
-                    SlotPanelType::None => {}
+            match category {
+                SlotPanelType::Item => {
+                    inventory_events.write(crate::events::InventoryEvent::Use {
+                        slot: (slot_index + 1) as u8,
+                    });
                 }
+                SlotPanelType::Skill => {
+                    ability_events.write(crate::events::AbilityEvent::UseSkill {
+                        slot: (slot_index + 1) as u8,
+                    });
+                }
+                SlotPanelType::Spell => {
+                    ability_events.write(crate::events::AbilityEvent::UseSpell {
+                        slot: (slot_index + 1) as u8,
+                    });
+                }
+                SlotPanelType::Hotbar => {
+                    ui_inbound.write(crate::webui::plugin::UiInbound(
+                        crate::webui::ipc::UiToCore::ActivateAction {
+                            category,
+                            index: slot_index,
+                        },
+                    ));
+                }
+                SlotPanelType::World => {}
+                SlotPanelType::None => {}
             }
         }
     }

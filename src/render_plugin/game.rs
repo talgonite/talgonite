@@ -19,9 +19,22 @@ impl Plugin for GameWorldRenderPlugin {
         app.add_plugins(RenderManagersPlugin)
             .init_resource::<PendingResize>()
             .init_resource::<CurrentHoverLabel>()
-            .add_systems(PreUpdate, apply_pending_resize)
-            .add_systems(PostUpdate, update_hover_labels)
-            .add_systems(Last, draw_frame);
+            .add_systems(
+                PreUpdate,
+                apply_pending_resize
+                    .run_if(resource_exists::<RendererState>)
+                    .run_if(resource_exists::<Camera>),
+            )
+            .add_systems(
+                PostUpdate,
+                update_hover_labels.run_if(in_state(AppState::InGame)),
+            )
+            .add_systems(
+                Last,
+                draw_frame
+                    .run_if(in_state(AppState::InGame))
+                    .run_if(resource_exists::<FrameChannels>),
+            );
     }
 }
 
@@ -29,7 +42,18 @@ pub struct RenderManagersPlugin;
 
 impl Plugin for RenderManagersPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, init_render_managers_after_gamefiles);
+        app.add_systems(
+            Update,
+            init_render_managers_after_gamefiles
+                .run_if(in_state(AppState::MainMenu))
+                .run_if(needs_render_managers),
+        )
+        .add_systems(
+            Update,
+            init_render_managers_after_gamefiles
+                .run_if(in_state(AppState::InGame))
+                .run_if(needs_render_managers),
+        );
     }
 }
 
@@ -171,6 +195,24 @@ fn init_render_managers_after_gamefiles(
     }
 }
 
+fn needs_render_managers(
+    files: Option<Res<game_files::GameFiles>>,
+    renderer: Option<Res<RendererState>>,
+    camera: Option<Res<Camera>>,
+    existing_creatures: Option<Res<CreatureAssetStoreState>>,
+    existing_players: Option<Res<PlayerAssetStoreState>>,
+    existing_items: Option<Res<ItemAssetStoreState>>,
+    existing_effects: Option<Res<EffectManagerState>>,
+) -> bool {
+    files.is_some()
+        && renderer.is_some()
+        && camera.is_some()
+        && (existing_creatures.is_none()
+            || existing_players.is_none()
+            || existing_items.is_none()
+            || existing_effects.is_none())
+}
+
 #[derive(Resource, Default)]
 pub struct PendingResize {
     pub width: u32,
@@ -180,59 +222,58 @@ pub struct PendingResize {
 }
 
 fn apply_pending_resize(
-    pending: Option<ResMut<PendingResize>>,
+    mut pending: ResMut<PendingResize>,
     mut window_surface: NonSendMut<WindowSurface>,
     mut renderer_state: ResMut<RendererState>,
     mut camera: ResMut<Camera>,
     _web_ui: Option<NonSend<WebUi>>,
-    pool: Option<ResMut<BackBufferPool>>,
+    mut pool: ResMut<BackBufferPool>,
 ) {
-    let Some(mut p) = pending else {
-        return;
-    };
-    if !p.dirty || p.width == 0 || p.height == 0 {
+    if !pending.dirty || pending.width == 0 || pending.height == 0 {
         return;
     }
 
-    window_surface.width = p.width;
-    window_surface.height = p.height;
-    window_surface.scale_factor = p.scale;
+    window_surface.width = pending.width;
+    window_surface.height = pending.height;
+    window_surface.scale_factor = pending.scale;
 
     let RendererState { device, scene, .. } = &mut *renderer_state;
-    scene.resize_depth_texture(device, p.width, p.height);
+    scene.resize_depth_texture(device, pending.width, pending.height);
 
     camera
         .camera
-        .resize(&renderer_state.queue, (p.width, p.height).into(), p.scale);
+        .resize(
+            &renderer_state.queue,
+            (pending.width, pending.height).into(),
+            pending.scale,
+        );
 
     // Reallocate pool textures to new resolution so next frame can render immediately
-    if let Some(mut pool) = pool {
-        pool.0.clear();
-        for label in ["Back Buffer", "Inflight Buffer", "Front Seed"] {
-            let tex = renderer_state
-                .device
-                .create_texture(&wgpu::TextureDescriptor {
-                    label: Some(label),
-                    size: wgpu::Extent3d {
-                        width: p.width,
-                        height: p.height,
-                        depth_or_array_layers: 1,
-                    },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    usage: wgpu::TextureUsages::TEXTURE_BINDING
-                        | wgpu::TextureUsages::COPY_DST
-                        | wgpu::TextureUsages::COPY_SRC
-                        | wgpu::TextureUsages::RENDER_ATTACHMENT,
-                    view_formats: &[],
-                });
-            pool.0.push(tex);
-        }
+    pool.0.clear();
+    for label in ["Back Buffer", "Inflight Buffer", "Front Seed"] {
+        let tex = renderer_state
+            .device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some(label),
+                size: wgpu::Extent3d {
+                    width: pending.width,
+                    height: pending.height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_DST
+                    | wgpu::TextureUsages::COPY_SRC
+                    | wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            });
+        pool.0.push(tex);
     }
 
-    p.dirty = false;
+    pending.dirty = false;
 }
 
 fn draw_frame(
@@ -244,44 +285,37 @@ fn draw_frame(
     item_batch_state: Option<Res<ItemBatchState>>,
     player_batch_state: Option<Res<PlayerBatchState>>,
     effect_manager_state: Option<Res<EffectManagerState>>,
-    app_state: Res<State<AppState>>,
-    channels: Option<Res<FrameChannels>>,
+    channels: Res<FrameChannels>,
     mut pool: ResMut<BackBufferPool>,
-    mut pending: Option<ResMut<PendingResize>>,
+    mut pending: ResMut<PendingResize>,
 ) {
     if window_surface.width == 0 || window_surface.height == 0 {
         return;
     }
 
     // Drain control messages: handle ResizeBuffers by marking PendingResize and skipping frame
-    if let Some(ch) = channels.as_ref() {
-        while let Ok(msg) = ch.control_rx.try_recv() {
-            match msg {
-                ControlMessage::ResizeBuffers {
-                    width,
-                    height,
-                    scale,
-                } => {
-                    if let Some(p) = pending.as_mut() {
-                        p.width = width;
-                        p.height = height;
-                        p.scale = scale;
-                        p.dirty = true;
-                    }
-                    return;
-                }
-                ControlMessage::ReleaseFrontBufferTexture { texture } => {
-                    // Discard textures that no longer match the current surface size.
-                    if texture.width() == window_surface.width
-                        && texture.height() == window_surface.height
-                    {
-                        pool.0.push(texture);
-                    }
+    while let Ok(msg) = channels.control_rx.try_recv() {
+        match msg {
+            ControlMessage::ResizeBuffers {
+                width,
+                height,
+                scale,
+            } => {
+                pending.width = width;
+                pending.height = height;
+                pending.scale = scale;
+                pending.dirty = true;
+                return;
+            }
+            ControlMessage::ReleaseFrontBufferTexture { texture } => {
+                // Discard textures that no longer match the current surface size.
+                if texture.width() == window_surface.width
+                    && texture.height() == window_surface.height
+                {
+                    pool.0.push(texture);
                 }
             }
         }
-    } else {
-        return;
     }
 
     // Acquire a back buffer from the pool (provided by UI via ReleaseFrontBufferTexture)
@@ -329,35 +363,34 @@ fn draw_frame(
     // Background pass: draw while not InGame, and also as a fallback when InGame but no map is loaded yet
     let color_load_op = wgpu::LoadOp::Clear(wgpu::Color::BLACK);
 
-    // world scene pass (only in-game)
-    if *app_state.get() == AppState::InGame {
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: None,
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: color_load_op,
-                        store: wgpu::StoreOp::Store,
-                    },
-                    depth_slice: None,
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &render_hardware.scene.depth_texture.view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
+    // world scene pass (only runs while InGame)
+    {
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: None,
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: color_load_op,
+                    store: wgpu::StoreOp::Store,
+                },
+                depth_slice: None,
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &render_hardware.scene.depth_texture.view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
                 }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-            render_pass.set_stencil_reference(0);
-            render_pass.set_pipeline(&render_hardware.scene.pipeline);
-            render_pass.set_bind_group(1, &camera.camera.camera_bind_group, &[]);
-            if let Some(m) = map_renderer_state {
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+        render_pass.set_stencil_reference(0);
+        render_pass.set_pipeline(&render_hardware.scene.pipeline);
+        render_pass.set_bind_group(1, &camera.camera.camera_bind_group, &[]);
+        if let Some(m) = map_renderer_state {
                 m.map_renderer.render(&mut render_pass);
             }
             if let Some(im) = &item_batch_state {
@@ -372,16 +405,13 @@ fn draw_frame(
             if let Some(em) = &effect_manager_state {
                 em.effect_manager
                     .render(&mut render_pass, &camera.camera.camera_bind_group);
-            }
         }
     }
 
     render_hardware.queue.submit([encoder.finish()]);
 
     // Send the just-rendered back buffer to UI as front buffer
-    if let Some(ch) = channels.as_ref() {
-        let _ = ch.front_buffer_tx.try_send(back);
-    }
+    let _ = channels.front_buffer_tx.try_send(back);
 }
 
 /// Track which entity currently has a hover label so we can remove it when hover changes.

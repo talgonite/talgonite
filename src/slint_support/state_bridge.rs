@@ -8,14 +8,11 @@ use game_ui::{ActionId, LoginError};
 use slint::Model;
 
 pub fn sync_portrait_to_slint(
-    portrait: Option<ResMut<PlayerPortraitState>>,
-    win: Option<Res<SlintWindow>>,
+    mut portrait: ResMut<PlayerPortraitState>,
+    win: Res<SlintWindow>,
     mut last_version: Local<u32>,
-    renderer: Option<Res<RendererState>>,
+    renderer: Res<RendererState>,
 ) {
-    let (Some(mut portrait), Some(win), Some(renderer)) = (portrait, win, renderer) else {
-        return;
-    };
     if portrait.version == *last_version {
         return;
     }
@@ -45,14 +42,11 @@ pub fn sync_portrait_to_slint(
 }
 
 pub fn sync_lobby_portraits_to_slint(
-    portraits: Option<Res<crate::resources::LobbyPortraits>>,
-    win: Option<Res<SlintWindow>>,
+    portraits: Res<crate::resources::LobbyPortraits>,
+    win: Res<SlintWindow>,
     mut last_version: Local<u32>,
-    settings: Option<Res<crate::settings_types::Settings>>,
+    settings: Res<crate::settings_types::Settings>,
 ) {
-    let (Some(portraits), Some(win), Some(settings)) = (portraits, win, settings) else {
-        return;
-    };
     if portraits.version == *last_version {
         return;
     }
@@ -115,140 +109,203 @@ pub struct SlintWindow(pub slint::Weak<crate::MainWindow>);
 #[derive(Resource)]
 pub struct SlintAssetLoaderRes(pub SlintAssetLoader);
 
-pub fn apply_core_to_slint(
-    mut reader: MessageReader<crate::webui::plugin::UiOutbound>,
-    win: Option<Res<SlintWindow>>,
-    asset_loader: Option<Res<SlintAssetLoaderRes>>,
-    game_files: Option<Res<crate::game_files::GameFiles>>,
-    inventory: Option<Res<crate::webui::plugin::InventoryState>>,
-    ability: Option<Res<crate::webui::plugin::AbilityState>>,
-    hotbar: Option<Res<crate::ecs::hotbar::HotbarState>>,
-    hotbar_panel: Option<Res<crate::ecs::hotbar::HotbarPanelState>>,
-    lobby_portraits: Option<Res<crate::resources::LobbyPortraits>>,
-    world_list: Option<ResMut<crate::webui::plugin::WorldListState>>,
-) {
-    let Some(win) = win else {
-        return;
-    };
+pub fn show_prelogin_ui(win: Res<SlintWindow>) {
     let Some(strong) = win.0.upgrade() else {
         return;
     };
-    let Some(asset_loader) = asset_loader else {
+    reset_game_state_for_main_menu(&strong);
+    strong.set_show_prelogin(true);
+    let settings_state = slint::ComponentHandle::global::<crate::SettingsState>(&strong);
+    settings_state.set_show_settings(false);
+    strong.invoke_request_snapshot();
+}
+
+fn empty_model<T: Clone + 'static>() -> slint::ModelRc<T> {
+    slint::ModelRc::new(slint::VecModel::from(Vec::<T>::new()))
+}
+
+fn reset_game_state_for_main_menu(window: &crate::MainWindow) {
+    let game_state = slint::ComponentHandle::global::<crate::GameState>(window);
+
+    game_state.set_map_name(slint::SharedString::from(""));
+    game_state.set_player_x(0.0);
+    game_state.set_player_y(0.0);
+    game_state.set_current_hp(0);
+    game_state.set_max_hp(0);
+    game_state.set_current_mp(0);
+    game_state.set_max_mp(0);
+    game_state.set_player_id(-1);
+    game_state.set_server_name(slint::SharedString::from(""));
+    game_state.set_ping_ms(0);
+    game_state.set_player_name(slint::SharedString::from(""));
+    game_state.set_player_portrait(slint::Image::default());
+
+    game_state.set_camera_x(0.0);
+    game_state.set_camera_y(0.0);
+    game_state.set_camera_zoom(1.0);
+    game_state.set_viewport_width(0.0);
+    game_state.set_viewport_height(0.0);
+    game_state.set_display_scale(1.0);
+
+    game_state.set_world_labels(empty_model());
+    game_state.set_chat_messages(empty_model());
+    game_state.set_action_bar_messages(empty_model());
+    game_state.set_action_bar_update_counter(0);
+    game_state.set_last_whisper_target(slint::SharedString::from(""));
+
+    game_state.set_world_map_nodes(empty_model());
+    game_state.set_world_map_image(slint::Image::default());
+    game_state.set_world_map_name(slint::SharedString::from(""));
+    game_state.set_show_world_map(false);
+
+    game_state.set_menu_title(slint::SharedString::from(""));
+    game_state.set_menu_text(slint::SharedString::from(""));
+    game_state.set_menu_entries(empty_model());
+    game_state.set_menu_is_shop(false);
+    game_state.set_show_menu(false);
+    game_state.set_show_text_entry(false);
+    game_state.set_text_entry_args(slint::SharedString::from(""));
+    game_state.set_text_entry_pursuit_id(0);
+
+    game_state.set_inventory(empty_model());
+    game_state.set_skills(empty_model());
+    game_state.set_spells(empty_model());
+    game_state.set_hotbar(empty_model());
+    game_state.set_show_inventory(false);
+    game_state.set_show_skills(false);
+    game_state.set_show_spells(false);
+
+    game_state.set_show_world_list(false);
+    game_state.set_world_list_loading(false);
+    game_state.set_world_list_members(empty_model());
+    game_state.set_world_list_count(0);
+    game_state.set_world_list_total_count(0);
+
+    let mut profile = crate::ProfileData::default();
+    profile.visible = false;
+    game_state.set_profile(profile);
+
+    game_state.set_current_hotbar_panel(0);
+}
+
+pub fn apply_core_to_slint(
+    mut reader: MessageReader<crate::webui::plugin::UiOutbound>,
+    win: Res<SlintWindow>,
+    asset_loader: Res<SlintAssetLoaderRes>,
+    game_files: Res<crate::game_files::GameFiles>,
+    inventory: Res<crate::webui::plugin::InventoryState>,
+    ability: Res<crate::webui::plugin::AbilityState>,
+    hotbar: Res<crate::ecs::hotbar::HotbarState>,
+    hotbar_panel: Res<crate::ecs::hotbar::HotbarPanelState>,
+    lobby_portraits: Res<crate::resources::LobbyPortraits>,
+    world_list: Res<crate::webui::plugin::WorldListState>,
+) {
+    let Some(strong) = win.0.upgrade() else {
         return;
     };
     let asset_loader = &asset_loader.0;
 
     let mut hotbar_dirty = false;
-    if let Some(i) = &inventory {
-        if i.is_changed() {
-            if let Some(game_files) = &game_files {
-                let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
+    if inventory.is_changed() {
+        let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
 
-                if game_state.get_inventory().row_count() != 60 {
-                    game_state.set_inventory(slint::ModelRc::new(slint::VecModel::from(
-                        vec![crate::InventoryItem::default(); 60],
-                    )));
-                }
+        if game_state.get_inventory().row_count() != 60 {
+            game_state.set_inventory(slint::ModelRc::new(slint::VecModel::from(
+                vec![crate::InventoryItem::default(); 60],
+            )));
+        }
 
-                let inventory_state = game_state.get_inventory();
-                let mut slint_items = vec![crate::InventoryItem::default(); 60];
-                for item in &i.0 {
-                    let icon = asset_loader
-                        .load_item_icon(game_files, item.sprite)
-                        .unwrap_or_default();
-                    slint_items[(item.slot - 1) as usize] = crate::InventoryItem {
-                        slot: item.slot as i32,
-                        name: slint::SharedString::from(item.name.as_str()),
-                        icon,
-                        quantity: item.count as i32,
-                    };
-                }
+        let inventory_state = game_state.get_inventory();
+        let mut slint_items = vec![crate::InventoryItem::default(); 60];
+        for item in &inventory.0 {
+            let icon = asset_loader
+                .load_item_icon(&game_files, item.sprite)
+                .unwrap_or_default();
+            slint_items[(item.slot - 1) as usize] = crate::InventoryItem {
+                slot: item.slot as i32,
+                name: slint::SharedString::from(item.name.as_str()),
+                icon,
+                quantity: item.count as i32,
+            };
+        }
 
-                for (idx, item) in slint_items.into_iter().enumerate() {
-                    if let Some(m) = inventory_state.row_data(idx) {
-                        if m != item {
-                            inventory_state.set_row_data(idx, item);
-                            hotbar_dirty = true;
-                        }
-                    }
+        for (idx, item) in slint_items.into_iter().enumerate() {
+            if let Some(m) = inventory_state.row_data(idx) {
+                if m != item {
+                    inventory_state.set_row_data(idx, item);
+                    hotbar_dirty = true;
                 }
             }
         }
     }
 
-    if let Some(a) = &ability {
-        if a.is_changed() {
-            if let Some(game_files) = &game_files {
-                let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
+    if ability.is_changed() {
+        let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
 
-                if game_state.get_skills().row_count() != a.skills.len() {
-                    game_state.set_skills(slint::ModelRc::new(slint::VecModel::from(
-                        vec![crate::Skill::default(); a.skills.len()],
-                    )));
-                }
-                let skills_state = game_state.get_skills();
-                let mut si = 0;
-                for s in &a.skills {
-                    let icon = asset_loader
-                        .load_skill_icon(game_files, s.sprite)
-                        .unwrap_or_default();
-                    let skill = crate::Skill {
-                        name: slint::SharedString::from(s.name.as_str()),
-                        icon,
-                        slot: s.slot as i32,
-                        cooldown: match &s.on_cooldown {
-                            Some(cd) => crate::Cooldown {
-                                time_left: cd.time_left.as_millis() as i64,
-                                total: cd.duration.as_millis() as i64,
-                            },
-                            None => crate::Cooldown::default(),
-                        },
-                    };
+        if game_state.get_skills().row_count() != ability.skills.len() {
+            game_state.set_skills(slint::ModelRc::new(slint::VecModel::from(
+                vec![crate::Skill::default(); ability.skills.len()],
+            )));
+        }
+        let skills_state = game_state.get_skills();
+        let mut si = 0;
+        for s in &ability.skills {
+            let icon = asset_loader
+                .load_skill_icon(&game_files, s.sprite)
+                .unwrap_or_default();
+            let skill = crate::Skill {
+                name: slint::SharedString::from(s.name.as_str()),
+                icon,
+                slot: s.slot as i32,
+                cooldown: match &s.on_cooldown {
+                    Some(cd) => crate::Cooldown {
+                        time_left: cd.time_left.as_millis() as i64,
+                        total: cd.duration.as_millis() as i64,
+                    },
+                    None => crate::Cooldown::default(),
+                },
+            };
 
-                    if let Some(m) = skills_state.row_data(si) {
-                        if m != skill {
-                            skills_state.set_row_data(si, skill);
-                            hotbar_dirty = true;
-                        }
-                    }
-                    si += 1;
-                }
-
-                // Update Spells
-                if game_state.get_spells().row_count() != a.spells.len() {
-                    game_state.set_spells(slint::ModelRc::new(slint::VecModel::from(
-                        vec![crate::Spell::default(); a.spells.len()],
-                    )));
-                }
-                let spells_state = game_state.get_spells();
-                let mut spi = 0;
-                for s in &a.spells {
-                    let icon = asset_loader
-                        .load_spell_icon(game_files, s.sprite)
-                        .unwrap_or_default();
-                    let spell = crate::Spell {
-                        name: slint::SharedString::from(s.panel_name.as_str()),
-                        icon,
-                        slot: s.slot as i32,
-                        prompt: slint::SharedString::from(s.prompt.as_str()),
-                    };
-
-                    if let Some(m) = spells_state.row_data(spi) {
-                        if m != spell {
-                            spells_state.set_row_data(spi, spell);
-                            hotbar_dirty = true;
-                        }
-                    }
-                    spi += 1;
+            if let Some(m) = skills_state.row_data(si) {
+                if m != skill {
+                    skills_state.set_row_data(si, skill);
+                    hotbar_dirty = true;
                 }
             }
+            si += 1;
+        }
+
+        // Update Spells
+        if game_state.get_spells().row_count() != ability.spells.len() {
+            game_state.set_spells(slint::ModelRc::new(slint::VecModel::from(
+                vec![crate::Spell::default(); ability.spells.len()],
+            )));
+        }
+        let spells_state = game_state.get_spells();
+        let mut spi = 0;
+        for s in &ability.spells {
+            let icon = asset_loader
+                .load_spell_icon(&game_files, s.sprite)
+                .unwrap_or_default();
+            let spell = crate::Spell {
+                name: slint::SharedString::from(s.panel_name.as_str()),
+                icon,
+                slot: s.slot as i32,
+                prompt: slint::SharedString::from(s.prompt.as_str()),
+            };
+
+            if let Some(m) = spells_state.row_data(spi) {
+                if m != spell {
+                    spells_state.set_row_data(spi, spell);
+                    hotbar_dirty = true;
+                }
+            }
+            spi += 1;
         }
     }
 
-    if let Some(h) = &hotbar {
-        if h.is_changed() {
-            hotbar_dirty = true;
-        }
+    if hotbar.is_changed() {
+        hotbar_dirty = true;
     }
 
     for crate::webui::plugin::UiOutbound(payload) in reader.read() {
@@ -289,12 +346,9 @@ pub fn apply_core_to_slint(
                         continue;
                     }
                     let preview = lobby_portraits
-                        .as_ref()
-                        .and_then(|lp| {
-                            lp.textures
-                                .get(&l.id)
-                                .and_then(|t| t.clone().try_into().ok())
-                        })
+                        .textures
+                        .get(&l.id)
+                        .and_then(|t| t.clone().try_into().ok())
                         .unwrap_or_default();
                     li.push(crate::SavedLoginItem {
                         id: slint::SharedString::from(l.id.as_str()),
@@ -387,10 +441,8 @@ pub fn apply_core_to_slint(
             crate::webui::ipc::CoreToUi::WorldMapOpen { field_name, nodes } => {
                 let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
 
-                if let Some(ref game_files) = game_files {
-                    if let Ok(img) = asset_loader.load_world_map_image(game_files, &field_name) {
-                        game_state.set_world_map_image(img);
-                    }
+                if let Ok(img) = asset_loader.load_world_map_image(&game_files, &field_name) {
+                    game_state.set_world_map_image(img);
                 }
                 game_state.set_world_map_name(slint::SharedString::from(field_name.as_str()));
 
@@ -428,28 +480,26 @@ pub fn apply_core_to_slint(
                         && *entry_type != crate::webui::ipc::MenuEntryType::TextOptions;
 
                     if has_icon {
-                        if let Some(ref gf) = game_files {
-                            let result = match entry_type {
-                                crate::webui::ipc::MenuEntryType::Items => {
-                                    asset_loader.load_item_icon(gf, entry.sprite)
-                                }
-                                crate::webui::ipc::MenuEntryType::Spells => {
-                                    asset_loader.load_spell_icon(gf, entry.sprite)
-                                }
-                                crate::webui::ipc::MenuEntryType::Skills => {
-                                    asset_loader.load_skill_icon(gf, entry.sprite)
-                                }
-                                _ => Ok(slint::Image::default()),
-                            };
-                            icon = result.unwrap_or_else(|e| {
-                                tracing::warn!(
-                                    "Failed to load menu icon sprite {}: {}",
-                                    entry.sprite,
-                                    e
-                                );
-                                slint::Image::default()
-                            });
-                        }
+                        let result = match entry_type {
+                            crate::webui::ipc::MenuEntryType::Items => {
+                                asset_loader.load_item_icon(&game_files, entry.sprite)
+                            }
+                            crate::webui::ipc::MenuEntryType::Spells => {
+                                asset_loader.load_spell_icon(&game_files, entry.sprite)
+                            }
+                            crate::webui::ipc::MenuEntryType::Skills => {
+                                asset_loader.load_skill_icon(&game_files, entry.sprite)
+                            }
+                            _ => Ok(slint::Image::default()),
+                        };
+                        icon = result.unwrap_or_else(|e| {
+                            tracing::warn!(
+                                "Failed to load menu icon sprite {}: {}",
+                                entry.sprite,
+                                e
+                            );
+                            slint::Image::default()
+                        });
                     }
 
                     slint_entries.push(crate::MenuEntry {
@@ -574,142 +624,126 @@ pub fn apply_core_to_slint(
     }
 
     if hotbar_dirty {
-        if let (Some(h), Some(i), Some(a)) = (hotbar, inventory, ability) {
-            let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
+        let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
 
-            if game_state.get_hotbar().row_count() != 36 {
-                game_state.set_hotbar(slint::ModelRc::new(slint::VecModel::from(
-                    vec![crate::HotbarEntry::default(); 36],
-                )));
-            }
+        if game_state.get_hotbar().row_count() != 36 {
+            game_state.set_hotbar(slint::ModelRc::new(slint::VecModel::from(
+                vec![crate::HotbarEntry::default(); 36],
+            )));
+        }
 
-            let hotbar_state = game_state.get_hotbar();
-            let mut entry_idx = 0;
+        let hotbar_state = game_state.get_hotbar();
+        let mut entry_idx = 0;
 
-            for bar in &h.config.bars {
-                for slot in bar {
-                    let entry = if slot.action_id.is_empty() {
-                        crate::HotbarEntry::default()
-                    } else {
-                        let action_id = ActionId::from_str(&slot.action_id);
-                        let mut quantity = 0;
-                        let mut enabled = false;
-                        let mut sprite = action_id.sprite();
-                        let mut cooldown = None;
+        for bar in &hotbar.config.bars {
+            for slot in bar {
+                let entry = if slot.action_id.is_empty() {
+                    crate::HotbarEntry::default()
+                } else {
+                    let action_id = ActionId::from_str(&slot.action_id);
+                    let mut quantity = 0;
+                    let mut enabled = false;
+                    let mut sprite = action_id.sprite();
+                    let mut cooldown = None;
 
-                        let mut name = slint::SharedString::default();
+                    let mut name = slint::SharedString::default();
 
-                        match action_id.panel_type() {
-                            SlotPanelType::Item => {
-                                quantity =
-                                    i.0.iter()
-                                        .filter(|item| item.id == action_id)
-                                        .map(|item| item.count)
-                                        .sum::<u32>();
-                                enabled = quantity > 0;
-                                if let Some(item) = i.0.iter().find(|item| item.id == action_id) {
-                                    sprite = item.sprite;
-                                    name = slint::SharedString::from(item.name.as_str());
-                                }
-                                cooldown = h.cooldowns.get(&slot.action_id).cloned();
+                    match action_id.panel_type() {
+                        SlotPanelType::Item => {
+                            quantity = inventory
+                                .0
+                                .iter()
+                                .filter(|item| item.id == action_id)
+                                .map(|item| item.count)
+                                .sum::<u32>();
+                            enabled = quantity > 0;
+                            if let Some(item) = inventory.0.iter().find(|item| item.id == action_id)
+                            {
+                                sprite = item.sprite;
+                                name = slint::SharedString::from(item.name.as_str());
                             }
-                            SlotPanelType::Skill => {
-                                if let Some(skill) = a.skills.iter().find(|s| s.id == action_id) {
-                                    sprite = skill.sprite;
-                                    name = slint::SharedString::from(skill.name.as_str());
-                                    enabled = true;
-                                    cooldown = skill
-                                        .on_cooldown
-                                        .clone()
-                                        .or_else(|| h.cooldowns.get(&slot.action_id).cloned());
-                                }
-                            }
-                            SlotPanelType::Spell => {
-                                if let Some(spell) = a.spells.iter().find(|s| s.id == action_id) {
-                                    sprite = spell.sprite;
-                                    name = slint::SharedString::from(spell.panel_name.as_str());
-                                    enabled = true;
-                                    cooldown = h.cooldowns.get(&slot.action_id).cloned();
-                                }
-                            }
-                            _ => {}
+                            cooldown = hotbar.cooldowns.get(&slot.action_id).cloned();
                         }
-
-                        let icon = if let Some(ref game_files) = game_files {
-                            match action_id.panel_type() {
-                                SlotPanelType::Item => {
-                                    asset_loader.load_item_icon(game_files, sprite)
-                                }
-                                SlotPanelType::Skill => {
-                                    asset_loader.load_skill_icon(game_files, sprite)
-                                }
-                                SlotPanelType::Spell => {
-                                    asset_loader.load_spell_icon(game_files, sprite)
-                                }
-                                _ => Ok(slint::Image::default()),
+                        SlotPanelType::Skill => {
+                            if let Some(skill) = ability.skills.iter().find(|s| s.id == action_id) {
+                                sprite = skill.sprite;
+                                name = slint::SharedString::from(skill.name.as_str());
+                                enabled = true;
+                                cooldown = skill
+                                    .on_cooldown
+                                    .clone()
+                                    .or_else(|| hotbar.cooldowns.get(&slot.action_id).cloned());
                             }
-                            .unwrap_or_default()
-                        } else {
-                            slint::Image::default()
-                        };
-
-                        crate::HotbarEntry {
-                            name,
-                            icon,
-                            quantity: quantity as i32,
-                            enabled,
-                            cooldown: match cooldown {
-                                Some(cd) => crate::Cooldown {
-                                    time_left: cd.time_left.as_millis() as i64,
-                                    total: cd.duration.as_millis() as i64,
-                                },
-                                None => crate::Cooldown::default(),
-                            },
                         }
-                    };
-
-                    if let Some(m) = hotbar_state.row_data(entry_idx) {
-                        if m != entry {
-                            hotbar_state.set_row_data(entry_idx, entry);
+                        SlotPanelType::Spell => {
+                            if let Some(spell) = ability.spells.iter().find(|s| s.id == action_id) {
+                                sprite = spell.sprite;
+                                name = slint::SharedString::from(spell.panel_name.as_str());
+                                enabled = true;
+                                cooldown = hotbar.cooldowns.get(&slot.action_id).cloned();
+                            }
                         }
+                        _ => {}
                     }
-                    entry_idx += 1;
+
+                    let icon = match action_id.panel_type() {
+                        SlotPanelType::Item => asset_loader.load_item_icon(&game_files, sprite),
+                        SlotPanelType::Skill => asset_loader.load_skill_icon(&game_files, sprite),
+                        SlotPanelType::Spell => asset_loader.load_spell_icon(&game_files, sprite),
+                        _ => Ok(slint::Image::default()),
+                    }
+                    .unwrap_or_default();
+
+                    crate::HotbarEntry {
+                        name,
+                        icon,
+                        quantity: quantity as i32,
+                        enabled,
+                        cooldown: match cooldown {
+                            Some(cd) => crate::Cooldown {
+                                time_left: cd.time_left.as_millis() as i64,
+                                total: cd.duration.as_millis() as i64,
+                            },
+                            None => crate::Cooldown::default(),
+                        },
+                    }
+                };
+
+                if let Some(m) = hotbar_state.row_data(entry_idx) {
+                    if m != entry {
+                        hotbar_state.set_row_data(entry_idx, entry);
+                    }
                 }
+                entry_idx += 1;
             }
         }
     }
 
-    if let Some(panel) = hotbar_panel {
-        if panel.is_changed() {
-            let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
-            game_state.set_current_hotbar_panel(panel.current_panel as i32);
-        }
+    if hotbar_panel.is_changed() {
+        let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
+        game_state.set_current_hotbar_panel(hotbar_panel.current_panel as i32);
     }
 
-    if let Some(wl) = world_list {
-        if wl.is_changed() {
-            let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
-            game_state.set_world_list_loading(false);
+    if world_list.is_changed() {
+        let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
+        game_state.set_world_list_loading(false);
 
-            let mut slint_members = Vec::with_capacity(wl.filtered.len());
-            for m in &wl.filtered {
-                slint_members.push(crate::WorldListMemberUi {
-                    name: slint::SharedString::from(m.name.as_str()),
-                    title: slint::SharedString::from(m.title.as_str()),
-                    class: slint::SharedString::from(m.class.as_str()),
-                    color: slint::Color::from_argb_f32(
-                        m.color[3], m.color[0], m.color[1], m.color[2],
-                    ),
-                    is_master: m.is_master,
-                });
-            }
+        let mut slint_members = Vec::with_capacity(world_list.filtered.len());
+        for m in &world_list.filtered {
+            slint_members.push(crate::WorldListMemberUi {
+                name: slint::SharedString::from(m.name.as_str()),
+                title: slint::SharedString::from(m.title.as_str()),
+                class: slint::SharedString::from(m.class.as_str()),
+                color: slint::Color::from_argb_f32(m.color[3], m.color[0], m.color[1], m.color[2]),
+                is_master: m.is_master,
+            });
+        }
 
-            game_state
-                .set_world_list_members(slint::ModelRc::new(slint::VecModel::from(slint_members)));
-            game_state.set_world_list_count(wl.filtered.len() as i32);
-            if let Some(raw) = &wl.raw {
-                game_state.set_world_list_total_count(raw.world_member_count as i32);
-            }
+        game_state
+            .set_world_list_members(slint::ModelRc::new(slint::VecModel::from(slint_members)));
+        game_state.set_world_list_count(world_list.filtered.len() as i32);
+        if let Some(raw) = &world_list.raw {
+            game_state.set_world_list_total_count(raw.world_member_count as i32);
         }
     }
 }
@@ -728,12 +762,9 @@ impl Default for SlintUiChannels {
 }
 
 pub fn drain_slint_inbound(
-    ch: Option<Res<SlintUiChannels>>,
+    ch: Res<SlintUiChannels>,
     mut writer: MessageWriter<crate::webui::plugin::UiInbound>,
 ) {
-    let Some(ch) = ch else {
-        return;
-    };
     while let Ok(msg) = ch.rx.try_recv() {
         writer.write(crate::webui::plugin::UiInbound(msg));
     }
@@ -742,12 +773,12 @@ pub fn drain_slint_inbound(
 /// Syncs world labels and camera state to Slint every frame.
 /// This enables Slint to render entity names, speech bubbles, etc. in screen space.
 pub fn sync_world_labels_to_slint(
-    win: Option<Res<SlintWindow>>,
-    camera: Option<Res<crate::Camera>>,
-    window_surface: Option<NonSend<crate::WindowSurface>>,
-    zoom_state: Option<Res<ZoomState>>,
-    player_attrs: Option<Res<crate::resources::PlayerAttributes>>,
-    current_session: Option<Res<crate::CurrentSession>>,
+    win: Res<SlintWindow>,
+    camera: Res<crate::Camera>,
+    window_surface: NonSend<crate::WindowSurface>,
+    zoom_state: Res<ZoomState>,
+    player_attrs: Res<crate::resources::PlayerAttributes>,
+    current_session: Res<crate::CurrentSession>,
     local_player_query: Query<
         (
             &crate::ecs::components::Player,
@@ -764,33 +795,22 @@ pub fn sync_world_labels_to_slint(
         Option<&crate::ecs::components::HealthBar>,
     )>,
 ) {
-    let Some(win) = win else {
-        return;
-    };
     let Some(strong) = win.0.upgrade() else {
-        return;
-    };
-    let Some(camera) = camera else {
-        return;
-    };
-    let Some(surface) = window_surface else {
         return;
     };
 
     let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
 
     // Update player attributes (HP/MP)
-    if let Some(attrs) = player_attrs {
-        game_state.set_current_hp(attrs.current_hp as i32);
-        game_state.set_max_hp(attrs.max_hp as i32);
-        game_state.set_current_mp(attrs.current_mp as i32);
-        game_state.set_max_mp(attrs.max_mp as i32);
-    }
+    game_state.set_current_hp(player_attrs.current_hp as i32);
+    game_state.set_max_hp(player_attrs.max_hp as i32);
+    game_state.set_current_mp(player_attrs.current_mp as i32);
+    game_state.set_max_mp(player_attrs.max_mp as i32);
 
     // Update server name
-    if let Some(session) = current_session {
-        game_state.set_server_name(slint::SharedString::from(session.server_url.as_str()));
-    }
+    game_state.set_server_name(slint::SharedString::from(
+        current_session.server_url.as_str(),
+    ));
 
     // Update player name and ID
     if let Some((player, entity_id)) = local_player_query.iter().next() {
@@ -803,21 +823,17 @@ pub fn sync_world_labels_to_slint(
     game_state.set_camera_x(cam.position.x);
     game_state.set_camera_y(cam.position.y);
     game_state.set_camera_zoom(cam.zoom);
-    game_state.set_viewport_width(surface.width as f32);
-    game_state.set_viewport_height(surface.height as f32);
+    game_state.set_viewport_width(window_surface.width as f32);
+    game_state.set_viewport_height(window_surface.height as f32);
 
     // Calculate display scale: how much the render texture is scaled up for display
     // For pixel-perfect rendering: user_zoom (e.g., 2.0 means render at half size, display at 2x)
     // For non-pixel-perfect: 1.0 (render at display size)
-    let display_scale = zoom_state
-        .map(|zs| {
-            if zs.is_pixel_perfect {
-                zs.user_zoom
-            } else {
-                1.0
-            }
-        })
-        .unwrap_or(1.0);
+    let display_scale = if zoom_state.is_pixel_perfect {
+        zoom_state.user_zoom
+    } else {
+        1.0
+    };
     game_state.set_display_scale(display_scale);
 
     // Collect all label types from all entities
@@ -887,12 +903,9 @@ pub fn sync_world_labels_to_slint(
 }
 
 pub fn sync_map_name_to_slint(
-    win: Option<Res<SlintWindow>>,
+    win: Res<SlintWindow>,
     map_query: Query<&crate::ecs::components::GameMap, Changed<crate::ecs::components::GameMap>>,
 ) {
-    let Some(win) = win else {
-        return;
-    };
     let Some(strong) = win.0.upgrade() else {
         return;
     };
@@ -905,11 +918,8 @@ pub fn sync_map_name_to_slint(
 
 pub fn sync_installer_to_slint(
     mut events: MessageReader<crate::plugins::installer::InstallerProgressEvent>,
-    win: Option<Res<SlintWindow>>,
+    win: Res<SlintWindow>,
 ) {
-    let Some(win) = win else {
-        return;
-    };
     let Some(strong) = win.0.upgrade() else {
         return;
     };

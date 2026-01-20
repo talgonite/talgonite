@@ -208,3 +208,47 @@ export component KeyBindingRow inherits Rectangle {
         }
     }
 }
+
+export component MenuButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    in property <bool> danger: false;
+    callback clicked();
+    height: 32px;
+    background: {
+        if selected {
+            Theme.accent-subtle
+        } else if touch.has-hover {
+            Theme.surface-secondary
+        } else {
+            Theme.surface-card
+        }
+    };
+    border-radius: Theme.radius-small;
+    border-width: 1px;
+    border-color: {
+        if danger {
+            Theme.border-danger
+        } else if selected {
+            Theme.accent-muted
+        } else {
+            Theme.border-muted
+        }
+    };
+
+    Text {
+        text: label;
+        font-size: Theme.font-size-medium;
+        font-weight: selected ? 700 : 500;
+        color: danger ? Theme.danger-foreground : (selected ? Theme.foreground-strong : Theme.foreground);
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}

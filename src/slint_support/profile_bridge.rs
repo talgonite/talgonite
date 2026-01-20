@@ -56,52 +56,41 @@ pub fn build_equipment_slot(
 
 /// System that syncs PlayerProfileState to Slint whenever it changes
 pub fn sync_profile_to_slint(
-    win: Option<Res<SlintWindow>>,
-    asset_loader: Option<Res<SlintAssetLoaderRes>>,
-    game_files: Option<Res<crate::game_files::GameFiles>>,
-    eq_state: Option<Res<crate::webui::plugin::EquipmentState>>,
-    profile_state: Option<Res<crate::webui::plugin::PlayerProfileState>>,
-    portrait_state: Option<ResMut<crate::resources::ProfilePortraitState>>,
-    renderer: Option<Res<RendererState>>,
+    win: Res<SlintWindow>,
+    asset_loader: Res<SlintAssetLoaderRes>,
+    game_files: Res<crate::game_files::GameFiles>,
+    eq_state: Res<crate::webui::plugin::EquipmentState>,
+    profile_state: Res<crate::webui::plugin::PlayerProfileState>,
+    mut portrait_state: ResMut<crate::resources::ProfilePortraitState>,
+    renderer: Res<RendererState>,
     mut last_portrait_version: Local<u32>,
 ) {
-    let Some(win) = win else {
-        return;
-    };
     let Some(strong) = win.0.upgrade() else {
-        return;
-    };
-    let Some(ps) = profile_state else {
-        return;
-    };
-    let Some(asset_loader) = asset_loader else {
         return;
     };
     let asset_loader = &asset_loader.0;
 
     let mut portrait_image = None;
-    if let (Some(mut portrait), Some(renderer)) = (portrait_state, renderer) {
-        if portrait.version != *last_portrait_version {
-            let profile_size = 128;
-            let next_texture = rendering::texture::Texture::create_render_texture(
-                &renderer.device,
-                "profile_portrait",
-                profile_size,
-                profile_size,
-                wgpu::TextureFormat::Rgba8Unorm,
-            );
+    if portrait_state.version != *last_portrait_version {
+        let profile_size = 128;
+        let next_texture = rendering::texture::Texture::create_render_texture(
+            &renderer.device,
+            "profile_portrait",
+            profile_size,
+            profile_size,
+            wgpu::TextureFormat::Rgba8Unorm,
+        );
 
-            let old_texture = std::mem::replace(&mut portrait.texture, next_texture.texture);
-            portrait.view = next_texture.view;
+        let old_texture = std::mem::replace(&mut portrait_state.texture, next_texture.texture);
+        portrait_state.view = next_texture.view;
 
-            if let Ok(image) = old_texture.try_into() {
-                portrait_image = Some(image);
-            }
-            *last_portrait_version = portrait.version;
+        if let Ok(image) = old_texture.try_into() {
+            portrait_image = Some(image);
         }
+        *last_portrait_version = portrait_state.version;
     }
 
-    if ps.is_changed() || portrait_image.is_some() {
+    if profile_state.is_changed() || portrait_image.is_some() {
         let game_state = slint::ComponentHandle::global::<GameState>(&strong);
         let mut profile = game_state.get_profile();
 
@@ -109,18 +98,18 @@ pub fn sync_profile_to_slint(
             profile.preview = img;
         }
 
-        if !ps.name.is_empty() {
-            profile.name = slint::SharedString::from(ps.name.as_str());
+        if !profile_state.name.is_empty() {
+            profile.name = slint::SharedString::from(profile_state.name.as_str());
         }
-        profile.class = slint::SharedString::from(ps.class.as_str());
-        profile.guild = slint::SharedString::from(ps.guild.as_str());
-        profile.guild_rank = slint::SharedString::from(ps.guild_rank.as_str());
-        profile.title = slint::SharedString::from(ps.title.as_str());
-        profile.town = slint::SharedString::from(format!("{:?}", ps.nation));
-        profile.group_requests_enabled = ps.group_open;
-        profile.profile_text = slint::SharedString::from(ps.profile_text.as_str());
+        profile.class = slint::SharedString::from(profile_state.class.as_str());
+        profile.guild = slint::SharedString::from(profile_state.guild.as_str());
+        profile.guild_rank = slint::SharedString::from(profile_state.guild_rank.as_str());
+        profile.title = slint::SharedString::from(profile_state.title.as_str());
+        profile.town = slint::SharedString::from(format!("{:?}", profile_state.nation));
+        profile.group_requests_enabled = profile_state.group_open;
+        profile.profile_text = slint::SharedString::from(profile_state.profile_text.as_str());
 
-        let legend_marks: Vec<LegendMarkData> = ps
+        let legend_marks: Vec<LegendMarkData> = profile_state
             .legend_marks
             .iter()
             .map(|m| LegendMarkData {
@@ -132,48 +121,44 @@ pub fn sync_profile_to_slint(
         profile.legend_marks = slint::ModelRc::new(slint::VecModel::from(legend_marks));
 
         // Sync equipment as well if changed
-        if let Some(gf) = game_files.as_ref() {
-            let is_other_player = !ps.name.is_empty();
+        let is_other_player = !profile_state.name.is_empty();
 
-            let make_slot = |slot_type: EquipmentSlot| {
-                if is_other_player {
-                    if let Some(item) = ps.equipment.get(&slot_type) {
-                        return build_equipment_slot(asset_loader, gf, item.sprite, None, 0, 0);
-                    }
-                } else if let Some(eq) = eq_state.as_ref() {
-                    if let Some(item) = eq.0.get(&slot_type) {
-                        return build_equipment_slot(
-                            asset_loader,
-                            gf,
-                            item.sprite,
-                            Some(&item.name),
-                            item.current_durability,
-                            item.max_durability,
-                        );
-                    }
+        let make_slot = |slot_type: EquipmentSlot| {
+            if is_other_player {
+                if let Some(item) = profile_state.equipment.get(&slot_type) {
+                    return build_equipment_slot(asset_loader, &game_files, item.sprite, None, 0, 0);
                 }
-                EquipmentSlotData::default()
-            };
+            } else if let Some(item) = eq_state.0.get(&slot_type) {
+                return build_equipment_slot(
+                    asset_loader,
+                    &game_files,
+                    item.sprite,
+                    Some(&item.name),
+                    item.current_durability,
+                    item.max_durability,
+                );
+            }
+            EquipmentSlotData::default()
+        };
 
-            profile.eq_weapon = make_slot(EquipmentSlot::Weapon);
-            profile.eq_armor = make_slot(EquipmentSlot::Armor);
-            profile.eq_shield = make_slot(EquipmentSlot::Shield);
-            profile.eq_helmet = make_slot(EquipmentSlot::Helmet);
-            profile.eq_earrings = make_slot(EquipmentSlot::Earrings);
-            profile.eq_necklace = make_slot(EquipmentSlot::Necklace);
-            profile.eq_left_ring = make_slot(EquipmentSlot::LeftRing);
-            profile.eq_right_ring = make_slot(EquipmentSlot::RightRing);
-            profile.eq_left_gauntlet = make_slot(EquipmentSlot::LeftGaunt);
-            profile.eq_right_gauntlet = make_slot(EquipmentSlot::RightGaunt);
-            profile.eq_belt = make_slot(EquipmentSlot::Belt);
-            profile.eq_greaves = make_slot(EquipmentSlot::Greaves);
-            profile.eq_boots = make_slot(EquipmentSlot::Boots);
-            profile.eq_accessory1 = make_slot(EquipmentSlot::Accessory1);
-            profile.eq_accessory2 = make_slot(EquipmentSlot::Accessory2);
-            profile.eq_overcoat = make_slot(EquipmentSlot::Overcoat);
-            profile.eq_over_helmet = make_slot(EquipmentSlot::OverHelm);
-            profile.eq_over_armor = make_slot(EquipmentSlot::Accessory3);
-        }
+        profile.eq_weapon = make_slot(EquipmentSlot::Weapon);
+        profile.eq_armor = make_slot(EquipmentSlot::Armor);
+        profile.eq_shield = make_slot(EquipmentSlot::Shield);
+        profile.eq_helmet = make_slot(EquipmentSlot::Helmet);
+        profile.eq_earrings = make_slot(EquipmentSlot::Earrings);
+        profile.eq_necklace = make_slot(EquipmentSlot::Necklace);
+        profile.eq_left_ring = make_slot(EquipmentSlot::LeftRing);
+        profile.eq_right_ring = make_slot(EquipmentSlot::RightRing);
+        profile.eq_left_gauntlet = make_slot(EquipmentSlot::LeftGaunt);
+        profile.eq_right_gauntlet = make_slot(EquipmentSlot::RightGaunt);
+        profile.eq_belt = make_slot(EquipmentSlot::Belt);
+        profile.eq_greaves = make_slot(EquipmentSlot::Greaves);
+        profile.eq_boots = make_slot(EquipmentSlot::Boots);
+        profile.eq_accessory1 = make_slot(EquipmentSlot::Accessory1);
+        profile.eq_accessory2 = make_slot(EquipmentSlot::Accessory2);
+        profile.eq_overcoat = make_slot(EquipmentSlot::Overcoat);
+        profile.eq_over_helmet = make_slot(EquipmentSlot::OverHelm);
+        profile.eq_over_armor = make_slot(EquipmentSlot::Accessory3);
 
         game_state.set_profile(profile);
     }
@@ -182,20 +167,14 @@ pub fn sync_profile_to_slint(
 /// System that handles ShowSelfProfileEvent to display the profile panel
 pub fn handle_show_self_profile(
     mut reader: MessageReader<ShowSelfProfileEvent>,
-    win: Option<Res<SlintWindow>>,
-    asset_loader: Option<Res<SlintAssetLoaderRes>>,
-    game_files: Option<Res<crate::game_files::GameFiles>>,
-    eq_state: Option<Res<crate::webui::plugin::EquipmentState>>,
-    mut profile_state: Option<ResMut<crate::webui::plugin::PlayerProfileState>>,
-    mut portrait_state: Option<ResMut<crate::resources::ProfilePortraitState>>,
+    win: Res<SlintWindow>,
+    asset_loader: Res<SlintAssetLoaderRes>,
+    game_files: Res<crate::game_files::GameFiles>,
+    eq_state: Res<crate::webui::plugin::EquipmentState>,
+    mut profile_state: ResMut<crate::webui::plugin::PlayerProfileState>,
+    mut portrait_state: ResMut<crate::resources::ProfilePortraitState>,
 ) {
-    let Some(win) = win else {
-        return;
-    };
     let Some(strong) = win.0.upgrade() else {
-        return;
-    };
-    let Some(asset_loader) = asset_loader else {
         return;
     };
     let asset_loader = &asset_loader.0;
@@ -207,28 +186,20 @@ pub fn handle_show_self_profile(
             ShowSelfProfileEvent::OtherRequested => {
                 // When requesting another player, clear stale state and HIDE the panel
                 // until we get the actual data from the server.
-                if let Some(ps) = profile_state.as_mut() {
-                    ps.clear();
-                }
+                profile_state.clear();
                 let mut profile = game_state.get_profile();
                 profile.visible = false;
                 game_state.set_profile(profile);
 
-                if let Some(ps_portrait) = portrait_state.as_mut() {
-                    ps_portrait.dirty = true;
-                }
+                portrait_state.dirty = true;
                 continue;
             }
             ShowSelfProfileEvent::SelfRequested => {
                 // When requesting our own profile, clear the "other player" state so we use
                 // our own local EquipmentState and Name optimistically.
-                if let Some(ps) = profile_state.as_mut() {
-                    ps.clear();
-                }
+                profile_state.clear();
 
-                if let Some(ps_portrait) = portrait_state.as_mut() {
-                    ps_portrait.dirty = true;
-                }
+                portrait_state.dirty = true;
             }
             ShowSelfProfileEvent::SelfUpdate => {
                 // If this is a response from the server but the user closed the panel already, don't reopen it
@@ -237,15 +208,11 @@ pub fn handle_show_self_profile(
                     continue;
                 }
 
-                if let Some(ps_portrait) = portrait_state.as_mut() {
-                    ps_portrait.dirty = true;
-                }
+                portrait_state.dirty = true;
             }
             ShowSelfProfileEvent::OtherUpdate => {
                 // Server sent detail for another player - update and ensure it's handled below
-                if let Some(ps_portrait) = portrait_state.as_mut() {
-                    ps_portrait.dirty = true;
-                }
+                portrait_state.dirty = true;
             }
         }
 
@@ -257,92 +224,83 @@ pub fn handle_show_self_profile(
             is_self: true,
             name: player_name,
             preview: portrait_state
-                .as_ref()
-                .and_then(|p| p.texture.clone().try_into().ok())
+                .texture
+                .clone()
+                .try_into()
                 .unwrap_or_default(),
             ..Default::default()
         };
 
         // Populate profile fields from state
-        if let Some(ps) = profile_state.as_ref() {
-            if !ps.name.is_empty() {
-                profile.name = slint::SharedString::from(ps.name.as_str());
-            }
-            profile.is_self = ps.is_self;
-            profile.class = slint::SharedString::from(ps.class.as_str());
-            profile.guild = slint::SharedString::from(ps.guild.as_str());
-            profile.guild_rank = slint::SharedString::from(ps.guild_rank.as_str());
-            profile.title = slint::SharedString::from(ps.title.as_str());
-            profile.town = slint::SharedString::from(format!("{:?}", ps.nation));
-            profile.group_requests_enabled = ps.group_open;
-            profile.profile_text = slint::SharedString::from(ps.profile_text.as_str());
-
-            let legend_marks: Vec<LegendMarkData> = ps
-                .legend_marks
-                .iter()
-                .map(|m| LegendMarkData {
-                    icon_name: slint::SharedString::from(format!("{:?}", m.icon)),
-                    color: legend_mark_color(&format!("{:?}", m.color)),
-                    text: slint::SharedString::from(m.text.as_str()),
-                })
-                .collect();
-            profile.legend_marks = slint::ModelRc::new(slint::VecModel::from(legend_marks));
+        if !profile_state.name.is_empty() {
+            profile.name = slint::SharedString::from(profile_state.name.as_str());
         }
+        profile.is_self = profile_state.is_self;
+        profile.class = slint::SharedString::from(profile_state.class.as_str());
+        profile.guild = slint::SharedString::from(profile_state.guild.as_str());
+        profile.guild_rank = slint::SharedString::from(profile_state.guild_rank.as_str());
+        profile.title = slint::SharedString::from(profile_state.title.as_str());
+        profile.town = slint::SharedString::from(format!("{:?}", profile_state.nation));
+        profile.group_requests_enabled = profile_state.group_open;
+        profile.profile_text = slint::SharedString::from(profile_state.profile_text.as_str());
+
+        let legend_marks: Vec<LegendMarkData> = profile_state
+            .legend_marks
+            .iter()
+            .map(|m| LegendMarkData {
+                icon_name: slint::SharedString::from(format!("{:?}", m.icon)),
+                color: legend_mark_color(&format!("{:?}", m.color)),
+                text: slint::SharedString::from(m.text.as_str()),
+            })
+            .collect();
+        profile.legend_marks = slint::ModelRc::new(slint::VecModel::from(legend_marks));
 
         // Populate equipment if available
-        if let Some(gf) = game_files.as_ref() {
-            let is_other_player = profile_state
-                .as_ref()
-                .map_or(false, |ps| !ps.name.is_empty());
+        let is_other_player = !profile_state.name.is_empty();
 
-            let make_slot = |slot_type: EquipmentSlot| {
-                // Try to get from profile_state first (set for other players' profiles)
-                if is_other_player {
-                    if let Some(ps) = profile_state.as_ref() {
-                        if let Some(item) = ps.equipment.get(&slot_type) {
-                            return build_equipment_slot(asset_loader, gf, item.sprite, None, 0, 0);
-                        }
-                    }
-                    return EquipmentSlotData::default();
+        let make_slot = |slot_type: EquipmentSlot| {
+            // Try to get from profile_state first (set for other players' profiles)
+            if is_other_player {
+                if let Some(item) = profile_state.equipment.get(&slot_type) {
+                    return build_equipment_slot(asset_loader, &game_files, item.sprite, None, 0, 0);
                 }
+                return EquipmentSlotData::default();
+            }
 
-                // Fall back to local player's equipment state (only for self profile)
-                if let Some(eq) = eq_state.as_ref() {
-                    if let Some(item) = eq.0.get(&slot_type) {
-                        return build_equipment_slot(
-                            asset_loader,
-                            gf,
-                            item.sprite,
-                            Some(&item.name),
-                            item.current_durability,
-                            item.max_durability,
-                        );
-                    }
-                }
+            // Fall back to local player's equipment state (only for self profile)
+            if let Some(item) = eq_state.0.get(&slot_type) {
+                return build_equipment_slot(
+                    asset_loader,
+                    &game_files,
+                    item.sprite,
+                    Some(&item.name),
+                    item.current_durability,
+                    item.max_durability,
+                );
+            }
 
-                EquipmentSlotData::default()
-            };
+            EquipmentSlotData::default()
+        };
 
-            profile.eq_weapon = make_slot(EquipmentSlot::Weapon);
-            profile.eq_armor = make_slot(EquipmentSlot::Armor);
-            profile.eq_shield = make_slot(EquipmentSlot::Shield);
-            profile.eq_helmet = make_slot(EquipmentSlot::Helmet);
-            profile.eq_earrings = make_slot(EquipmentSlot::Earrings);
-            profile.eq_necklace = make_slot(EquipmentSlot::Necklace);
-            profile.eq_left_ring = make_slot(EquipmentSlot::LeftRing);
-            profile.eq_right_ring = make_slot(EquipmentSlot::RightRing);
-            profile.eq_left_gauntlet = make_slot(EquipmentSlot::LeftGaunt);
-            profile.eq_right_gauntlet = make_slot(EquipmentSlot::RightGaunt);
-            profile.eq_belt = make_slot(EquipmentSlot::Belt);
-            profile.eq_greaves = make_slot(EquipmentSlot::Greaves);
-            profile.eq_boots = make_slot(EquipmentSlot::Boots);
-            profile.eq_accessory1 = make_slot(EquipmentSlot::Accessory1);
-            profile.eq_accessory2 = make_slot(EquipmentSlot::Accessory2);
-            profile.eq_overcoat = make_slot(EquipmentSlot::Overcoat);
-            profile.eq_over_helmet = make_slot(EquipmentSlot::OverHelm);
-            // Accessory3 -> eq_over_armor (best guess for now)
-            profile.eq_over_armor = make_slot(EquipmentSlot::Accessory3);
-        }
+        profile.eq_weapon = make_slot(EquipmentSlot::Weapon);
+        profile.eq_armor = make_slot(EquipmentSlot::Armor);
+        profile.eq_shield = make_slot(EquipmentSlot::Shield);
+        profile.eq_helmet = make_slot(EquipmentSlot::Helmet);
+        profile.eq_earrings = make_slot(EquipmentSlot::Earrings);
+        profile.eq_necklace = make_slot(EquipmentSlot::Necklace);
+        profile.eq_left_ring = make_slot(EquipmentSlot::LeftRing);
+        profile.eq_right_ring = make_slot(EquipmentSlot::RightRing);
+        profile.eq_left_gauntlet = make_slot(EquipmentSlot::LeftGaunt);
+        profile.eq_right_gauntlet = make_slot(EquipmentSlot::RightGaunt);
+        profile.eq_belt = make_slot(EquipmentSlot::Belt);
+        profile.eq_greaves = make_slot(EquipmentSlot::Greaves);
+        profile.eq_boots = make_slot(EquipmentSlot::Boots);
+        profile.eq_accessory1 = make_slot(EquipmentSlot::Accessory1);
+        profile.eq_accessory2 = make_slot(EquipmentSlot::Accessory2);
+        profile.eq_overcoat = make_slot(EquipmentSlot::Overcoat);
+        profile.eq_over_helmet = make_slot(EquipmentSlot::OverHelm);
+        // Accessory3 -> eq_over_armor (best guess for now)
+        profile.eq_over_armor = make_slot(EquipmentSlot::Accessory3);
 
         game_state.set_profile(profile);
         tracing::info!("Showing self profile panel");
