@@ -6,6 +6,20 @@ repository = "https://github.com/talgonite/talgonite"
 authors = ["Chris Rohlfs"]
 description = "Talgonite is a Darkages client"
 
+[package.metadata.dist]
+apt-packages = [
+    "libasound2-dev",
+    "libudev-dev",
+    "libwayland-dev",
+    "libxkbcommon-dev",
+    "libx11-dev",
+    "libxcursor-dev",
+    "libxi-dev",
+    "libxrandr-dev",
+    "libxinerama-dev",
+    "pkg-config",
+]
+
 [package.metadata.wix]
 upgrade-guid = "8797ED34-0315-470B-83DD-E9BAA9577679"
 path-guid = "3ACCB3E0-68DA-4089-8B96-9E4424618FC4"
