@@ -23,7 +23,7 @@ use std::{
 use tracing::{debug, info};
 
 const HEADER_SIZE_TO_SKIP: u64 = 1024 * 50;
-const VERSION_BUF: &[u8] = b"741_0";
+const VERSION_BUF: &[u8] = b"741_1";
 
 pub trait InstallProgress: Send + Sync {
     fn report(&self, percent: f32, message: String);
