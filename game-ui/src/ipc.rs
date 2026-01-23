@@ -87,6 +87,8 @@ pub enum UiToCore {
         /// For shop menus: the item name to send as Topics. Empty for text menus.
         name: String,
     },
+    /// Close the NPC dialog.
+    MenuClose,
     SettingsChange {
         xray_size: u8,
     },
@@ -195,16 +197,20 @@ pub enum CoreToUi {
     DisplayMenu {
         title: String,
         text: String,
+        sprite_id: u16,
         /// What type of content - determines how icons are loaded
         entry_type: MenuEntryType,
         /// Pursuit ID for shop responses (0 for text menus)
         pursuit_id: u16,
         entries: Vec<MenuEntryUi>,
     },
+    /// Close any open menu/dialog
+    DisplayMenuClose,
     /// Text entry dialog (e.g., quantity input)
     DisplayMenuTextEntry {
         title: String,
         text: String,
+        sprite_id: u16,
         /// Context arg (e.g., item name)
         args: String,
         pursuit_id: u16,

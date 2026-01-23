@@ -23,7 +23,7 @@ use rendering::scene::utils::screen_to_iso_tile;
 use super::keyring;
 use super::settings::{SavedCredential, SavedCredentialPublic, ServerEntry, SettingsFile};
 
-#[derive(Resource, FromWorld)]
+#[derive(Resource, Default)]
 pub struct ActiveMenuContext {
     pub entity_type: Option<EntityType>,
     pub entity_id: u32,
@@ -32,6 +32,7 @@ pub struct ActiveMenuContext {
     pub pursuit_id: u16,
     pub menu_type: Option<MenuType>,
     pub args: String,
+    pub dialog_id: Option<u16>,
 }
 
 #[derive(Message)]
@@ -203,6 +204,27 @@ fn handle_ui_inbound_ingame(
                 });
             }
             UiToCore::MenuSelect { id, name } => {
+                if let Some(dialog_id) = menu_ctx.dialog_id {
+                    if let Some(entity_type) = menu_ctx.entity_type {
+                        let args = if *id == dialog_id {
+                            packets::client::DialogInteractionArgs::TextResponse {
+                                args: vec![name.clone()],
+                            }
+                        } else {
+                            packets::client::DialogInteractionArgs::None
+                        };
+
+                        outbox.send(&packets::client::DialogInteraction {
+                            entity_type,
+                            entity_id: menu_ctx.entity_id,
+                            pursuit_id: menu_ctx.pursuit_id,
+                            dialog_id: *id,
+                            args,
+                        });
+                    }
+                    continue;
+                }
+
                 let (pursuit_id, args) = if menu_ctx.pursuit_id > 0 {
                     let is_slot_interaction = matches!(
                         menu_ctx.menu_type,
@@ -240,6 +262,21 @@ fn handle_ui_inbound_ingame(
                         args,
                     });
                 }
+            }
+            UiToCore::MenuClose => {
+                if let Some(dialog_id) = menu_ctx.dialog_id {
+                    if let Some(entity_type) = menu_ctx.entity_type {
+                        outbox.send(&packets::client::DialogInteraction {
+                            entity_type,
+                            entity_id: menu_ctx.entity_id,
+                            pursuit_id: menu_ctx.pursuit_id,
+                            dialog_id,
+                            args: packets::client::DialogInteractionArgs::None,
+                        });
+                    }
+                }
+                // Dialog closed by user - clear menu context
+                tracing::debug!("MenuClose requested");
             }
             UiToCore::ChatSubmit { mode, text, target } => {
                 let body = text.trim();
@@ -1017,6 +1054,60 @@ fn bridge_session_events(
                 world_list_state.raw = Some(pkt.clone());
                 world_list_state.version = world_list_state.version.wrapping_add(1);
             }
+            SessionEvent::DisplayDialog(pkt) => {
+                match pkt {
+                    packets::server::DisplayDialog::Show { header, payload } => {
+                        menu_ctx.entity_type = Some(header.entity_type);
+                        menu_ctx.entity_id = header.source_id;
+                        menu_ctx.pursuit_id = header.pursuit_id;
+                        menu_ctx.dialog_id = Some(header.dialog_id);
+                        menu_ctx.menu_type = None;
+                        menu_ctx.args.clear();
+
+                        let mut entries = Vec::new();
+                        // Put Previous above Next as requested
+                        if header.has_previous_button {
+                            entries.push(MenuEntryUi::text_option(
+                                "Previous".to_string(),
+                                header.dialog_id - 1,
+                            ));
+                        }
+
+                        match payload {
+                            packets::server::DisplayDialogPayload::DialogMenu { options }
+                            | packets::server::DisplayDialogPayload::CreatureMenu { options } => {
+                                for option in options {
+                                    entries.push(MenuEntryUi::text_option(
+                                        option.clone(),
+                                        header.dialog_id,
+                                    ));
+                                }
+                            }
+                            _ => {}
+                        }
+
+                        if header.has_next_button {
+                            entries.push(MenuEntryUi::text_option(
+                                "Next".to_string(),
+                                header.dialog_id + 1,
+                            ));
+                        }
+
+                        outbound.write(UiOutbound(CoreToUi::DisplayMenu {
+                            title: header.name.clone(),
+                            text: header.text.clone(),
+                            sprite_id: header.sprite,
+                            entry_type: crate::webui::ipc::MenuEntryType::TextOptions,
+                            pursuit_id: header.pursuit_id,
+                            entries,
+                        }));
+                    }
+                    packets::server::DisplayDialog::Close => {
+                        menu_ctx.dialog_id = None;
+                        outbound.write(UiOutbound(CoreToUi::DisplayMenuClose));
+                    }
+                }
+            }
             SessionEvent::SelfProfile(pkt) => {
                 profile_state.is_self = true;
                 profile_state.entity_id = None; // Local player
@@ -1074,6 +1165,7 @@ fn bridge_session_events(
                 menu_ctx.entity_id = pkt.header.source_id;
                 menu_ctx.menu_type = Some(pkt.menu_type);
                 menu_ctx.args.clear();
+                menu_ctx.dialog_id = None;
 
                 let mut entries = Vec::new();
                 let mut entry_type = crate::webui::ipc::MenuEntryType::TextOptions;
@@ -1190,6 +1282,7 @@ fn bridge_session_events(
                     outbound.write(UiOutbound(CoreToUi::DisplayMenuTextEntry {
                         title: pkt.header.name.clone(),
                         text: pkt.header.text.clone(),
+                        sprite_id: pkt.header.sprite,
                         args: menu_ctx.args.clone(),
                         pursuit_id: menu_ctx.pursuit_id,
                     }));
@@ -1197,6 +1290,7 @@ fn bridge_session_events(
                     outbound.write(UiOutbound(CoreToUi::DisplayMenu {
                         title: pkt.header.name.clone(),
                         text: pkt.header.text.clone(),
+                        sprite_id: pkt.header.sprite,
                         entry_type,
                         pursuit_id: menu_ctx.pursuit_id,
                         entries,

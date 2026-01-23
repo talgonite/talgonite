@@ -1,3 +1,5 @@
+use num_enum::TryFromPrimitive;
+
 mod accept_connection;
 pub use accept_connection::AcceptConnection;
 
@@ -44,7 +46,7 @@ mod display_board;
 pub use display_board::DisplayBoard;
 
 mod display_dialog;
-pub use display_dialog::DisplayDialog;
+pub use display_dialog::{DisplayDialog, DisplayDialogPayload};
 
 mod display_exchange;
 pub use display_exchange::DisplayExchange;
@@ -178,7 +180,7 @@ pub use world_map::WorldMap;
 ///     a header near the beginning of the data stream
 /// </remarks>
 #[repr(u8)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive)]
 pub enum Codes {
     /// <summary>
     ///     OpCode used to send the encryption details and checksum of the details of available login servers
@@ -466,10 +468,4 @@ pub enum Codes {
     ///     OpCode sent to a client to confirm their initial connection
     /// </summary>
     AcceptConnection = 126,
-}
-
-impl From<u8> for Codes {
-    fn from(value: u8) -> Self {
-        unsafe { std::mem::transmute(value) }
-    }
 }

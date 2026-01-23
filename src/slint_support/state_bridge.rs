@@ -158,14 +158,17 @@ fn reset_game_state_for_main_menu(window: &crate::MainWindow) {
     game_state.set_world_map_name(slint::SharedString::from(""));
     game_state.set_show_world_map(false);
 
-    game_state.set_menu_title(slint::SharedString::from(""));
-    game_state.set_menu_text(slint::SharedString::from(""));
-    game_state.set_menu_entries(empty_model());
-    game_state.set_menu_is_shop(false);
-    game_state.set_show_menu(false);
-    game_state.set_show_text_entry(false);
-    game_state.set_text_entry_args(slint::SharedString::from(""));
-    game_state.set_text_entry_pursuit_id(0);
+    // Reset NPC dialog state
+    let npc_dialog = slint::ComponentHandle::global::<crate::NpcDialogState>(window);
+    npc_dialog.set_visible(false);
+    npc_dialog.set_text_entry_visible(false);
+    npc_dialog.set_npc_name(slint::SharedString::from(""));
+    npc_dialog.set_npc_portrait(slint::Image::default());
+    npc_dialog.set_dialog_text(slint::SharedString::from(""));
+    npc_dialog.set_menu_entries(empty_model());
+    npc_dialog.set_text_entry_prompt(slint::SharedString::from(""));
+    npc_dialog.set_text_entry_args(slint::SharedString::from(""));
+    npc_dialog.set_text_entry_pursuit_id(0);
 
     game_state.set_inventory(empty_model());
     game_state.set_skills(empty_model());
@@ -465,13 +468,20 @@ pub fn apply_core_to_slint(
             crate::webui::ipc::CoreToUi::DisplayMenu {
                 title,
                 text,
+                sprite_id,
                 entry_type,
+                pursuit_id: _,
                 entries,
-                ..
             } => {
-                let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
-                game_state.set_menu_title(slint::SharedString::from(title.as_str()));
-                game_state.set_menu_text(slint::SharedString::from(text.as_str()));
+                let npc_dialog = slint::ComponentHandle::global::<crate::NpcDialogState>(&strong);
+                npc_dialog.set_npc_name(slint::SharedString::from(title.as_str()));
+                npc_dialog.set_dialog_text(slint::SharedString::from(text.as_str()));
+
+                if let Ok(portrait) = asset_loader.load_npc_portrait(&game_files, *sprite_id) {
+                    npc_dialog.set_npc_portrait(portrait);
+                } else {
+                    npc_dialog.set_npc_portrait(slint::Image::default());
+                }
 
                 let mut slint_entries = Vec::with_capacity(entries.len());
                 for entry in entries {
@@ -506,29 +516,49 @@ pub fn apply_core_to_slint(
                         text: slint::SharedString::from(entry.text.as_str()),
                         id: entry.id as i32,
                         icon,
-                        has_icon,
                         cost: entry.cost,
                     });
                 }
 
-                game_state
+                npc_dialog
                     .set_menu_entries(slint::ModelRc::new(slint::VecModel::from(slint_entries)));
-                game_state
-                    .set_menu_is_shop(*entry_type != crate::webui::ipc::MenuEntryType::TextOptions);
-                game_state.set_show_menu(true);
+                npc_dialog
+                    .set_is_shop(*entry_type != crate::webui::ipc::MenuEntryType::TextOptions);
+                npc_dialog.set_visible(true);
+            }
+            crate::webui::ipc::CoreToUi::DisplayMenuClose => {
+                let npc_dialog = slint::ComponentHandle::global::<crate::NpcDialogState>(&strong);
+                npc_dialog.set_visible(false);
+                npc_dialog.set_text_entry_visible(false);
+                npc_dialog.set_is_shop(false);
+                npc_dialog.set_npc_name(slint::SharedString::default());
+                npc_dialog.set_npc_portrait(slint::Image::default());
+                npc_dialog.set_dialog_text(slint::SharedString::default());
+                npc_dialog.set_menu_entries(slint::ModelRc::new(slint::VecModel::default()));
+                npc_dialog.set_text_entry_prompt(slint::SharedString::default());
+                npc_dialog.set_text_entry_args(slint::SharedString::default());
+                npc_dialog.set_text_entry_pursuit_id(0);
             }
             crate::webui::ipc::CoreToUi::DisplayMenuTextEntry {
                 title,
                 text,
+                sprite_id,
                 args,
                 pursuit_id,
             } => {
-                let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
-                game_state.set_menu_title(slint::SharedString::from(title.as_str()));
-                game_state.set_menu_text(slint::SharedString::from(text.as_str()));
-                game_state.set_text_entry_args(slint::SharedString::from(args.as_str()));
-                game_state.set_text_entry_pursuit_id(*pursuit_id as i32);
-                game_state.set_show_text_entry(true);
+                let npc_dialog = slint::ComponentHandle::global::<crate::NpcDialogState>(&strong);
+                npc_dialog.set_npc_name(slint::SharedString::from(title.as_str()));
+                npc_dialog.set_text_entry_prompt(slint::SharedString::from(text.as_str()));
+                npc_dialog.set_text_entry_args(slint::SharedString::from(args.as_str()));
+                npc_dialog.set_text_entry_pursuit_id(*pursuit_id as i32);
+
+                if let Ok(portrait) = asset_loader.load_npc_portrait(&game_files, *sprite_id) {
+                    npc_dialog.set_npc_portrait(portrait);
+                } else {
+                    npc_dialog.set_npc_portrait(slint::Image::default());
+                }
+
+                npc_dialog.set_text_entry_visible(true);
             }
             crate::webui::ipc::CoreToUi::SettingsSync {
                 xray_size,
