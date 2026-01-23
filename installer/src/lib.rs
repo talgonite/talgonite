@@ -6,6 +6,7 @@ use crc32fast::Hasher;
 use flate2::bufread::DeflateDecoder;
 use formats::efa::EfaFile;
 use formats::ktx2;
+use formats::spf::SpfFile;
 use formats::{
     epf::{EpfFrame, EpfImage},
     mpf::MpfFile,
@@ -562,6 +563,51 @@ pub fn install(output: &Path, progress: Option<Arc<dyn InstallProgress>>) -> any
                                             arx_creator.adder(),
                                         )?;
                                         arx_creator.add_entry(&entry)?;
+                                    } else if file.name.ends_with(".spf") {
+                                        let mut file_buffer = vec![0u8; file.size];
+                                        dat_buffer.read_exact(&mut file_buffer)?;
+
+                                        let mut reader = Cursor::new(file_buffer);
+                                        match SpfFile::read_from_da(&mut reader) {
+                                            Ok(spf) => {
+                                                let base_name =
+                                                    file.name.trim_end_matches(".spf");
+
+                                                for (frame_idx, frame) in
+                                                    spf.frames.iter().enumerate()
+                                                {
+                                                    if frame.width == 0 || frame.height == 0 {
+                                                        continue;
+                                                    }
+
+                                                    let ktx_header = ktx2::get_ktx2_header(
+                                                        frame.width,
+                                                        frame.height,
+                                                        ktx2::VK_FORMAT_R8G8B8A8_UNORM,
+                                                        frame.data.len() as u64,
+                                                    )?;
+
+                                                    let frame_name = format!(
+                                                        "{}.{}.ktx2",
+                                                        base_name, frame_idx
+                                                    );
+                                                    let entry = SimpleDataEntry::new(
+                                                        &mut Cursor::new(&ktx_header)
+                                                            .chain(Cursor::new(&frame.data)),
+                                                        &dat_path.join(&frame_name),
+                                                        arx_creator.adder(),
+                                                    )?;
+                                                    arx_creator.add_entry(&entry)?;
+                                                }
+                                            }
+                                            Err(e) => {
+                                                tracing::warn!(
+                                                    "Failed to read SPF file {}: {:?}",
+                                                    file.name,
+                                                    e
+                                                );
+                                            }
+                                        }
                                     } else if dat_name == "Legend" && file.name == "color0.tbl" {
                                         let mut file_buffer = vec![0u8; file.size];
                                         dat_buffer.read_exact(&mut file_buffer)?;
