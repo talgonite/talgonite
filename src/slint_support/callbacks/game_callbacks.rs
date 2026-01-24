@@ -4,7 +4,7 @@ use crossbeam_channel::Sender;
 use slint::ComponentHandle;
 
 use crate::webui::ipc::{UiToCore, WorldListFilter};
-use crate::{DragDropState, GameState, MainWindow, SlotPanelType};
+use crate::{DragDropState, GameState, MainWindow, NpcDialogState, SlotPanelType};
 
 /// Convert Slint SlotPanelType to game types.
 fn slint_to_game_panel(panel: SlotPanelType) -> game_types::SlotPanelType {
@@ -35,13 +35,47 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
         });
     }
 
-    // Menu select
+    // NPC Dialog callbacks
+    let npc_dialog = slint_app.global::<NpcDialogState>();
+
+    // Menu select (option selection)
     {
         let tx = tx.clone();
-        game_state.on_menu_select(move |id, name| {
+        npc_dialog.on_select_option(move |id, name: slint::SharedString| {
             let _ = tx.send(UiToCore::MenuSelect {
-                id: id as u16,
+                id,
                 name: name.to_string(),
+            });
+        });
+    }
+
+    // Close dialog
+    {
+        let tx = tx.clone();
+        let slint_app_weak = slint_app.as_weak();
+        npc_dialog.on_close(move || {
+            // Hide the dialog immediately in UI
+            if let Some(app) = slint_app_weak.upgrade() {
+                let npc = app.global::<NpcDialogState>();
+                npc.set_visible(false);
+                npc.set_text_entry_visible(false);
+            }
+            let _ = tx.send(UiToCore::MenuClose);
+        });
+    }
+
+    // Text entry submission
+    {
+        let tx = tx.clone();
+        let slint_app_weak = slint_app.as_weak();
+        npc_dialog.on_submit_text(move |text: slint::SharedString| {
+            if let Some(app) = slint_app_weak.upgrade() {
+                let npc = app.global::<NpcDialogState>();
+                npc.set_text_entry_visible(false);
+            }
+            let _ = tx.send(UiToCore::MenuSelect {
+                id: 0,
+                name: text.to_string(),
             });
         });
     }
@@ -157,30 +191,32 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
     let dragdrop_state = slint_app.global::<DragDropState>();
     {
         let tx = tx.clone();
-        dragdrop_state.on_action_drag_drop(move |src_panel, src_slot, dst_panel, dst_slot, x, y| {
-            tracing::info!(
-                "DragDropAction from {:?} slot {} to {:?} slot {} at ({}, {})",
-                src_panel,
-                src_slot,
-                dst_panel,
-                dst_slot,
-                x,
-                y
-            );
-
-            if tx
-                .send(UiToCore::DragDropAction {
-                    src_category: slint_to_game_panel(src_panel),
-                    src_index: src_slot as usize,
-                    dst_category: slint_to_game_panel(dst_panel),
-                    dst_index: dst_slot as usize,
+        dragdrop_state.on_action_drag_drop(
+            move |src_panel, src_slot, dst_panel, dst_slot, x, y| {
+                tracing::info!(
+                    "DragDropAction from {:?} slot {} to {:?} slot {} at ({}, {})",
+                    src_panel,
+                    src_slot,
+                    dst_panel,
+                    dst_slot,
                     x,
-                    y,
-                })
-                .is_err()
-            {
-                tracing::error!("Failed to send DragDropAction message");
-            }
-        });
+                    y
+                );
+
+                if tx
+                    .send(UiToCore::DragDropAction {
+                        src_category: slint_to_game_panel(src_panel),
+                        src_index: src_slot as usize,
+                        dst_category: slint_to_game_panel(dst_panel),
+                        dst_index: dst_slot as usize,
+                        x,
+                        y,
+                    })
+                    .is_err()
+                {
+                    tracing::error!("Failed to send DragDropAction message");
+                }
+            },
+        );
     }
 }

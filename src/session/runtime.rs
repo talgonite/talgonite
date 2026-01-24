@@ -307,18 +307,7 @@ fn process_net_packets(
                 &server::Codes::DisplayDialog => {
                     if let Some(q) = parse_packet::<server::DisplayDialog>(data) {
                         tracing::info!("Received DisplayDialog: {:?}", q);
-                        match q {
-                            server::DisplayDialog::Show { header, .. } => {
-                                outbox.send(&client::DialogInteraction {
-                                    entity_type: header.entity_type,
-                                    entity_id: header.source_id,
-                                    pursuit_id: header.pursuit_id,
-                                    dialog_id: header.dialog_id,
-                                    args: client::DialogInteractionArgs::None,
-                                });
-                            }
-                            _ => {}
-                        }
+                        session_events.write(SessionEvent::DisplayDialog(q));
                     }
                 }
                 e => {

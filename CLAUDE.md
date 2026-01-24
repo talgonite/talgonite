@@ -104,6 +104,66 @@ The `RenderSync` phase is critical - it extracts ECS entity state into GPU insta
 
 Stored in platform data directory (`~/.local/share/Talgonite/` on Linux) as TOML files.
 
+## Slint UI Guidelines
+
+### Avoiding Binding Loops
+
+Binding loops occur when property A depends on B, which depends on A. Avoid by:
+- Don't set `height: child.preferred-height` — use layouts with padding instead
+- Don't reference `root.height/width` in nested elements — use fixed values
+- Don't mix `height` and `max-height` on the same element
+- Don't reference `parent` dimensions in conditionally rendered elements
+
+### Useful Patterns
+
+```slint
+// Hover states with animation
+Rectangle {
+    animate background { duration: 100ms; }
+    touch := TouchArea { mouse-cursor: pointer; }
+    states [ hover when touch.has-hover: { background: #ffffff10; } ]
+}
+
+// Multi-state button background (pressed → hover → default)
+background: touch.pressed ? #fff3 : touch.has-hover ? #fff1 : #fff0;
+
+// Bidirectional binding for inputs
+LineEdit { text <=> root.input-text; }
+
+// Iteration with index (for grids)
+for entry[idx] in list: Rectangle { row: Math.floor(idx / 2); }
+
+// Symmetric padding shorthand
+padding-right: self.padding-left;
+
+// Nine-slice panel images
+Image { source: @image-url("panel.png", nine-slice(16)); colorize: #b08869; }
+
+// Pixel art scaling (2x)
+Image {
+    width: self.source.width * 1phx * 2;
+    image-rendering: pixelated;
+}
+
+// Manual centering (when layout won't work)
+Icon { x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+
+// Empty Rectangle as layout spacer
+Rectangle { }
+```
+
+### General Tips
+
+- Prefer layouts over manual positioning
+- Use fixed dimensions for dialogs/popups
+- Drop shadows only work on Rectangle (wrap Images in a Rectangle)
+
+### State Management
+
+- Keep UI state in dedicated globals (e.g., `NpcDialogState`, `PopupState`) rather than one giant `GameState`
+- Export globals from `scene.slint` to make them available in Rust
+- Use callbacks for user actions, properties for data display
+
 ## Dependencies Note
 
 Slint is patched from a specific git commit (`[patch.crates-io]` in Cargo.toml) for unstable wgpu 27 integration.

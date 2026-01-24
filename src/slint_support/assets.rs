@@ -1,9 +1,35 @@
 use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
+use tracing::info;
 
 use crate::game_files::GameFiles;
 
 pub struct SlintAssetLoader {
     item_palette_table: rangemap::RangeMap<u16, u16>,
+}
+
+fn get_portrait_file(sprite_id: u16) -> Option<&'static str> {
+    match sprite_id {
+        24 => Some("npc/npcbase/hof.0.ktx2"),
+        27 => Some("npc/npcbase/knight1.0.ktx2"),
+        29 => Some("npc/npcbase/knight1.0.ktx2"),
+        30 => Some("npc/npcbase/buls.0.ktx2"),
+        34 => Some("npc/npcbase/seba.0.ktx2"),
+        35 => Some("npc/npcbase/mage.0.ktx2"),
+        37 => Some("npc/npcbase/black.0.ktx2"),
+        39 => Some("npc/npcbase/setoa.0.ktx2"),
+        40 => Some("npc/npcbase/ia.0.ktx2"),
+        42 => Some("npc/npcbase/white.0.ktx2"),
+        56 => Some("npc/npcbase/bank.0.ktx2"),
+        57 => Some("npc/npcbase/helper.0.ktx2"),
+        60 => Some("npc/npcbase/seaus.0.ktx2"),
+        61 => Some("npc/npcbase/shaman.0.ktx2"),
+        64 => Some("npc/npcbase/girl.0.ktx2"),
+        93 => Some("npc/npcbase/man1.0.ktx2"),
+        94 => Some("npc/npcbase/spskill.0.ktx2"),
+        163 => Some("npc/npcbase/rho.0.ktx2"),
+        516 => Some("npc/npcbase/inn.0.ktx2"),
+        _ => None,
+    }
 }
 
 impl SlintAssetLoader {
@@ -34,6 +60,102 @@ impl SlintAssetLoader {
                 .copied()
                 .unwrap_or_default() as usize,
         )
+    }
+
+    pub fn load_npc_portrait(
+        &self,
+        game_files: &GameFiles,
+        sprite_id: u16,
+    ) -> Result<Image, String> {
+        if let Some(filename) = get_portrait_file(sprite_id) {
+            let bytes = game_files
+                .get_file(filename)
+                .ok_or_else(|| format!("File not found: {}", filename))?;
+            let (w, h, data) =
+                rendering::texture::Texture::load_ktx2(&bytes).map_err(|e| e.to_string())?;
+            let mut pixel_buffer = SharedPixelBuffer::<Rgba8Pixel>::new(w, h);
+            pixel_buffer
+                .make_mut_slice()
+                .copy_from_slice(bytemuck::cast_slice(&data));
+            info!("NPC portrait {} loaded from file {}", sprite_id, filename);
+            return Ok(Image::from_rgba8(pixel_buffer));
+        }
+
+        info!(
+            "NPC sprite {} not found in portrait map, falling back to MPF",
+            sprite_id
+        );
+
+        let mpf_path = format!("hades/mns{:03}.mpf.bin", sprite_id);
+        let mpf_bytes = game_files
+            .get_file(&mpf_path)
+            .ok_or_else(|| format!("MPF not found: {}", mpf_path))?;
+        let (mpf_file, _): (formats::mpf::MpfFile, _) =
+            bincode::decode_from_slice(&mpf_bytes, bincode::config::standard())
+                .map_err(|e| e.to_string())?;
+
+        let frame_index = if let Some(anim) = mpf_file
+            .animations
+            .iter()
+            .find(|a| a.animation_type == formats::mpf::MpfAnimationType::Standing)
+        {
+            anim.frame_index_for_direction(formats::epf::AnimationDirection::Towards) as usize
+        } else {
+            0
+        };
+
+        if frame_index >= mpf_file.frames.len() {
+            return Err(format!("Frame index {} out of range", frame_index));
+        }
+
+        let frame = &mpf_file.frames[frame_index];
+        let w = (frame.right - frame.left).max(1) as u32;
+        let h = (frame.bottom - frame.top).max(1) as u32;
+
+        let palette_path = "hades/mns.ktx2";
+        let palette_bytes = game_files
+            .get_file(palette_path)
+            .ok_or_else(|| format!("Palette not found: {}", palette_path))?;
+        let (_, _, pal_data) = rendering::texture::Texture::load_ktx2(&palette_bytes)
+            .map_err(|e| format!("palette load: {e}"))?;
+
+        let palette_size = 4 * 256;
+        let palette_index = mpf_file.palette_number as usize;
+        let total_palettes = pal_data.len() / palette_size;
+
+        if palette_index >= total_palettes {
+            return Err(format!(
+                "palette index {palette_index} out of range (total {total_palettes})"
+            ));
+        }
+        let pal_offset = palette_size * palette_index;
+        let palette_rgba = &pal_data[pal_offset..pal_offset + palette_size];
+
+        let mut pixel_buffer = SharedPixelBuffer::<Rgba8Pixel>::new(w, h);
+        let pixels = pixel_buffer.make_mut_slice();
+
+        let frame_indices = &frame.data[..(w * h) as usize];
+
+        for (i, &idx) in frame_indices.iter().enumerate() {
+            if idx == 0 {
+                pixels[i] = Rgba8Pixel {
+                    r: 0,
+                    g: 0,
+                    b: 0,
+                    a: 0,
+                };
+            } else {
+                let pal_idx = idx as usize * 4;
+                pixels[i] = Rgba8Pixel {
+                    r: palette_rgba[pal_idx],
+                    g: palette_rgba[pal_idx + 1],
+                    b: palette_rgba[pal_idx + 2],
+                    a: palette_rgba[pal_idx + 3],
+                };
+            }
+        }
+
+        Ok(Image::from_rgba8(pixel_buffer))
     }
 
     pub fn load_skill_icon(&self, game_files: &GameFiles, sprite_id: u16) -> Result<Image, String> {

@@ -89,6 +89,7 @@ pub enum SessionEvent {
     PlayerId(u32),
     WorldMap(server::WorldMap),
     DisplayMenu(server::DisplayMenu),
+    DisplayDialog(server::DisplayDialog),
     SelfProfile(server::SelfProfile),
     OtherProfile(server::OtherProfile),
     WorldList(server::WorldList),

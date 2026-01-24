@@ -7,6 +7,7 @@ use encoding::{DecoderTrap, Encoding};
 use std::io::{Cursor, Read};
 
 const ITEM_SPRITE_OFFSET: u16 = 0x8000;
+const CREATURE_SPRITE_OFFSET: u16 = 0x4000;
 
 #[derive(Debug, Clone)]
 pub struct ItemInfo {
@@ -100,6 +101,11 @@ impl TryFromBytes for DisplayMenu {
         let color2 = cursor.read_u8()?;
         let should_illustrate = cursor.read_u8()? != 0;
 
+        let mut sprite_val = if sprite == 0 { sprite2 } else { sprite };
+        if sprite_val >= CREATURE_SPRITE_OFFSET && sprite_val < ITEM_SPRITE_OFFSET {
+            sprite_val -= CREATURE_SPRITE_OFFSET;
+        }
+
         let decode_with_len =
             |cursor: &mut Cursor<&[u8]>, len: usize, label: &str| -> anyhow::Result<String> {
                 let mut buf = vec![0; len];
@@ -133,7 +139,7 @@ impl TryFromBytes for DisplayMenu {
         let header = DisplayMenuHeader {
             entity_type,
             source_id,
-            sprite: if sprite == 0 { sprite2 } else { sprite },
+            sprite: sprite_val,
             color: if color == 0 { color2 } else { color },
             should_illustrate,
             name,

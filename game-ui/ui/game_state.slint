@@ -8,12 +8,10 @@ export struct WorldMapNode {
     check_sum: int,
 }
 
-// Unified menu entry - can be text-only or have an icon
 export struct MenuEntry {
     text: string,
     id: int,
     icon: image,
-    has-icon: bool,
     cost: int,
 }
 
@@ -200,15 +198,6 @@ export global GameState {
     in-out property <image> world-map-image: @image-url("");
     in-out property <string> world-map-name: "";
     in-out property <bool> show-world-map: false;
-    in-out property <string> menu_title: "";
-    in-out property <string> menu_text: "";
-    in-out property <[MenuEntry]> menu_entries: [];
-    in-out property <bool> menu_is_shop: false;
-    in-out property <bool> show_menu: false;
-    // Text entry dialog
-    in-out property <bool> show_text_entry: false;
-    in-out property <string> text_entry_args: "";
-    in-out property <int> text_entry_pursuit_id: 0;
     in-out property <[InventoryItem]> inventory: [];
     in-out property <[Skill]> skills: [];
     in-out property <[Spell]> spells: [];
@@ -236,7 +225,6 @@ export global GameState {
     };
     in-out property <int> current-hotbar-panel: 0;
     callback world-map-click(int, int, int, int);
-    callback menu_select(int, string); // id, name
     callback set-hotbar-panel(int);
     callback send-chat(string);
     callback send-whisper(string, string);
@@ -266,4 +254,30 @@ export global PopupState {
     public function hide() {
         root.visible = false;
     }
+}
+
+// NPC Dialog State - handles conversations and text entry
+export global NpcDialogState {
+    // Visibility
+    in-out property <bool> visible: false;
+    in-out property <bool> text-entry-visible: false;
+    in-out property <bool> is-shop: false;
+
+    // NPC identity
+    in-out property <string> npc-name: "";
+    in-out property <image> npc-portrait: @image-url(""); 
+
+    // Dialog content
+    in-out property <string> dialog-text: "";
+    in-out property <[MenuEntry]> menu-entries: [];
+
+    // Text entry
+    in-out property <string> text-entry-prompt: "";
+    in-out property <string> text-entry-args: "";
+    in-out property <int> text-entry-pursuit-id: 0;
+
+    // Callbacks
+    callback select-option(int, string);    // id, text
+    callback close();
+    callback submit-text(string);           // text entry submission
 }
