@@ -1612,7 +1612,7 @@ dependencies = [
 
 [[package]]
 name = "crc"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "crc"
@@ -2385,7 +2385,7 @@ dependencies = [
 
 [[package]]
 name = "formats"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "bincode",
@@ -2516,7 +2516,7 @@ dependencies = [
 
 [[package]]
 name = "game-input"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bevy",
  "game-types",
@@ -2526,7 +2526,7 @@ dependencies = [
 
 [[package]]
 name = "game-types"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bevy",
  "serde",
@@ -2534,7 +2534,7 @@ dependencies = [
 
 [[package]]
 name = "game-ui"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bevy",
  "bincode",
@@ -3565,7 +3565,7 @@ dependencies = [
 
 [[package]]
 name = "installer"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4318,7 +4318,7 @@ dependencies = [
 
 [[package]]
 name = "network"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-std",
  "futures-lite",
@@ -5007,12 +5007,12 @@ dependencies = [
 
 [[package]]
 name = "packets"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-std",
  "byteorder",
- "crc 0.1.0",
+ "crc 0.1.1",
  "encoding",
  "md5",
  "num_enum",
@@ -5702,7 +5702,7 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
 name = "rendering"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "bincode",
@@ -6687,7 +6687,7 @@ dependencies = [
 
 [[package]]
 name = "talgonite"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-std",
@@ -6697,7 +6697,7 @@ dependencies = [
  "bincode",
  "bytemuck",
  "byteorder",
- "crc 0.1.0",
+ "crc 0.1.1",
  "crossbeam-channel",
  "dirs",
  "formats",
