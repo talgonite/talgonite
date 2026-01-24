@@ -7,6 +7,7 @@ use crate::ecs::components::{
     Direction, GameMap, LocalPlayer, MovementTween, NPC, PathTarget, PathfindingState, Player,
     Position,
 };
+use crate::ecs::spell_casting::SpellCastingState;
 use crate::events::{InputSource, PlayerAction, TileClickEvent};
 use crate::plugins::input::InputTimer;
 
@@ -39,8 +40,6 @@ pub fn pathfinding_target_system(
             continue;
         }
 
-        commands.entity(player_entity).remove::<PathfindingState>();
-
         commands.entity(player_entity).insert(PathfindingState {
             target: PathTarget::Tile {
                 x: target_x,
@@ -69,10 +68,18 @@ pub fn pathfinding_execution_system(
     map_collision: Option<Res<MapCollisionData>>,
     entity_positions: Query<&Position, (Or<(With<NPC>, With<Player>)>, Without<LocalPlayer>)>,
     mut player_actions: MessageWriter<PlayerAction>,
+    spell_casting: Res<SpellCastingState>,
 ) {
     let Ok((player_entity, player_pos, tween, mut pathfinding)) = player_query.single_mut() else {
         return;
     };
+
+    if let Some(ref cast) = spell_casting.active_cast {
+        if !cast.waiting_for_target {
+            // Wait for spell chant to finish before taking the next pathfinding step
+            return;
+        }
+    }
 
     let Ok(map) = map_query.single() else {
         return;

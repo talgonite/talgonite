@@ -4,8 +4,7 @@ use super::super::animation::{AnimationBundle, AnimationMode, AnimationType};
 use super::super::components::*;
 use crate::{
     ecs::collision::{MapCollisionData, WallCollisionTable},
-    ecs::spell_casting::SpellCastingState,
-    events::{AudioEvent, EntityEvent, InputSource, PlayerAction},
+    events::{AudioEvent, EntityEvent, PlayerAction},
 };
 use bevy::prelude::*;
 use formats::{epf::EpfAnimationType, mpf::MpfAnimationType};
@@ -23,19 +22,11 @@ pub fn player_movement_system(
     collision_table: Option<Res<WallCollisionTable>>,
     map_collision: Option<Res<MapCollisionData>>,
     outbox: Option<Res<crate::network::PacketOutbox>>,
-    mut spell_casting: ResMut<SpellCastingState>,
 ) {
     // Handle walk requests from input
     for event in player_actions.read() {
         match event {
-            PlayerAction::Walk { direction, source } => {
-                if *source == InputSource::Manual {
-                    spell_casting.active_cast = None;
-                    if let Ok((entity, _, _)) = player_query.single() {
-                        commands.entity(entity).remove::<PathfindingState>();
-                    }
-                }
-
+            PlayerAction::Walk { direction, source: _ } => {
                 if handle_walk_request(
                     *direction,
                     &map_query,
@@ -53,14 +44,7 @@ pub fn player_movement_system(
                     }
                 }
             }
-            PlayerAction::Turn { direction, source } => {
-                if *source == InputSource::Manual {
-                    spell_casting.active_cast = None;
-                    if let Ok((entity, _, _)) = player_query.single() {
-                        commands.entity(entity).remove::<PathfindingState>();
-                    }
-                }
-
+            PlayerAction::Turn { direction, source: _ } => {
                 if let Some(outbox) = &outbox {
                     outbox.send(&client::Turn {
                         direction: *direction,

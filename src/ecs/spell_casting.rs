@@ -10,7 +10,7 @@ use crate::network::PacketOutbox;
 use crate::webui::ipc::ActionId;
 use crate::webui::plugin::AbilityState;
 
-use super::components::{EntityId, LocalPlayer, PathfindingState, NPC, Player, Position, TargetingHover};
+use super::components::{EntityId, NPC, Player, Position, TargetingHover};
 
 #[derive(Resource, Default)]
 pub struct SpellCastingState {
@@ -37,8 +37,6 @@ pub fn start_spell_cast(
     mut casting_state: ResMut<SpellCastingState>,
     ability_state: Option<Res<AbilityState>>,
     outbox: Res<PacketOutbox>,
-    mut commands: Commands,
-    player_query: Query<Entity, With<LocalPlayer>>,
 ) {
     for event in events.read() {
         if let AbilityEvent::UseSpell { slot } = event {
@@ -51,10 +49,6 @@ pub fn start_spell_cast(
             };
 
             casting_state.active_cast = None;
-
-            if let Ok(player_entity) = player_query.single() {
-                commands.entity(player_entity).remove::<PathfindingState>();
-            }
 
             match spell.spell_type {
                 SpellType::Targeted => {

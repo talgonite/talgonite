@@ -82,6 +82,15 @@ pub enum PlayerAction {
     Turn { direction: u8, source: InputSource },
 }
 
+impl PlayerAction {
+    pub fn is_manual(&self) -> bool {
+        match self {
+            PlayerAction::Walk { source, .. } => *source == InputSource::Manual,
+            PlayerAction::Turn { source, .. } => *source == InputSource::Manual,
+        }
+    }
+}
+
 // === Session Events ===
 
 #[derive(Debug, Clone, Message)]
