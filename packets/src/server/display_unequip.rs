@@ -9,7 +9,7 @@ pub struct DisplayUnequip {
 impl TryFromBytes for DisplayUnequip {
     fn try_from_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
         let equipment_slot = bytes
-            .get(0)
+            .first()
             .copied()
             .ok_or_else(|| anyhow!("DisplayUnequip packet too short"))?
             .try_into()

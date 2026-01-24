@@ -18,7 +18,7 @@ impl ToBytes for MetaDataRequest {
             MetaDataRequest::DataByName(name) => {
                 bytes.push(0);
                 let name_bytes = WINDOWS_949
-                    .encode(&name, EncoderTrap::Replace)
+                    .encode(name, EncoderTrap::Replace)
                     .unwrap_or_default();
                 bytes.push(name_bytes.len() as u8);
                 bytes.extend_from_slice(&name_bytes);

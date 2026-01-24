@@ -2,7 +2,7 @@ use crate::TryFromBytes;
 use byteorder::{BE, ReadBytesExt};
 use encoding::all::WINDOWS_949;
 use encoding::{DecoderTrap, Encoding};
-use num_enum::{Default, IntoPrimitive, TryFromPrimitive};
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::io::{Cursor, Read};
 
 const ITEM_SPRITE_OFFSET: u16 = 0x8000;
@@ -28,20 +28,12 @@ pub enum EntityInfo {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DisplayVisibleEntities {
     pub entities: Vec<EntityInfo>,
 }
 
-impl std::default::Default for DisplayVisibleEntities {
-    fn default() -> Self {
-        DisplayVisibleEntities {
-            entities: Vec::new(),
-        }
-    }
-}
-
-#[derive(Debug, Default, Clone, PartialEq, IntoPrimitive, TryFromPrimitive)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, IntoPrimitive, TryFromPrimitive)]
 #[repr(u8)]
 pub enum VisibleEntityType {
     Normal = 0,
@@ -65,47 +57,46 @@ impl TryFromBytes for DisplayVisibleEntities {
             let id = cursor.read_u32::<BE>()?;
             let sprite = cursor.read_u16::<BE>()?;
 
-            let entity_info = match sprite {
-                sprite if sprite >= ITEM_SPRITE_OFFSET => {
-                    let color = cursor.read_u8()?;
-                    let mut _discard = [0u8; 2];
-                    cursor.read_exact(&mut _discard)?;
-                    EntityInfo::Item {
-                        x,
-                        y,
-                        id,
-                        sprite: sprite - ITEM_SPRITE_OFFSET,
-                        color,
-                    }
+            let entity_info = if sprite >= ITEM_SPRITE_OFFSET {
+                let color = cursor.read_u8()?;
+                let mut _discard = [0u8; 2];
+                cursor.read_exact(&mut _discard)?;
+                EntityInfo::Item {
+                    x,
+                    y,
+                    id,
+                    sprite: sprite - ITEM_SPRITE_OFFSET,
+                    color,
                 }
-                sprite if sprite >= CREATURE_SPRITE_OFFSET => {
-                    let mut _discard = [0u8; 4];
-                    cursor.read_exact(&mut _discard)?; // ??
-                    let direction = cursor.read_u8()?;
-                    let _ = cursor.read_u8()?; // ??
-                    let entity_type: VisibleEntityType = cursor.read_u8()?.try_into()?;
-                    let name =
-                        match entity_type {
-                            VisibleEntityType::Merchant => {
-                                let mut buf = vec![0; cursor.read_u8()? as usize];
-                                cursor.read_exact(&mut buf)?;
-                                Some(WINDOWS_949.decode(&buf, DecoderTrap::Replace).map_err(
-                                    |e| anyhow::anyhow!("Failed to decode name: {:?}", e),
-                                )?)
-                            }
-                            _ => None,
-                        };
-                    EntityInfo::Creature {
-                        x,
-                        y,
-                        id,
-                        sprite: sprite - CREATURE_SPRITE_OFFSET,
-                        direction,
-                        entity_type,
-                        name,
+            } else if sprite >= CREATURE_SPRITE_OFFSET {
+                let mut _discard = [0u8; 4];
+                cursor.read_exact(&mut _discard)?; // ??
+                let direction = cursor.read_u8()?;
+                let _ = cursor.read_u8()?; // ??
+                let entity_type: VisibleEntityType = cursor.read_u8()?.try_into()?;
+                let name = match entity_type {
+                    VisibleEntityType::Merchant => {
+                        let mut buf = vec![0; cursor.read_u8()? as usize];
+                        cursor.read_exact(&mut buf)?;
+                        Some(
+                            WINDOWS_949
+                                .decode(&buf, DecoderTrap::Replace)
+                                .map_err(|e| anyhow::anyhow!("Failed to decode name: {:?}", e))?,
+                        )
                     }
+                    _ => None,
+                };
+                EntityInfo::Creature {
+                    x,
+                    y,
+                    id,
+                    sprite: sprite - CREATURE_SPRITE_OFFSET,
+                    direction,
+                    entity_type,
+                    name,
                 }
-                _ => anyhow::bail!("Unknown sprite type: {}", sprite),
+            } else {
+                anyhow::bail!("Unknown sprite type: {}", sprite);
             };
             entities.push(entity_info);
         }
@@ -166,3 +157,4 @@ mod tests {
         }
     }
 }
+

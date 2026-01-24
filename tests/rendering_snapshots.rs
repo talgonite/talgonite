@@ -607,7 +607,10 @@ fn test_player_movement() {
     scene.update();
 
     // Take a step down (direction 2)
-    scene.send_player_action(talgonite::events::PlayerAction::Walk(2));
+    scene.send_player_action(talgonite::events::PlayerAction::Walk {
+        direction: 2,
+        source: talgonite::events::InputSource::Manual,
+    });
 
     // Process the action (inserts the tween)
     scene.update();

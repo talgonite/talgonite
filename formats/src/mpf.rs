@@ -239,14 +239,10 @@ impl MpfFile {
             .cloned()
             .collect();
 
-        if !final_anims
-            .iter()
-            .any(|a| a.animation_type == MpfAnimationType::Standing)
-        {
-            if let Some(walk_anim) = final_anims
-                .iter()
-                .find(|a| a.animation_type == MpfAnimationType::Walk)
-            {
+        let has_standing = final_anims.iter().any(|a| a.animation_type == MpfAnimationType::Standing);
+        if !has_standing {
+            let walk_anim = final_anims.iter().find(|a| a.animation_type == MpfAnimationType::Walk);
+            if let Some(walk_anim) = walk_anim {
                 final_anims.push(MpfAnimation {
                     animation_type: MpfAnimationType::Standing,
                     frame_count: 1,

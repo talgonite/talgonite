@@ -18,13 +18,9 @@ impl InputSource {
     }
 
     pub fn from_string(s: &str) -> Option<Self> {
-        if let Some(gamepad_input) = GamepadInputType::from_string(s) {
-            Some(InputSource::Gamepad(gamepad_input))
-        } else if let Some(kb) = KeyBinding::from_dom_code(s) {
-            Some(InputSource::Keyboard(kb))
-        } else {
-            None
-        }
+        GamepadInputType::from_string(s)
+            .map(InputSource::Gamepad)
+            .or_else(|| KeyBinding::from_dom_code(s).map(InputSource::Keyboard))
     }
 }
 
@@ -169,14 +165,10 @@ impl UnifiedInputBindings {
                     }
                 }
                 InputSource::Gamepad(gi) => {
-                    if let Some(config) = gamepad_config {
-                        if let Some(gamepad_entity) = config.primary_gamepad {
-                            if let Some(query) = gamepad_query {
-                                if let Ok(gamepad) = query.get(gamepad_entity) {
-                                    if gi.is_pressed(gamepad, config.stick_threshold) {
-                                        return true;
-                                    }
-                                }
+                    if let (Some(config), Some(query)) = (gamepad_config, gamepad_query) {
+                        if let Some(gamepad) = config.primary_gamepad.and_then(|e| query.get(e).ok()) {
+                            if gi.is_pressed(gamepad, config.stick_threshold) {
+                                return true;
                             }
                         }
                     }
@@ -206,14 +198,10 @@ impl UnifiedInputBindings {
                     }
                 }
                 InputSource::Gamepad(gi) => {
-                    if let Some(config) = gamepad_config {
-                        if let Some(gamepad_entity) = config.primary_gamepad {
-                            if let Some(query) = gamepad_query {
-                                if let Ok(gamepad) = query.get(gamepad_entity) {
-                                    if gi.is_just_pressed(gamepad) {
-                                        return true;
-                                    }
-                                }
+                    if let (Some(config), Some(query)) = (gamepad_config, gamepad_query) {
+                        if let Some(gamepad) = config.primary_gamepad.and_then(|e| query.get(e).ok()) {
+                            if gi.is_just_pressed(gamepad) {
+                                return true;
                             }
                         }
                     }

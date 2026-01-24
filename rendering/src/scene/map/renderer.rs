@@ -368,7 +368,7 @@ impl MapRenderer {
 
                 let reader = ktx2::Reader::new(bytes).unwrap();
                 let info = reader.header();
-                let rounded_height = info.pixel_height as u32 + 63 & !63;
+                let rounded_height = (info.pixel_height as u32 + 63) & !63;
                 let a = atlas
                     .allocate(etagere::size2(28, rounded_height as i32))
                     .unwrap();

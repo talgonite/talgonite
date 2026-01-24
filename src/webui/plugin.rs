@@ -1306,7 +1306,6 @@ fn bridge_session_events(
                             })
                             .collect();
                     }
-                    _ => {}
                 }
 
                 if is_text_entry {

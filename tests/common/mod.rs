@@ -183,6 +183,7 @@ impl TestScene {
         camera.camera.set_position(&self.queue, x, y);
     }
 
+    #[allow(dead_code)]
     pub fn set_light_tint(&mut self, r: f32, g: f32, b: f32) {
         let mut camera = self.app.world_mut().resource_mut::<Camera>();
         camera.camera.set_tint(&self.queue, r, g, b);

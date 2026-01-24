@@ -26,12 +26,10 @@ impl ArxArchive {
         use libarx::{self as arx, FullBuilder};
         use std::io::Read;
 
-        if let Ok(arx::Entry::File(content_address)) =
-            self.archive.get_entry::<FullBuilder>(arx::Path::new(path))
-        {
-            if let jbk::Result::Ok(Some(jbk::reader::MayMissPack::FOUND(Some(bytes)))) =
-                self.archive.get_bytes(content_address.content())
-            {
+        let entry = self.archive.get_entry::<FullBuilder>(arx::Path::new(path));
+        if let Ok(arx::Entry::File(content_address)) = entry {
+            let bytes_res = self.archive.get_bytes(content_address.content());
+            if let jbk::Result::Ok(Some(jbk::reader::MayMissPack::FOUND(Some(bytes)))) = bytes_res {
                 let mut buf = vec![];
                 bytes.stream().read_to_end(&mut buf)?;
                 return Ok(buf);

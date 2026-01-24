@@ -276,7 +276,7 @@ impl DisplayArgs {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DisplayPlayer {
     pub x: u16,
     pub y: u16,
@@ -286,21 +286,6 @@ pub struct DisplayPlayer {
     pub name: String,
     pub group_box_text: String,
     pub args: DisplayArgs,
-}
-
-impl Default for DisplayPlayer {
-    fn default() -> Self {
-        DisplayPlayer {
-            x: 0,
-            y: 0,
-            direction: 0,
-            id: 0,
-            name_tag_style: 0,
-            name: String::new(),
-            group_box_text: String::new(),
-            args: DisplayArgs::default(),
-        }
-    }
 }
 
 impl TryFromBytes for DisplayPlayer {

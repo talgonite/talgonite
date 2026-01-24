@@ -7,11 +7,11 @@ use super::Codes;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive)]
 #[repr(u8)]
 pub enum Stat {
-    STR = 1,
-    DEX = 2,
-    INT = 4,
-    WIS = 8,
-    CON = 16,
+    Str = 1,
+    Dex = 2,
+    Int = 4,
+    Wis = 8,
+    Con = 16,
 }
 
 #[derive(Debug)]

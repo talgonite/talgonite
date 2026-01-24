@@ -102,7 +102,7 @@ impl TryFromBytes for DisplayMenu {
         let should_illustrate = cursor.read_u8()? != 0;
 
         let mut sprite_val = if sprite == 0 { sprite2 } else { sprite };
-        if sprite_val >= CREATURE_SPRITE_OFFSET && sprite_val < ITEM_SPRITE_OFFSET {
+        if (CREATURE_SPRITE_OFFSET..ITEM_SPRITE_OFFSET).contains(&sprite_val) {
             sprite_val -= CREATURE_SPRITE_OFFSET;
         }
 

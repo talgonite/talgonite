@@ -134,7 +134,9 @@ pub struct SavedCredentialPublic {
     pub preview: Option<CharacterPreview>,
 }
 
-pub fn deserialize_preview_lossy<'de, D>(deserializer: D) -> Result<Option<CharacterPreview>, D::Error>
+pub fn deserialize_preview_lossy<'de, D>(
+    deserializer: D,
+) -> Result<Option<CharacterPreview>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -154,9 +156,8 @@ where
             if v.len() == 90 || v.len() == 88 {
                 let mut offset = 0;
                 let mut next = |len: usize| {
-                    u32::from_str_radix(&v[offset..offset + len], 16).map(|val| {
+                    u32::from_str_radix(&v[offset..offset + len], 16).inspect(|_| {
                         offset += len;
-                        val
                     })
                 };
 

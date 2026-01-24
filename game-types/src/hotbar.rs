@@ -76,10 +76,8 @@ impl CustomHotBars {
     }
 
     pub fn set_slot(&mut self, bar: usize, slot: usize, action_id: String) {
-        if let Some(bar_slots) = self.bars.get_mut(bar) {
-            if let Some(slot_ref) = bar_slots.get_mut(slot) {
-                slot_ref.action_id = action_id;
-            }
+        if let Some(slot_ref) = self.bars.get_mut(bar).and_then(|b| b.get_mut(slot)) {
+            slot_ref.action_id = action_id;
         }
     }
 

@@ -26,7 +26,7 @@ const CRC16_TABLE: [u16; 256] = [
 pub fn crc16(data: &[u8]) -> u16 {
     let mut crc: u16 = 0;
     for &byte in data {
-        crc = ((crc << 8) ^ CRC16_TABLE[(crc >> 8) as usize] ^ (byte as u16)) & 0xffff;
+        crc = (crc << 8) ^ CRC16_TABLE[(crc >> 8) as usize] ^ (byte as u16);
     }
     crc
 }
