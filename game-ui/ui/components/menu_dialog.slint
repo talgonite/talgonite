@@ -15,9 +15,6 @@ import "../fonts/Lato-ThinItalic.ttf";
 import "../fonts/Lato-BoldItalic.ttf";
 import "../fonts/Lato-BlackItalic.ttf";
 
-// ============================================================================
-// MAIN NPC DIALOG
-// ============================================================================
 export component NpcDialog inherits Rectangle {
     property <image> npc-portrait: NpcDialogState.npc-portrait;
     TouchArea {
@@ -96,7 +93,71 @@ export component NpcDialog inherits Rectangle {
                         // Menu options
                         VerticalLayout {
                             alignment: end;
-                            if (!NpcDialogState.is-shop): VerticalLayout {
+                            if (NpcDialogState.text-entry-visible): VerticalLayout {
+                                Rectangle {
+                                    background: @linear-gradient(0deg, #0000 0%, #0007 15%, #0007 85%, #0000 100%);
+                                    preferred-height: 240px;
+                                    width: 260px;
+                                    VerticalLayout {
+                                        padding: 16px;
+                                        spacing: 12px;
+                                        alignment: center;
+                                        if NpcDialogState.text-entry-args != "": Rectangle {
+                                            height: 32px;
+                                            background: #FFC04010;
+                                            border-radius: 6px;
+                                            border-width: 1px;
+                                            border-color: #FFC04030;
+                                            Text {
+                                                text: NpcDialogState.text-entry-args;
+                                                font-size: 13px;
+                                                font-weight: 500;
+                                                color: Theme.accent;
+                                                horizontal-alignment: center;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                        npc-input := LineEdit {
+                                            height: 36px;
+                                            placeholder-text: "Type here...";
+                                            accepted => {
+                                                if self.text != "" {
+                                                    NpcDialogState.submit-text(self.text);
+                                                    self.text = "";
+                                                }
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            height: 36px;
+                                            border-radius: 6px;
+                                            background: npc-input.text == "" ? #FFC04008 : submit-touch.pressed ? #FFC04050 : submit-touch.has-hover ? #FFC04030 : #FFC04018;
+                                            border-width: 1px;
+                                            border-color: #FFC04050;
+                                            opacity: npc-input.text == "" ? 0.5 : 1.0;
+                                            submit-touch := TouchArea {
+                                                mouse-cursor: npc-input.text != "" ? pointer : default;
+                                                clicked => {
+                                                    if npc-input.text != "" {
+                                                        NpcDialogState.submit-text(npc-input.text);
+                                                        npc-input.text = "";
+                                                    }
+                                                }
+                                            }
+
+                                            Text {
+                                                text: "Submit";
+                                                font-size: 13px;
+                                                font-weight: 500;
+                                                color: Theme.accent;
+                                                horizontal-alignment: center;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if (!NpcDialogState.is-shop && !NpcDialogState.text-entry-visible): VerticalLayout {
                                 Rectangle {
                                     background: @linear-gradient(0deg, #0000 0%, #0007 15%, #0007 85%, #0000 100%);
                                     VerticalLayout {
@@ -134,7 +195,7 @@ export component NpcDialog inherits Rectangle {
                                     }
                                 }
                             }
-                            if (NpcDialogState.is-shop): VerticalLayout {
+                            if (NpcDialogState.is-shop && !NpcDialogState.text-entry-visible): VerticalLayout {
                                 Rectangle {
                                     background: @linear-gradient(0deg, #0000 0%, #0007 15%, #0007 85%, #0000 100%);
                                     preferred-height: 240px;
@@ -224,176 +285,6 @@ export component NpcDialog inherits Rectangle {
 
             Rectangle {
                 preferred-height: 120px;
-            }
-        }
-    }
-}
-
-// ============================================================================
-// TEXT ENTRY OVERLAY - Floats above the dialog, can cover portrait
-// ============================================================================
-export component TextEntryDialog inherits Rectangle {
-    visible: NpcDialogState.text-entry-visible;
-    property <string> input-text: "";
-
-    // Darker overlay on top
-    Rectangle {
-        width: 100%;
-        height: 100%;
-        background: #000000aa;
-        TouchArea {
-            clicked => {
-                NpcDialogState.text-entry-visible = false;
-            }
-        }
-    }
-
-    // Centered entry box
-    VerticalLayout {
-        alignment: center;
-        HorizontalLayout {
-            alignment: center;
-            Rectangle {
-                width: 380px;
-                background: @linear-gradient(180deg, #222240 0%, #1a1a35 100%);
-                border-radius: 14px;
-                border-width: 2px;
-                border-color: #ffffff18;
-                drop-shadow-blur: 30px;
-                drop-shadow-color: #000000cc;
-                TouchArea { }
-
-                VerticalLayout {
-                    padding: 28px;
-                    spacing: 20px;
-
-                    // Header
-                    HorizontalLayout {
-                        Text {
-                            text: NpcDialogState.npc-name;
-                            font-size: 18px;
-                            font-weight: 600;
-                            color: Theme.foreground-strong;
-                            horizontal-stretch: 1;
-                        }
-
-                        Rectangle {
-                            width: 32px;
-                            height: 32px;
-                            border-radius: 8px;
-                            background: entry-x-touch.has-hover ? #ff444428 : transparent;
-                            entry-x-touch := TouchArea {
-                                mouse-cursor: pointer;
-                                clicked => {
-                                    NpcDialogState.text-entry-visible = false;
-                                }
-                            }
-
-                            Text {
-                                text: "\u{00D7}";
-                                font-size: 20px;
-                                color: entry-x-touch.has-hover ? #ff6666 : Theme.foreground-muted;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
-                    }
-
-                    // Prompt
-                    if NpcDialogState.text-entry-prompt != "": Text {
-                        text: NpcDialogState.text-entry-prompt;
-                        font-size: 14px;
-                        color: Theme.foreground-muted;
-                        wrap: word-wrap;
-                    }
-
-                    // Args highlight (item name etc)
-                    if NpcDialogState.text-entry-args != "": Rectangle {
-                        height: 44px;
-                        background: #FFC04010;
-                        border-radius: 10px;
-                        border-width: 1px;
-                        border-color: #FFC04030;
-                        Text {
-                            text: NpcDialogState.text-entry-args;
-                            font-size: 15px;
-                            font-weight: 500;
-                            color: Theme.accent;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-                    }
-
-                    // Input
-                    LineEdit {
-                        height: 46px;
-                        text <=> root.input-text;
-                        accepted => {
-                            if root.input-text != "" {
-                                NpcDialogState.submit-text(root.input-text);
-                                NpcDialogState.text-entry-visible = false;
-                                root.input-text = "";
-                            }
-                        }
-                    }
-
-                    // Buttons
-                    HorizontalLayout {
-                        spacing: 14px;
-                        Rectangle {
-                            horizontal-stretch: 1;
-                            height: 46px;
-                            border-radius: 10px;
-                            background: cancel-touch.pressed ? #ffffff18 : cancel-touch.has-hover ? #ffffff0c : #ffffff06;
-                            border-width: 1px;
-                            border-color: #ffffff15;
-                            cancel-touch := TouchArea {
-                                mouse-cursor: pointer;
-                                clicked => {
-                                    NpcDialogState.text-entry-visible = false;
-                                    root.input-text = "";
-                                }
-                            }
-
-                            Text {
-                                text: "Cancel";
-                                font-size: 14px;
-                                color: Theme.foreground;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
-
-                        Rectangle {
-                            horizontal-stretch: 1;
-                            height: 46px;
-                            border-radius: 10px;
-                            background: root.input-text == "" ? #FFC04008 : submit-touch.pressed ? #FFC04050 : submit-touch.has-hover ? #FFC04030 : #FFC04018;
-                            border-width: 1px;
-                            border-color: #FFC04050;
-                            opacity: root.input-text == "" ? 0.5 : 1.0;
-                            submit-touch := TouchArea {
-                                mouse-cursor: root.input-text != "" ? pointer : default;
-                                clicked => {
-                                    if root.input-text != "" {
-                                        NpcDialogState.submit-text(root.input-text);
-                                        NpcDialogState.text-entry-visible = false;
-                                        root.input-text = "";
-                                    }
-                                }
-                            }
-
-                            Text {
-                                text: "Submit";
-                                font-size: 14px;
-                                font-weight: 500;
-                                color: Theme.accent;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
-                    }
-                }
             }
         }
     }

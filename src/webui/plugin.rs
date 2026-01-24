@@ -234,10 +234,7 @@ fn handle_ui_inbound_ingame(
                 let (pursuit_id, args) = if menu_ctx.pursuit_id > 0 {
                     let is_slot_interaction = matches!(
                         menu_ctx.menu_type,
-                        Some(MenuType::ShowItems)
-                            | Some(MenuType::ShowPlayerItems)
-                            | Some(MenuType::ShowSpells)
-                            | Some(MenuType::ShowSkills)
+                        Some(MenuType::ShowPlayerItems)
                             | Some(MenuType::ShowPlayerSpells)
                             | Some(MenuType::ShowPlayerSkills)
                     );
@@ -257,7 +254,18 @@ fn handle_ui_inbound_ingame(
 
                     (menu_ctx.pursuit_id, args)
                 } else {
-                    (*id as u16, packets::client::MenuInteractionArgs::Slot(0))
+                    let pursuit_id = *id as u16;
+                    let args = if !menu_ctx.args.is_empty() {
+                        let mut topics = Vec::new();
+                        topics.push(menu_ctx.args.clone());
+                        if !name.is_empty() {
+                            topics.push(name.clone());
+                        }
+                        packets::client::MenuInteractionArgs::Topics(topics)
+                    } else {
+                        packets::client::MenuInteractionArgs::Slot(0)
+                    };
+                    (pursuit_id, args)
                 };
 
                 if let Some(entity_type) = menu_ctx.entity_type {
@@ -1186,6 +1194,14 @@ fn bridge_session_events(
                             .map(|(text, id)| MenuEntryUi::text_option(text.clone(), *id as i32))
                             .collect();
                     }
+                    DisplayMenuPayload::MenuWithArgs { args, options } => {
+                        menu_ctx.pursuit_id = 0;
+                        menu_ctx.args = args.clone();
+                        entries = options
+                            .iter()
+                            .map(|(text, id)| MenuEntryUi::text_option(text.clone(), *id as i32))
+                            .collect();
+                    }
                     DisplayMenuPayload::ShowItems { pursuit_id, items } => {
                         menu_ctx.pursuit_id = *pursuit_id;
                         entry_type = crate::webui::ipc::MenuEntryType::Items;
@@ -1195,7 +1211,7 @@ fn bridge_session_events(
                             .map(|(idx, item)| {
                                 MenuEntryUi::shop_item(
                                     item.name.clone(),
-                                    idx as i32,
+                                    (idx + 1) as i32,
                                     item.sprite,
                                     item.color,
                                     item.cost,
@@ -1210,7 +1226,11 @@ fn bridge_session_events(
                             .iter()
                             .enumerate()
                             .map(|(idx, spell)| {
-                                MenuEntryUi::ability(spell.name.clone(), idx as i32, spell.sprite)
+                                MenuEntryUi::ability(
+                                    spell.name.clone(),
+                                    (idx + 1) as i32,
+                                    spell.sprite,
+                                )
                             })
                             .collect();
                     }
@@ -1221,7 +1241,11 @@ fn bridge_session_events(
                             .iter()
                             .enumerate()
                             .map(|(idx, skill)| {
-                                MenuEntryUi::ability(skill.name.clone(), idx as i32, skill.sprite)
+                                MenuEntryUi::ability(
+                                    skill.name.clone(),
+                                    (idx + 1) as i32,
+                                    skill.sprite,
+                                )
                             })
                             .collect();
                     }

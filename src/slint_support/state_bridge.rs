@@ -524,6 +524,7 @@ pub fn apply_core_to_slint(
                     .set_menu_entries(slint::ModelRc::new(slint::VecModel::from(slint_entries)));
                 npc_dialog
                     .set_is_shop(*entry_type != crate::webui::ipc::MenuEntryType::TextOptions);
+                npc_dialog.set_text_entry_visible(false);
                 npc_dialog.set_visible(true);
             }
             crate::webui::ipc::CoreToUi::DisplayMenuClose => {
@@ -548,6 +549,7 @@ pub fn apply_core_to_slint(
             } => {
                 let npc_dialog = slint::ComponentHandle::global::<crate::NpcDialogState>(&strong);
                 npc_dialog.set_npc_name(slint::SharedString::from(title.as_str()));
+                npc_dialog.set_dialog_text(slint::SharedString::from(text.as_str()));
                 npc_dialog.set_text_entry_prompt(slint::SharedString::from(text.as_str()));
                 npc_dialog.set_text_entry_args(slint::SharedString::from(args.as_str()));
                 npc_dialog.set_text_entry_pursuit_id(*pursuit_id as i32);
@@ -559,6 +561,7 @@ pub fn apply_core_to_slint(
                 }
 
                 npc_dialog.set_text_entry_visible(true);
+                npc_dialog.set_visible(true);
             }
             crate::webui::ipc::CoreToUi::SettingsSync {
                 xray_size,

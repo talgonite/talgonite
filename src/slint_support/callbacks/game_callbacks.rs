@@ -58,6 +58,7 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
             if let Some(app) = slint_app_weak.upgrade() {
                 let npc = app.global::<NpcDialogState>();
                 npc.set_visible(false);
+                npc.set_text_entry_visible(false);
             }
             let _ = tx.send(UiToCore::MenuClose);
         });
@@ -66,7 +67,12 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
     // Text entry submission
     {
         let tx = tx.clone();
+        let slint_app_weak = slint_app.as_weak();
         npc_dialog.on_submit_text(move |text: slint::SharedString| {
+            if let Some(app) = slint_app_weak.upgrade() {
+                let npc = app.global::<NpcDialogState>();
+                npc.set_text_entry_visible(false);
+            }
             let _ = tx.send(UiToCore::MenuSelect {
                 id: 0,
                 name: text.to_string(),
