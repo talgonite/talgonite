@@ -4,6 +4,7 @@ import { UiSettings } from "../ui-settings.slint";
 import { SettingsState } from "../settings_state.slint";
 import { NpcDialog } from "./menu_dialog.slint";
 import { SettingsPanel } from "settings/panel.slint";
+import { GameMenuPanel } from "settings/game_menu.slint";
 import { Theme } from "../theme.slint";
 import { InventoryPanel } from "./inventory_panel.slint";
 import { ActionsPanel } from "./actions_panel.slint";
@@ -38,6 +39,15 @@ export component GameScene inherits Rectangle {
             }
             if (event.text == "\"") {
                 chat-log.enter-whisper-mode();
+                return accept;
+            }
+            if (event.text == "\u{001b}") { // Escape
+                if (SettingsState.show-settings) {
+                    SettingsState.show-settings = false;
+                    SettingsState.show-game-menu = true;
+                    return accept;
+                }
+                SettingsState.show-game-menu = !SettingsState.show-game-menu;
                 return accept;
             }
             if (SettingsState.is-rebinding) {
@@ -116,9 +126,20 @@ export component GameScene inherits Rectangle {
         width: 100%;
         height: 100%;
     }
-    if (SettingsState.show-settings): SettingsPanel {
-        x: Theme.spacing-small;
-        y: 80px;
+    if (SettingsState.show-settings): HorizontalLayout {
+        alignment: center;
+        VerticalLayout {
+            alignment: center;
+            preferred-width: 600px;
+            SettingsPanel { }
+        }
+    }
+    if (SettingsState.show-game-menu): VerticalLayout {
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            GameMenuPanel { }
+        }
     }
 
     // Profile panel (centered modal)

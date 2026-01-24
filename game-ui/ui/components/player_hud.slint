@@ -62,38 +62,91 @@ export component PlayerHUD inherits Rectangle {
                 spacing: 8px;
                 Text {
                     text: GameState.player_name;
-                    color: #e0e0e0;
+                    color: Theme.foreground;
                     font-size: 14px;
                     font-weight: 700;
                     vertical-alignment: center;
                 }
 
+                // Settings Button
                 Rectangle {
                     width: 20px;
                     height: 20px;
                     y: (parent.height - self.height) / 2;
-                    background: SettingsState.show-settings ? @radial-gradient(circle, #FFC040 0%, #FF8040 100%) : #2a2a3a80;
+                    background: SettingsState.show-settings ? Theme.accent-subtle : Theme.surface-muted;
                     border-radius: 4px;
                     border-width: 1px;
-                    border-color: SettingsState.show-settings ? #FFD060 : #3a3a4a;
+                    border-color: SettingsState.show-settings ? Theme.accent : Theme.border-muted;
                     Image {
                         source: @image-url("../icons/settings.svg");
                         width: 12px;
                         height: 12px;
                         x: (parent.width - self.width) / 2;
                         y: (parent.height - self.height) / 2;
-                        colorize: SettingsState.show-settings ? #1a1a2e : #9a9a9a;
+                        colorize: SettingsState.show-settings ? Theme.accent : Theme.foreground-muted;
                     }
 
                     states [
                         hover when settings-touch.has-hover && !SettingsState.show-settings: {
-                            background: #3a3a4a;
-                            border-color: #FFD060;
+                            background: Theme.surface-secondary;
+                            border-color: Theme.accent;
                         }
                     ]
                     settings-touch := TouchArea {
                         clicked => {
                             SettingsState.show-settings = !SettingsState.show-settings;
+                            SettingsState.show-game-menu = false;
+                        }
+                    }
+                }
+
+                // Game Menu Button (Logout/Exit)
+                Rectangle {
+                    width: 20px;
+                    height: 20px;
+                    y: (parent.height - self.height) / 2;
+                    background: SettingsState.show-game-menu ? #ff444444 : Theme.surface-muted;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: SettingsState.show-game-menu ? #ff4444 : Theme.border-muted;
+                    
+                    // Simple "Power" icon manually drawn
+                    Rectangle {
+                        width: 10px;
+                        height: 10px;
+                        border-radius: 5px;
+                        border-width: 1.5px;
+                        border-color: SettingsState.show-game-menu ? #ffffff : Theme.foreground-muted;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        
+                        // Break in the top of the circle
+                        Rectangle {
+                            width: 4px;
+                            height: 3px;
+                            background: SettingsState.show-game-menu ? #552222 : #1a1a2a; // Match approximate background
+                            x: (parent.width - self.width) / 2;
+                            y: -1px;
+                        }
+                    }
+                    Rectangle {
+                        width: 1.5px;
+                        height: 5px;
+                        background: SettingsState.show-game-menu ? #ffffff : Theme.foreground-muted;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2 - 2px;
+                    }
+
+                    states [
+                        hover when menu-touch.has-hover && !SettingsState.show-game-menu: {
+                            background: #442222;
+                            border-color: #ff4444;
+                        }
+                    ]
+                    menu-touch := TouchArea {
+                        clicked => {
+                            SettingsState.show-game-menu = !SettingsState.show-game-menu;
+                            SettingsState.show-settings = false;
                         }
                     }
                 }

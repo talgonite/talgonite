@@ -4,7 +4,6 @@ export component BasePanel inherits Rectangle {
     in property <string> title;
     in property <bool> show-close: true;
     callback close();
-
     background: Theme.panel-background;
     border-radius: Theme.radius-medium;
     border-width: 1px;
@@ -30,12 +29,10 @@ export component BasePanel inherits Rectangle {
             background: Theme.panel-header-background;
             border-top-left-radius: Theme.radius-medium;
             border-top-right-radius: Theme.radius-medium;
-
             HorizontalLayout {
                 padding-left: Theme.spacing-medium;
                 padding-right: Theme.spacing-small;
                 spacing: Theme.spacing-small;
-
                 Text {
                     text: root.title;
                     font-size: Theme.font-size-medium;
@@ -54,7 +51,6 @@ export component BasePanel inherits Rectangle {
                     border-radius: 4px;
                     background: touch.pressed ? Theme.surface-primary : touch.has-hover ? Theme.surface-secondary : transparent;
                     y: (parent.height - self.height) / 2;
-
                     Text {
                         text: "×";
                         font-size: 24px;

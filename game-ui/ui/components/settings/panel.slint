@@ -8,13 +8,10 @@ import { BasePanel } from "../base_panel.slint";
 
 export component SettingsPanel inherits BasePanel {
     in-out property <int> active-tab: 0;
-    title: "Main Menu";
-    width: 520px;
-    height: 440px;
+    title: "Settings";
     close => {
         SettingsState.show-settings = false;
     }
-
     TouchArea {
         scroll-event(event) => {
             accept
@@ -27,15 +24,11 @@ export component SettingsPanel inherits BasePanel {
         padding-top: 2px;
         padding-bottom: 12px;
         spacing: 8px;
-
         HorizontalBox {
             spacing: 12px;
-            height: 386px;
-
             VerticalBox {
                 width: 140px;
                 spacing: 6px;
-
                 MenuButton {
                     label: "Graphics";
                     selected: active-tab == 0;
@@ -51,25 +44,6 @@ export component SettingsPanel inherits BasePanel {
                         active-tab = 1;
                     }
                 }
-
-                Rectangle { }
-
-                MenuButton {
-                    label: "Log Out";
-                    clicked => {
-                        SettingsState.logout-requested();
-                        SettingsState.show-settings = false;
-                    }
-                }
-
-                MenuButton {
-                    label: "Exit Game";
-                    danger: true;
-                    clicked => {
-                        SettingsState.exit-requested();
-                        SettingsState.show-settings = false;
-                    }
-                }
             }
 
             Rectangle {
@@ -77,17 +51,19 @@ export component SettingsPanel inherits BasePanel {
                 background: Theme.border-subtle;
             }
 
-            if active-tab == 0: ScrollView {
-                viewport-width: self.visible-width;
-                GraphicsTab {
-                    alignment: start;
+            Rectangle {
+                height: 440px;
+                if active-tab == 0: ScrollView {
+                    viewport-width: self.visible-width;
+                    GraphicsTab {
+                        alignment: start;
+                    }
                 }
-            }
-
-            if active-tab == 1: ScrollView {
-                viewport-width: self.visible-width;
-                ControlsTab {
-                    alignment: start;
+                if active-tab == 1: ScrollView {
+                    viewport-width: self.visible-width;
+                    ControlsTab {
+                        alignment: start;
+                    }
                 }
             }
         }

@@ -1,0 +1,54 @@
+import { SettingsState } from "../../settings_state.slint";
+import { Theme } from "../../theme.slint";
+import { VerticalBox } from "std-widgets.slint";
+import { MenuButton } from "widgets.slint";
+import { BasePanel } from "../base_panel.slint";
+
+export component GameMenuPanel inherits BasePanel {
+    title: "Game Menu";
+    preferred-width: 240px;
+    preferred-height: 320px;
+    close => {
+        SettingsState.show-game-menu = false;
+    }
+    VerticalBox {
+        padding: 20px;
+        spacing: 12px;
+        alignment: center;
+        MenuButton {
+            label: "Resume";
+            clicked => {
+                SettingsState.show-game-menu = false;
+            }
+        }
+
+        MenuButton {
+            label: "Settings";
+            clicked => {
+                SettingsState.show-game-menu = false;
+                SettingsState.show-settings = true;
+            }
+        }
+
+        Rectangle {
+            height: 10px;
+        } // Spacer
+
+        MenuButton {
+            label: "Log Out";
+            clicked => {
+                SettingsState.logout-requested();
+                SettingsState.show-game-menu = false;
+            }
+        }
+
+        MenuButton {
+            label: "Exit Game";
+            danger: true;
+            clicked => {
+                SettingsState.exit-requested();
+                SettingsState.show-game-menu = false;
+            }
+        }
+    }
+}

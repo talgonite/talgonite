@@ -1,5 +1,6 @@
 export global SettingsState {
-    in-out property <bool> show-settings: false;
+    in-out property <bool> show-settings: true;
+    in-out property <bool> show-game-menu: false;
     in-out property <int> xray-size: 2;  // 0=Off, 1=Small, 2=Medium, 3=Large
     in-out property <float> sfx-volume: 1.0;  // 0.0 to 1.0
     in-out property <float> music-volume: 1.0;  // 0.0 to 1.0
@@ -38,7 +39,6 @@ export global SettingsState {
     // Rebinding state
     in-out property <string> rebinding-action: "";
     in-out property <bool> is-rebinding: false;
-
     callback xray-size-changed(int);
     callback sfx-volume-changed(float);
     callback music-volume-changed(float);
