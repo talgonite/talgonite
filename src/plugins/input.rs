@@ -104,42 +104,7 @@ fn initialize_input_bindings(
     let bindings = InputBindings::from_settings(&settings.key_bindings);
     commands.insert_resource(bindings);
 
-    for action in GameAction::all() {
-        if let Some(code) = match action {
-            GameAction::MoveUp => Some(&settings.key_bindings.move_up),
-            GameAction::MoveDown => Some(&settings.key_bindings.move_down),
-            GameAction::MoveLeft => Some(&settings.key_bindings.move_left),
-            GameAction::MoveRight => Some(&settings.key_bindings.move_right),
-            GameAction::Inventory => Some(&settings.key_bindings.inventory),
-            GameAction::Skills => Some(&settings.key_bindings.skills),
-            GameAction::Spells => Some(&settings.key_bindings.spells),
-            GameAction::Settings => Some(&settings.key_bindings.settings),
-            GameAction::Refresh => Some(&settings.key_bindings.refresh),
-            GameAction::BasicAttack => Some(&settings.key_bindings.basic_attack),
-            GameAction::HotbarSlot1 => Some(&settings.key_bindings.hotbar_slot_1),
-            GameAction::HotbarSlot2 => Some(&settings.key_bindings.hotbar_slot_2),
-            GameAction::HotbarSlot3 => Some(&settings.key_bindings.hotbar_slot_3),
-            GameAction::HotbarSlot4 => Some(&settings.key_bindings.hotbar_slot_4),
-            GameAction::HotbarSlot5 => Some(&settings.key_bindings.hotbar_slot_5),
-            GameAction::HotbarSlot6 => Some(&settings.key_bindings.hotbar_slot_6),
-            GameAction::HotbarSlot7 => Some(&settings.key_bindings.hotbar_slot_7),
-            GameAction::HotbarSlot8 => Some(&settings.key_bindings.hotbar_slot_8),
-            GameAction::HotbarSlot9 => Some(&settings.key_bindings.hotbar_slot_9),
-            GameAction::HotbarSlot10 => Some(&settings.key_bindings.hotbar_slot_10),
-            GameAction::HotbarSlot11 => Some(&settings.key_bindings.hotbar_slot_11),
-            GameAction::HotbarSlot12 => Some(&settings.key_bindings.hotbar_slot_12),
-            GameAction::SwitchToInventory => Some(&settings.key_bindings.switch_to_inventory),
-            GameAction::SwitchToSkills => Some(&settings.key_bindings.switch_to_skills),
-            GameAction::SwitchToSpells => Some(&settings.key_bindings.switch_to_spells),
-            GameAction::SwitchToHotbar1 => Some(&settings.key_bindings.switch_to_hotbar_1),
-            GameAction::SwitchToHotbar2 => Some(&settings.key_bindings.switch_to_hotbar_2),
-            GameAction::SwitchToHotbar3 => Some(&settings.key_bindings.switch_to_hotbar_3),
-        } {
-            if let Some(input_source) = crate::input::InputSource::from_string(code) {
-                unified.set_binding(*action, input_source);
-            }
-        }
-    }
+    *unified = UnifiedInputBindings::from_settings(&settings.key_bindings);
 }
 
 pub fn input_handling_system(
@@ -149,6 +114,7 @@ pub fn input_handling_system(
     unified_bindings: Res<UnifiedInputBindings>,
     gamepad_query: Query<&Gamepad>,
     gamepad_config: Res<GamepadConfig>,
+    window: Option<Res<crate::slint_support::state_bridge::SlintWindow>>,
     mut player_actions: MessageWriter<PlayerAction>,
     mut player_query: Query<
         (&mut LocalPlayer, &mut Direction, Option<&MovementTween>),
@@ -182,6 +148,45 @@ pub fn input_handling_system(
         tracing::info!("Basic attack triggered");
         spell_casting.active_cast = None;
         outbox.send(&Spacebar);
+    }
+
+    // Toggle Panels
+    if let Some(strong) = window.as_ref().and_then(|w| w.0.upgrade()) {
+        let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
+
+        if bindings.is_just_pressed(
+            GameAction::Inventory,
+            &keyboard_input,
+            Some(&gamepad_query),
+            Some(&gamepad_config),
+        ) {
+            game_state.set_show_inventory(!game_state.get_show_inventory());
+        }
+        if bindings.is_just_pressed(
+            GameAction::Skills,
+            &keyboard_input,
+            Some(&gamepad_query),
+            Some(&gamepad_config),
+        ) {
+            game_state.set_show_skills(!game_state.get_show_skills());
+        }
+        if bindings.is_just_pressed(
+            GameAction::Spells,
+            &keyboard_input,
+            Some(&gamepad_query),
+            Some(&gamepad_config),
+        ) {
+            game_state.set_show_spells(!game_state.get_show_spells());
+        }
+        if bindings.is_just_pressed(
+            GameAction::Settings,
+            &keyboard_input,
+            Some(&gamepad_query),
+            Some(&gamepad_config),
+        ) {
+            let settings_state = slint::ComponentHandle::global::<crate::SettingsState>(&strong);
+            settings_state.set_show_game_menu(!settings_state.get_show_game_menu());
+        }
     }
 
     // Panel switching

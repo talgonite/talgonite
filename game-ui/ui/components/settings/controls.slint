@@ -1,105 +1,496 @@
 import { Theme } from "../../theme.slint";
 import { SettingsState } from "../../settings_state.slint";
-import { VerticalBox, ScrollView } from "std-widgets.slint";
+import { VerticalBox, ScrollView, HorizontalBox } from "std-widgets.slint";
 import { SectionHeader, KeyBindingRow } from "widgets.slint";
 
 export component ControlsTab inherits VerticalBox {
     spacing: Theme.spacing-small;
+    padding: Theme.spacing-medium;
+    HorizontalBox {
+        spacing: 12px;
+        padding-left: 4px;
+        padding-right: 4px;
+        Text {
+            text: "Action";
+            horizontal-stretch: 1;
+            font-weight: 700;
+            color: Theme.foreground-muted;
+        }
 
-    SectionHeader { title: "Movement"; }
-    KeyBindingRow {
-        action-label: "Move Up";
-        current-key: SettingsState.key-move-up;
-        is-rebinding: SettingsState.rebinding-action == "move_up";
-        start-rebind => { SettingsState.start-rebind("move_up"); }
-    }
-    KeyBindingRow {
-        action-label: "Move Down";
-        current-key: SettingsState.key-move-down;
-        is-rebinding: SettingsState.rebinding-action == "move_down";
-        start-rebind => { SettingsState.start-rebind("move_down"); }
-    }
-    KeyBindingRow {
-        action-label: "Move Left";
-        current-key: SettingsState.key-move-left;
-        is-rebinding: SettingsState.rebinding-action == "move_left";
-        start-rebind => { SettingsState.start-rebind("move_left"); }
-    }
-    KeyBindingRow {
-        action-label: "Move Right";
-        current-key: SettingsState.key-move-right;
-        is-rebinding: SettingsState.rebinding-action == "move_right";
-        start-rebind => { SettingsState.start-rebind("move_right"); }
-    }
+        Text {
+            text: "Primary";
+            width: 120px;
+            horizontal-alignment: center;
+            font-weight: 700;
+            color: Theme.foreground-muted;
+        }
 
-    Rectangle { height: Theme.spacing-small; }
-
-    SectionHeader { title: "Combat"; }
-    KeyBindingRow {
-        action-label: "Basic Attack";
-        current-key: SettingsState.key-basic-attack;
-        is-rebinding: SettingsState.rebinding-action == "basic_attack";
-        start-rebind => { SettingsState.start-rebind("basic_attack"); }
+        Text {
+            text: "Secondary";
+            width: 120px;
+            horizontal-alignment: center;
+            font-weight: 700;
+            color: Theme.foreground-muted;
+        }
     }
 
-    Rectangle { height: Theme.spacing-small; }
+    VerticalBox {
+        spacing: Theme.spacing-xsmall;
+        alignment: start;
+        SectionHeader {
+            title: "Movement";
+        }
 
-    SectionHeader { title: "Interface"; }
-    KeyBindingRow {
-        action-label: "Inventory";
-        current-key: SettingsState.key-inventory;
-        is-rebinding: SettingsState.rebinding-action == "inventory";
-        start-rebind => { SettingsState.start-rebind("inventory"); }
-    }
-    KeyBindingRow {
-        action-label: "Skills";
-        current-key: SettingsState.key-skills;
-        is-rebinding: SettingsState.rebinding-action == "skills";
-        start-rebind => { SettingsState.start-rebind("skills"); }
-    }
-    KeyBindingRow {
-        action-label: "Spells";
-        current-key: SettingsState.key-spells;
-        is-rebinding: SettingsState.rebinding-action == "spells";
-        start-rebind => { SettingsState.start-rebind("spells"); }
-    }
-    KeyBindingRow {
-        action-label: "Settings";
-        current-key: SettingsState.key-settings;
-        is-rebinding: SettingsState.rebinding-action == "settings";
-        start-rebind => { SettingsState.start-rebind("settings"); }
-    }
-    KeyBindingRow {
-        action-label: "Refresh";
-        current-key: SettingsState.key-refresh;
-        is-rebinding: SettingsState.rebinding-action == "refresh";
-        start-rebind => { SettingsState.start-rebind("refresh"); }
-    }
+        KeyBindingRow {
+            action-label: "Move Up";
+            current-key: SettingsState.key-move-up;
+            current-key-2: SettingsState.key-move-up-2;
+            action-id: "move_up";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
 
-    Rectangle { height: Theme.spacing-small; }
+        KeyBindingRow {
+            action-label: "Move Down";
+            current-key: SettingsState.key-move-down;
+            current-key-2: SettingsState.key-move-down-2;
+            action-id: "move_down";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
 
-    SectionHeader { title: "Hotbar Slots"; }
-    // Loop wasn't used in original, staying explicit to keep it simple and consistent with rebinding-action strings
-    KeyBindingRow { action-label: "Slot 1"; current-key: SettingsState.key-hotbar-slot-1; is-rebinding: SettingsState.rebinding-action == "hotbar_slot_1"; start-rebind => { SettingsState.start-rebind("hotbar_slot_1"); } }
-    KeyBindingRow { action-label: "Slot 2"; current-key: SettingsState.key-hotbar-slot-2; is-rebinding: SettingsState.rebinding-action == "hotbar_slot_2"; start-rebind => { SettingsState.start-rebind("hotbar_slot_2"); } }
-    KeyBindingRow { action-label: "Slot 3"; current-key: SettingsState.key-hotbar-slot-3; is-rebinding: SettingsState.rebinding-action == "hotbar_slot_3"; start-rebind => { SettingsState.start-rebind("hotbar_slot_3"); } }
-    KeyBindingRow { action-label: "Slot 4"; current-key: SettingsState.key-hotbar-slot-4; is-rebinding: SettingsState.rebinding-action == "hotbar_slot_4"; start-rebind => { SettingsState.start-rebind("hotbar_slot_4"); } }
-    KeyBindingRow { action-label: "Slot 5"; current-key: SettingsState.key-hotbar-slot-5; is-rebinding: SettingsState.rebinding-action == "hotbar_slot_5"; start-rebind => { SettingsState.start-rebind("hotbar_slot_5"); } }
-    KeyBindingRow { action-label: "Slot 6"; current-key: SettingsState.key-hotbar-slot-6; is-rebinding: SettingsState.rebinding-action == "hotbar_slot_6"; start-rebind => { SettingsState.start-rebind("hotbar_slot_6"); } }
-    KeyBindingRow { action-label: "Slot 7"; current-key: SettingsState.key-hotbar-slot-7; is-rebinding: SettingsState.rebinding-action == "hotbar_slot_7"; start-rebind => { SettingsState.start-rebind("hotbar_slot_7"); } }
-    KeyBindingRow { action-label: "Slot 8"; current-key: SettingsState.key-hotbar-slot-8; is-rebinding: SettingsState.rebinding-action == "hotbar_slot_8"; start-rebind => { SettingsState.start-rebind("hotbar_slot_8"); } }
-    KeyBindingRow { action-label: "Slot 9"; current-key: SettingsState.key-hotbar-slot-9; is-rebinding: SettingsState.rebinding-action == "hotbar_slot_9"; start-rebind => { SettingsState.start-rebind("hotbar_slot_9"); } }
-    KeyBindingRow { action-label: "Slot 10"; current-key: SettingsState.key-hotbar-slot-10; is-rebinding: SettingsState.rebinding-action == "hotbar_slot_10"; start-rebind => { SettingsState.start-rebind("hotbar_slot_10"); } }
-    KeyBindingRow { action-label: "Slot 11"; current-key: SettingsState.key-hotbar-slot-11; is-rebinding: SettingsState.rebinding-action == "hotbar_slot_11"; start-rebind => { SettingsState.start-rebind("hotbar_slot_11"); } }
-    KeyBindingRow { action-label: "Slot 12"; current-key: SettingsState.key-hotbar-slot-12; is-rebinding: SettingsState.rebinding-action == "hotbar_slot_12"; start-rebind => { SettingsState.start-rebind("hotbar_slot_12"); } }
+        KeyBindingRow {
+            action-label: "Move Left";
+            current-key: SettingsState.key-move-left;
+            current-key-2: SettingsState.key-move-left-2;
+            action-id: "move_left";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
 
-    Rectangle { height: Theme.spacing-small; }
+        KeyBindingRow {
+            action-label: "Move Right";
+            current-key: SettingsState.key-move-right;
+            current-key-2: SettingsState.key-move-right-2;
+            action-id: "move_right";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
 
-    SectionHeader { title: "Panel Switching"; }
-    KeyBindingRow { action-label: "Inventory Panel"; current-key: SettingsState.key-switch-to-inventory; is-rebinding: SettingsState.rebinding-action == "switch_to_inventory"; start-rebind => { SettingsState.start-rebind("switch_to_inventory"); } }
-    KeyBindingRow { action-label: "Skills Panel"; current-key: SettingsState.key-switch-to-skills; is-rebinding: SettingsState.rebinding-action == "switch_to_skills"; start-rebind => { SettingsState.start-rebind("switch_to_skills"); } }
-    KeyBindingRow { action-label: "Spells Panel"; current-key: SettingsState.key-switch-to-spells; is-rebinding: SettingsState.rebinding-action == "switch_to_spells"; start-rebind => { SettingsState.start-rebind("switch_to_spells"); } }
-    KeyBindingRow { action-label: "Hotbar 1"; current-key: SettingsState.key-switch-to-hotbar-1; is-rebinding: SettingsState.rebinding-action == "switch_to_hotbar_1"; start-rebind => { SettingsState.start-rebind("switch_to_hotbar_1"); } }
-    KeyBindingRow { action-label: "Hotbar 2"; current-key: SettingsState.key-switch-to-hotbar-2; is-rebinding: SettingsState.rebinding-action == "switch_to_hotbar_2"; start-rebind => { SettingsState.start-rebind("switch_to_hotbar_2"); } }
-    KeyBindingRow { action-label: "Hotbar 3"; current-key: SettingsState.key-switch-to-hotbar-3; is-rebinding: SettingsState.rebinding-action == "switch_to_hotbar_3"; start-rebind => { SettingsState.start-rebind("switch_to_hotbar_3"); } }
+        Rectangle {
+            height: Theme.spacing-small;
+        }
+
+        SectionHeader {
+            title: "Combat";
+        }
+
+        KeyBindingRow {
+            action-label: "Basic Attack";
+            current-key: SettingsState.key-basic-attack;
+            current-key-2: SettingsState.key-basic-attack-2;
+            action-id: "basic_attack";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        Rectangle {
+            height: Theme.spacing-small;
+        }
+
+        SectionHeader {
+            title: "Interface";
+        }
+
+        KeyBindingRow {
+            action-label: "Inventory";
+            current-key: SettingsState.key-inventory;
+            current-key-2: SettingsState.key-inventory-2;
+            action-id: "inventory";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Skills";
+            current-key: SettingsState.key-skills;
+            current-key-2: SettingsState.key-skills-2;
+            action-id: "skills";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Spells";
+            current-key: SettingsState.key-spells;
+            current-key-2: SettingsState.key-spells-2;
+            action-id: "spells";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Settings";
+            current-key: SettingsState.key-settings;
+            current-key-2: SettingsState.key-settings-2;
+            action-id: "settings";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Refresh";
+            current-key: SettingsState.key-refresh;
+            current-key-2: SettingsState.key-refresh-2;
+            action-id: "refresh";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        Rectangle {
+            height: Theme.spacing-small;
+        }
+
+        SectionHeader {
+            title: "Hotbar Slots";
+        }
+
+        KeyBindingRow {
+            action-label: "Slot 1";
+            current-key: SettingsState.key-hotbar-slot-1;
+            current-key-2: SettingsState.key-hotbar-slot-1-2;
+            action-id: "hotbar_slot_1";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Slot 2";
+            current-key: SettingsState.key-hotbar-slot-2;
+            current-key-2: SettingsState.key-hotbar-slot-2-2;
+            action-id: "hotbar_slot_2";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Slot 3";
+            current-key: SettingsState.key-hotbar-slot-3;
+            current-key-2: SettingsState.key-hotbar-slot-3-2;
+            action-id: "hotbar_slot_3";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Slot 4";
+            current-key: SettingsState.key-hotbar-slot-4;
+            current-key-2: SettingsState.key-hotbar-slot-4-2;
+            action-id: "hotbar_slot_4";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Slot 5";
+            current-key: SettingsState.key-hotbar-slot-5;
+            current-key-2: SettingsState.key-hotbar-slot-5-2;
+            action-id: "hotbar_slot_5";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Slot 6";
+            current-key: SettingsState.key-hotbar-slot-6;
+            current-key-2: SettingsState.key-hotbar-slot-6-2;
+            action-id: "hotbar_slot_6";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Slot 7";
+            current-key: SettingsState.key-hotbar-slot-7;
+            current-key-2: SettingsState.key-hotbar-slot-7-2;
+            action-id: "hotbar_slot_7";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Slot 8";
+            current-key: SettingsState.key-hotbar-slot-8;
+            current-key-2: SettingsState.key-hotbar-slot-8-2;
+            action-id: "hotbar_slot_8";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Slot 9";
+            current-key: SettingsState.key-hotbar-slot-9;
+            current-key-2: SettingsState.key-hotbar-slot-9-2;
+            action-id: "hotbar_slot_9";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Slot 10";
+            current-key: SettingsState.key-hotbar-slot-10;
+            current-key-2: SettingsState.key-hotbar-slot-10-2;
+            action-id: "hotbar_slot_10";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Slot 11";
+            current-key: SettingsState.key-hotbar-slot-11;
+            current-key-2: SettingsState.key-hotbar-slot-11-2;
+            action-id: "hotbar_slot_11";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Slot 12";
+            current-key: SettingsState.key-hotbar-slot-12;
+            current-key-2: SettingsState.key-hotbar-slot-12-2;
+            action-id: "hotbar_slot_12";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        Rectangle {
+            height: Theme.spacing-small;
+        }
+
+        SectionHeader {
+            title: "Panel Switching";
+        }
+
+        KeyBindingRow {
+            action-label: "Inventory Panel";
+            current-key: SettingsState.key-switch-to-inventory;
+            current-key-2: SettingsState.key-switch-to-inventory-2;
+            action-id: "switch_to_inventory";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Skills Panel";
+            current-key: SettingsState.key-switch-to-skills;
+            current-key-2: SettingsState.key-switch-to-skills-2;
+            action-id: "switch_to_skills";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Spells Panel";
+            current-key: SettingsState.key-switch-to-spells;
+            current-key-2: SettingsState.key-switch-to-spells-2;
+            action-id: "switch_to_spells";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Hotbar 1";
+            current-key: SettingsState.key-switch-to-hotbar-1;
+            current-key-2: SettingsState.key-switch-to-hotbar-1-2;
+            action-id: "switch_to_hotbar_1";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Hotbar 2";
+            current-key: SettingsState.key-switch-to-hotbar-2;
+            current-key-2: SettingsState.key-switch-to-hotbar-2-2;
+            action-id: "switch_to_hotbar_2";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Hotbar 3";
+            current-key: SettingsState.key-switch-to-hotbar-3;
+            current-key-2: SettingsState.key-switch-to-hotbar-3-2;
+            action-id: "switch_to_hotbar_3";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+    }
 }

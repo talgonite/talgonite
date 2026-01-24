@@ -6,45 +6,75 @@ export global SettingsState {
     in-out property <float> music-volume: 1.0;  // 0.0 to 1.0
     in-out property <float> scale: 1.0;  // 1.0 to 5.0
 
-    // Key bindings
+    // Key bindings (Primary and Secondary)
     in-out property <string> key-move-up: "ArrowUp";
+    in-out property <string> key-move-up-2: "";
     in-out property <string> key-move-down: "ArrowDown";
     in-out property <string> key-move-left: "ArrowLeft";
     in-out property <string> key-move-right: "ArrowRight";
+    in-out property <string> key-move-down-2: "";
+    in-out property <string> key-move-left-2: "";
+    in-out property <string> key-move-right-2: "";
     in-out property <string> key-inventory: "KeyI";
+    in-out property <string> key-inventory-2: "";
     in-out property <string> key-skills: "KeyK";
+    in-out property <string> key-skills-2: "";
     in-out property <string> key-spells: "KeyP";
+    in-out property <string> key-spells-2: "";
     in-out property <string> key-settings: "Escape";
+    in-out property <string> key-settings-2: "";
     in-out property <string> key-refresh: "F5";
+    in-out property <string> key-refresh-2: "";
     in-out property <string> key-basic-attack: "Space";
+    in-out property <string> key-basic-attack-2: "";
     in-out property <string> key-hotbar-slot-1: "Digit1";
+    in-out property <string> key-hotbar-slot-1-2: "";
     in-out property <string> key-hotbar-slot-2: "Digit2";
+    in-out property <string> key-hotbar-slot-2-2: "";
     in-out property <string> key-hotbar-slot-3: "Digit3";
+    in-out property <string> key-hotbar-slot-3-2: "";
     in-out property <string> key-hotbar-slot-4: "Digit4";
+    in-out property <string> key-hotbar-slot-4-2: "";
     in-out property <string> key-hotbar-slot-5: "Digit5";
+    in-out property <string> key-hotbar-slot-5-2: "";
     in-out property <string> key-hotbar-slot-6: "Digit6";
+    in-out property <string> key-hotbar-slot-6-2: "";
     in-out property <string> key-hotbar-slot-7: "Digit7";
+    in-out property <string> key-hotbar-slot-7-2: "";
     in-out property <string> key-hotbar-slot-8: "Digit8";
+    in-out property <string> key-hotbar-slot-8-2: "";
     in-out property <string> key-hotbar-slot-9: "Digit9";
+    in-out property <string> key-hotbar-slot-9-2: "";
     in-out property <string> key-hotbar-slot-10: "Digit0";
+    in-out property <string> key-hotbar-slot-10-2: "";
     in-out property <string> key-hotbar-slot-11: "Minus";
+    in-out property <string> key-hotbar-slot-11-2: "";
     in-out property <string> key-hotbar-slot-12: "Equal";
+    in-out property <string> key-hotbar-slot-12-2: "";
     in-out property <string> key-switch-to-inventory: "KeyA";
+    in-out property <string> key-switch-to-inventory-2: "";
     in-out property <string> key-switch-to-skills: "KeyS";
+    in-out property <string> key-switch-to-skills-2: "";
     in-out property <string> key-switch-to-spells: "KeyD";
+    in-out property <string> key-switch-to-spells-2: "";
     in-out property <string> key-switch-to-hotbar-1: "KeyF";
+    in-out property <string> key-switch-to-hotbar-1-2: "";
     in-out property <string> key-switch-to-hotbar-2: "KeyG";
+    in-out property <string> key-switch-to-hotbar-2-2: "";
     in-out property <string> key-switch-to-hotbar-3: "KeyH";
+    in-out property <string> key-switch-to-hotbar-3-2: "";
 
     // Rebinding state
     in-out property <string> rebinding-action: "";
+    in-out property <int> rebinding-index: 0;
     in-out property <bool> is-rebinding: false;
     callback xray-size-changed(int);
     callback sfx-volume-changed(float);
     callback music-volume-changed(float);
     callback scale-changed(float);
-    callback start-rebind(string);
+    callback start-rebind(string, int);
     callback rebind-key(string);
+    callback unbind-key(string, int);
     callback cancel-rebind();
     callback logout-requested();
     callback exit-requested();

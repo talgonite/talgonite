@@ -103,79 +103,128 @@ impl KeyBinding {
 
 #[derive(Resource)]
 pub struct InputBindings {
-    bindings: std::collections::HashMap<GameAction, KeyBinding>,
+    bindings: std::collections::HashMap<GameAction, Vec<KeyBinding>>,
 }
 
 impl InputBindings {
     pub fn new() -> Self {
         let mut bindings = std::collections::HashMap::new();
-        bindings.insert(GameAction::MoveUp, KeyBinding::new(KeyCode::ArrowUp));
-        bindings.insert(GameAction::MoveDown, KeyBinding::new(KeyCode::ArrowDown));
-        bindings.insert(GameAction::MoveLeft, KeyBinding::new(KeyCode::ArrowLeft));
-        bindings.insert(GameAction::MoveRight, KeyBinding::new(KeyCode::ArrowRight));
-        bindings.insert(GameAction::Inventory, KeyBinding::new(KeyCode::KeyI));
-        bindings.insert(GameAction::Skills, KeyBinding::new(KeyCode::KeyK));
-        bindings.insert(GameAction::Spells, KeyBinding::new(KeyCode::KeyP));
-        bindings.insert(GameAction::Settings, KeyBinding::new(KeyCode::Escape));
-        bindings.insert(GameAction::Refresh, KeyBinding::new(KeyCode::F5));
-        bindings.insert(GameAction::BasicAttack, KeyBinding::new(KeyCode::Space));
+        bindings.insert(GameAction::MoveUp, vec![KeyBinding::new(KeyCode::ArrowUp)]);
+        bindings.insert(
+            GameAction::MoveDown,
+            vec![KeyBinding::new(KeyCode::ArrowDown)],
+        );
+        bindings.insert(
+            GameAction::MoveLeft,
+            vec![KeyBinding::new(KeyCode::ArrowLeft)],
+        );
+        bindings.insert(
+            GameAction::MoveRight,
+            vec![KeyBinding::new(KeyCode::ArrowRight)],
+        );
+        bindings.insert(GameAction::Inventory, vec![KeyBinding::new(KeyCode::KeyI)]);
+        bindings.insert(GameAction::Skills, vec![KeyBinding::new(KeyCode::KeyK)]);
+        bindings.insert(GameAction::Spells, vec![KeyBinding::new(KeyCode::KeyP)]);
+        bindings.insert(GameAction::Settings, vec![KeyBinding::new(KeyCode::Escape)]);
+        bindings.insert(GameAction::Refresh, vec![KeyBinding::new(KeyCode::F5)]);
+        bindings.insert(
+            GameAction::BasicAttack,
+            vec![KeyBinding::new(KeyCode::Space)],
+        );
         Self { bindings }
     }
 
     pub fn from_settings(settings: &KeyBindings) -> Self {
         let mut bindings = std::collections::HashMap::new();
 
-        if let Some(kb) = KeyBinding::from_dom_code(&settings.move_up) {
-            bindings.insert(GameAction::MoveUp, kb);
+        macro_rules! bind {
+            ($field:ident, $action:ident) => {
+                let mut action_bindings = Vec::new();
+                for key_str in &settings.$field {
+                    if !key_str.is_empty() {
+                        if let Some(kb) = KeyBinding::from_dom_code(key_str) {
+                            action_bindings.push(kb);
+                        }
+                    }
+                }
+                bindings.insert(GameAction::$action, action_bindings);
+            };
         }
-        if let Some(kb) = KeyBinding::from_dom_code(&settings.move_down) {
-            bindings.insert(GameAction::MoveDown, kb);
-        }
-        if let Some(kb) = KeyBinding::from_dom_code(&settings.move_left) {
-            bindings.insert(GameAction::MoveLeft, kb);
-        }
-        if let Some(kb) = KeyBinding::from_dom_code(&settings.move_right) {
-            bindings.insert(GameAction::MoveRight, kb);
-        }
-        if let Some(kb) = KeyBinding::from_dom_code(&settings.inventory) {
-            bindings.insert(GameAction::Inventory, kb);
-        }
-        if let Some(kb) = KeyBinding::from_dom_code(&settings.skills) {
-            bindings.insert(GameAction::Skills, kb);
-        }
-        if let Some(kb) = KeyBinding::from_dom_code(&settings.spells) {
-            bindings.insert(GameAction::Spells, kb);
-        }
-        if let Some(kb) = KeyBinding::from_dom_code(&settings.settings) {
-            bindings.insert(GameAction::Settings, kb);
-        }
-        if let Some(kb) = KeyBinding::from_dom_code(&settings.refresh) {
-            bindings.insert(GameAction::Refresh, kb);
-        }
-        if let Some(kb) = KeyBinding::from_dom_code(&settings.basic_attack) {
-            bindings.insert(GameAction::BasicAttack, kb);
-        }
+
+        bind!(move_up, MoveUp);
+        bind!(move_down, MoveDown);
+        bind!(move_left, MoveLeft);
+        bind!(move_right, MoveRight);
+        bind!(inventory, Inventory);
+        bind!(skills, Skills);
+        bind!(spells, Spells);
+        bind!(settings, Settings);
+        bind!(refresh, Refresh);
+        bind!(basic_attack, BasicAttack);
+
+        bind!(hotbar_slot_1, HotbarSlot1);
+        bind!(hotbar_slot_2, HotbarSlot2);
+        bind!(hotbar_slot_3, HotbarSlot3);
+        bind!(hotbar_slot_4, HotbarSlot4);
+        bind!(hotbar_slot_5, HotbarSlot5);
+        bind!(hotbar_slot_6, HotbarSlot6);
+        bind!(hotbar_slot_7, HotbarSlot7);
+        bind!(hotbar_slot_8, HotbarSlot8);
+        bind!(hotbar_slot_9, HotbarSlot9);
+        bind!(hotbar_slot_10, HotbarSlot10);
+        bind!(hotbar_slot_11, HotbarSlot11);
+        bind!(hotbar_slot_12, HotbarSlot12);
+
+        bind!(switch_to_inventory, SwitchToInventory);
+        bind!(switch_to_skills, SwitchToSkills);
+        bind!(switch_to_spells, SwitchToSpells);
+        bind!(switch_to_hotbar_1, SwitchToHotbar1);
+        bind!(switch_to_hotbar_2, SwitchToHotbar2);
+        bind!(switch_to_hotbar_3, SwitchToHotbar3);
 
         Self { bindings }
     }
 
-    pub fn get(&self, action: GameAction) -> Option<&KeyBinding> {
-        self.bindings.get(&action)
+    pub fn get(&self, action: GameAction) -> Option<&[KeyBinding]> {
+        self.bindings.get(&action).map(|v| v.as_slice())
     }
 
     pub fn set(&mut self, action: GameAction, binding: KeyBinding) {
-        self.bindings.insert(action, binding);
+        self.bindings.insert(action, vec![binding]);
+    }
+
+    pub fn set_at(&mut self, action: GameAction, binding: KeyBinding, index: usize) {
+        let list = self.bindings.entry(action).or_default();
+        if index < list.len() {
+            list[index] = binding;
+        } else if index == list.len() {
+            list.push(binding);
+        } else {
+            // Fill gaps if any
+            while list.len() < index {
+                list.push(KeyBinding::new(KeyCode::Escape)); // Dummy
+            }
+            list.push(binding);
+        }
+    }
+
+    pub fn unbind_at(&mut self, action: GameAction, index: usize) {
+        if let Some(list) = self.bindings.get_mut(&action) {
+            if index < list.len() {
+                list.remove(index);
+            }
+        }
     }
 
     pub fn is_pressed(&self, action: GameAction, input: &ButtonInput<KeyCode>) -> bool {
         self.get(action)
-            .map(|kb| kb.is_pressed(input))
+            .map(|kbs| kbs.iter().any(|kb| kb.is_pressed(input)))
             .unwrap_or(false)
     }
 
     pub fn is_just_pressed(&self, action: GameAction, input: &ButtonInput<KeyCode>) -> bool {
         self.get(action)
-            .map(|kb| kb.is_just_pressed(input))
+            .map(|kbs| kbs.iter().any(|kb| kb.is_just_pressed(input)))
             .unwrap_or(false)
     }
 

@@ -29,6 +29,9 @@ pub fn wire_input_callbacks(
                     guard.push_back(QueuedKeyEvent {
                         code,
                         action: QueuedKeyAction::Press,
+                        ctrl: key.modifiers.control,
+                        shift: key.modifiers.shift,
+                        alt: key.modifiers.alt,
                     });
                 }
             }
@@ -45,6 +48,9 @@ pub fn wire_input_callbacks(
                     guard.push_back(QueuedKeyEvent {
                         code,
                         action: QueuedKeyAction::Release,
+                        ctrl: key.modifiers.control,
+                        shift: key.modifiers.shift,
+                        alt: key.modifiers.alt,
                     });
                 }
             }

@@ -346,32 +346,139 @@ fn handle_ui_inbound_ingame(
                 settings.graphics.scale = *scale;
                 zoom_state.set_zoom(*scale);
             }
-            UiToCore::RebindKey { action, new_key } => {
-                use crate::input::{GameAction, InputSource};
+            UiToCore::RebindKey {
+                action,
+                new_key,
+                index,
+            } => {
+                use crate::input::{InputBindings, UnifiedInputBindings};
+                let index = *index;
 
-                match action.as_str() {
-                    "move_up" => settings.key_bindings.move_up = new_key.clone(),
-                    "move_down" => settings.key_bindings.move_down = new_key.clone(),
-                    "move_left" => settings.key_bindings.move_left = new_key.clone(),
-                    "move_right" => settings.key_bindings.move_right = new_key.clone(),
-                    "inventory" => settings.key_bindings.inventory = new_key.clone(),
-                    "skills" => settings.key_bindings.skills = new_key.clone(),
-                    "spells" => settings.key_bindings.spells = new_key.clone(),
-                    "settings" => settings.key_bindings.settings = new_key.clone(),
-                    "refresh" => settings.key_bindings.refresh = new_key.clone(),
-                    "basic_attack" => settings.key_bindings.basic_attack = new_key.clone(),
-                    _ => {}
-                }
-
-                if let Some(game_action) = GameAction::from_action_id(action) {
-                    if let Some(input_source) = InputSource::from_string(new_key) {
-                        unified_bindings.set_binding(game_action, input_source.clone());
-
-                        if let InputSource::Keyboard(kb) = input_source {
-                            input_bindings.set(game_action, kb);
+                // Conflict detection: if new_key is already bound to another action, clear that action's binding at that index
+                macro_rules! check_conflict {
+                    ($field:ident) => {
+                        for k in settings.key_bindings.$field.iter_mut() {
+                            if !new_key.is_empty() && k == new_key {
+                                *k = "".to_string();
+                            }
                         }
-                    }
+                    };
                 }
+
+                check_conflict!(move_up);
+                check_conflict!(move_down);
+                check_conflict!(move_left);
+                check_conflict!(move_right);
+                check_conflict!(inventory);
+                check_conflict!(skills);
+                check_conflict!(spells);
+                check_conflict!(settings);
+                check_conflict!(refresh);
+                check_conflict!(basic_attack);
+                check_conflict!(hotbar_slot_1);
+                check_conflict!(hotbar_slot_2);
+                check_conflict!(hotbar_slot_3);
+                check_conflict!(hotbar_slot_4);
+                check_conflict!(hotbar_slot_5);
+                check_conflict!(hotbar_slot_6);
+                check_conflict!(hotbar_slot_7);
+                check_conflict!(hotbar_slot_8);
+                check_conflict!(hotbar_slot_9);
+                check_conflict!(hotbar_slot_10);
+                check_conflict!(hotbar_slot_11);
+                check_conflict!(hotbar_slot_12);
+                check_conflict!(switch_to_inventory);
+                check_conflict!(switch_to_skills);
+                check_conflict!(switch_to_spells);
+                check_conflict!(switch_to_hotbar_1);
+                check_conflict!(switch_to_hotbar_2);
+                check_conflict!(switch_to_hotbar_3);
+
+                macro_rules! set_field {
+                    ($field:ident) => {
+                        if action == stringify!($field) {
+                            settings.key_bindings.$field[index] = new_key.clone();
+                        }
+                    };
+                }
+
+                set_field!(move_up);
+                set_field!(move_down);
+                set_field!(move_left);
+                set_field!(move_right);
+                set_field!(inventory);
+                set_field!(skills);
+                set_field!(spells);
+                set_field!(settings);
+                set_field!(refresh);
+                set_field!(basic_attack);
+                set_field!(hotbar_slot_1);
+                set_field!(hotbar_slot_2);
+                set_field!(hotbar_slot_3);
+                set_field!(hotbar_slot_4);
+                set_field!(hotbar_slot_5);
+                set_field!(hotbar_slot_6);
+                set_field!(hotbar_slot_7);
+                set_field!(hotbar_slot_8);
+                set_field!(hotbar_slot_9);
+                set_field!(hotbar_slot_10);
+                set_field!(hotbar_slot_11);
+                set_field!(hotbar_slot_12);
+                set_field!(switch_to_inventory);
+                set_field!(switch_to_skills);
+                set_field!(switch_to_spells);
+                set_field!(switch_to_hotbar_1);
+                set_field!(switch_to_hotbar_2);
+                set_field!(switch_to_hotbar_3);
+
+                // Refresh the runtime bindings from the updated settings
+                *unified_bindings = UnifiedInputBindings::from_settings(&settings.key_bindings);
+                *input_bindings = InputBindings::from_settings(&settings.key_bindings);
+            }
+            UiToCore::UnbindKey { action, index } => {
+                use crate::input::{InputBindings, UnifiedInputBindings};
+                let index = *index;
+
+                macro_rules! clear_field {
+                    ($field:ident) => {
+                        if action == stringify!($field) {
+                            settings.key_bindings.$field[index] = "".to_string();
+                        }
+                    };
+                }
+
+                clear_field!(move_up);
+                clear_field!(move_down);
+                clear_field!(move_left);
+                clear_field!(move_right);
+                clear_field!(inventory);
+                clear_field!(skills);
+                clear_field!(spells);
+                clear_field!(settings);
+                clear_field!(refresh);
+                clear_field!(basic_attack);
+                clear_field!(hotbar_slot_1);
+                clear_field!(hotbar_slot_2);
+                clear_field!(hotbar_slot_3);
+                clear_field!(hotbar_slot_4);
+                clear_field!(hotbar_slot_5);
+                clear_field!(hotbar_slot_6);
+                clear_field!(hotbar_slot_7);
+                clear_field!(hotbar_slot_8);
+                clear_field!(hotbar_slot_9);
+                clear_field!(hotbar_slot_10);
+                clear_field!(hotbar_slot_11);
+                clear_field!(hotbar_slot_12);
+                clear_field!(switch_to_inventory);
+                clear_field!(switch_to_skills);
+                clear_field!(switch_to_spells);
+                clear_field!(switch_to_hotbar_1);
+                clear_field!(switch_to_hotbar_2);
+                clear_field!(switch_to_hotbar_3);
+
+                // Refresh the runtime bindings from the updated settings
+                *unified_bindings = UnifiedInputBindings::from_settings(&settings.key_bindings);
+                *input_bindings = InputBindings::from_settings(&settings.key_bindings);
             }
             UiToCore::ExitApplication => {
                 let _ = slint::quit_event_loop();
@@ -953,31 +1060,139 @@ fn handle_ui_inbound_login(
             UiToCore::ScaleChange { scale } => {
                 settings.graphics.scale = *scale;
             }
-            UiToCore::RebindKey { action, new_key } => {
-                use crate::input::{GameAction, InputSource};
+            UiToCore::RebindKey {
+                action,
+                new_key,
+                index,
+            } => {
+                use crate::input::{InputBindings, UnifiedInputBindings};
+                let index = *index;
 
-                match action.as_str() {
-                    "move_up" => settings.key_bindings.move_up = new_key.clone(),
-                    "move_down" => settings.key_bindings.move_down = new_key.clone(),
-                    "move_left" => settings.key_bindings.move_left = new_key.clone(),
-                    "move_right" => settings.key_bindings.move_right = new_key.clone(),
-                    "inventory" => settings.key_bindings.inventory = new_key.clone(),
-                    "skills" => settings.key_bindings.skills = new_key.clone(),
-                    "spells" => settings.key_bindings.spells = new_key.clone(),
-                    "settings" => settings.key_bindings.settings = new_key.clone(),
-                    "refresh" => settings.key_bindings.refresh = new_key.clone(),
-                    "basic_attack" => settings.key_bindings.basic_attack = new_key.clone(),
-                    _ => {}
-                }
-
-                if let Some(game_action) = GameAction::from_action_id(action) {
-                    if let Some(input_source) = InputSource::from_string(new_key) {
-                        unified_bindings.set_binding(game_action, input_source.clone());
-                        if let InputSource::Keyboard(kb) = input_source {
-                            input_bindings.set(game_action, kb);
+                // Conflict detection: if new_key is already bound to another action, clear that action's binding at that index
+                macro_rules! check_conflict {
+                    ($field:ident) => {
+                        for k in settings.key_bindings.$field.iter_mut() {
+                            if !new_key.is_empty() && k == new_key {
+                                *k = "".to_string();
+                            }
                         }
-                    }
+                    };
                 }
+
+                check_conflict!(move_up);
+                check_conflict!(move_down);
+                check_conflict!(move_left);
+                check_conflict!(move_right);
+                check_conflict!(inventory);
+                check_conflict!(skills);
+                check_conflict!(spells);
+                check_conflict!(settings);
+                check_conflict!(refresh);
+                check_conflict!(basic_attack);
+                check_conflict!(hotbar_slot_1);
+                check_conflict!(hotbar_slot_2);
+                check_conflict!(hotbar_slot_3);
+                check_conflict!(hotbar_slot_4);
+                check_conflict!(hotbar_slot_5);
+                check_conflict!(hotbar_slot_6);
+                check_conflict!(hotbar_slot_7);
+                check_conflict!(hotbar_slot_8);
+                check_conflict!(hotbar_slot_9);
+                check_conflict!(hotbar_slot_10);
+                check_conflict!(hotbar_slot_11);
+                check_conflict!(hotbar_slot_12);
+                check_conflict!(switch_to_inventory);
+                check_conflict!(switch_to_skills);
+                check_conflict!(switch_to_spells);
+                check_conflict!(switch_to_hotbar_1);
+                check_conflict!(switch_to_hotbar_2);
+                check_conflict!(switch_to_hotbar_3);
+
+                macro_rules! set_field {
+                    ($field:ident) => {
+                        if action == stringify!($field) {
+                            settings.key_bindings.$field[index] = new_key.clone();
+                        }
+                    };
+                }
+
+                set_field!(move_up);
+                set_field!(move_down);
+                set_field!(move_left);
+                set_field!(move_right);
+                set_field!(inventory);
+                set_field!(skills);
+                set_field!(spells);
+                set_field!(settings);
+                set_field!(refresh);
+                set_field!(basic_attack);
+                set_field!(hotbar_slot_1);
+                set_field!(hotbar_slot_2);
+                set_field!(hotbar_slot_3);
+                set_field!(hotbar_slot_4);
+                set_field!(hotbar_slot_5);
+                set_field!(hotbar_slot_6);
+                set_field!(hotbar_slot_7);
+                set_field!(hotbar_slot_8);
+                set_field!(hotbar_slot_9);
+                set_field!(hotbar_slot_10);
+                set_field!(hotbar_slot_11);
+                set_field!(hotbar_slot_12);
+                set_field!(switch_to_inventory);
+                set_field!(switch_to_skills);
+                set_field!(switch_to_spells);
+                set_field!(switch_to_hotbar_1);
+                set_field!(switch_to_hotbar_2);
+                set_field!(switch_to_hotbar_3);
+
+                // Refresh the runtime bindings from the updated settings
+                *unified_bindings = UnifiedInputBindings::from_settings(&settings.key_bindings);
+                *input_bindings = InputBindings::from_settings(&settings.key_bindings);
+            }
+            UiToCore::UnbindKey { action, index } => {
+                use crate::input::{InputBindings, UnifiedInputBindings};
+                let index = *index;
+
+                macro_rules! clear_field {
+                    ($field:ident) => {
+                        if action == stringify!($field) {
+                            settings.key_bindings.$field[index] = "".to_string();
+                        }
+                    };
+                }
+
+                clear_field!(move_up);
+                clear_field!(move_down);
+                clear_field!(move_left);
+                clear_field!(move_right);
+                clear_field!(inventory);
+                clear_field!(skills);
+                clear_field!(spells);
+                clear_field!(settings);
+                clear_field!(refresh);
+                clear_field!(basic_attack);
+                clear_field!(hotbar_slot_1);
+                clear_field!(hotbar_slot_2);
+                clear_field!(hotbar_slot_3);
+                clear_field!(hotbar_slot_4);
+                clear_field!(hotbar_slot_5);
+                clear_field!(hotbar_slot_6);
+                clear_field!(hotbar_slot_7);
+                clear_field!(hotbar_slot_8);
+                clear_field!(hotbar_slot_9);
+                clear_field!(hotbar_slot_10);
+                clear_field!(hotbar_slot_11);
+                clear_field!(hotbar_slot_12);
+                clear_field!(switch_to_inventory);
+                clear_field!(switch_to_skills);
+                clear_field!(switch_to_spells);
+                clear_field!(switch_to_hotbar_1);
+                clear_field!(switch_to_hotbar_2);
+                clear_field!(switch_to_hotbar_3);
+
+                // Refresh the runtime bindings from the updated settings
+                *unified_bindings = UnifiedInputBindings::from_settings(&settings.key_bindings);
+                *input_bindings = InputBindings::from_settings(&settings.key_bindings);
             }
             _ => {}
         }

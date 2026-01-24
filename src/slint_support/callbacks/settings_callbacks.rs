@@ -53,10 +53,11 @@ pub fn wire_settings_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
     // Start rebind
     {
         let slint_app_weak = slint_app.as_weak();
-        settings_state.on_start_rebind(move |action| {
+        settings_state.on_start_rebind(move |action, index| {
             if let Some(strong) = slint_app_weak.upgrade() {
                 let settings_global = strong.global::<SettingsState>();
                 settings_global.set_rebinding_action(action.clone());
+                settings_global.set_rebinding_index(index);
                 settings_global.set_is_rebinding(true);
             }
         });
@@ -70,13 +71,27 @@ pub fn wire_settings_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
             if let Some(strong) = slint_app_weak.upgrade() {
                 let settings_global = strong.global::<SettingsState>();
                 let action = settings_global.get_rebinding_action().to_string();
+                let index = settings_global.get_rebinding_index() as usize;
+
                 settings_global.set_is_rebinding(false);
                 settings_global.set_rebinding_action(slint::SharedString::from(""));
                 let _ = tx.send(UiToCore::RebindKey {
                     action,
                     new_key: key_code.to_string(),
+                    index,
                 });
             }
+        });
+    }
+
+    // Unbind key
+    {
+        let tx = tx.clone();
+        settings_state.on_unbind_key(move |action, index| {
+            let _ = tx.send(UiToCore::UnbindKey {
+                action: action.to_string(),
+                index: index as usize,
+            });
         });
     }
 

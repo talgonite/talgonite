@@ -572,86 +572,48 @@ pub fn apply_core_to_slint(
             } => {
                 let settings_state =
                     slint::ComponentHandle::global::<crate::SettingsState>(&strong);
+                macro_rules! set_keys {
+                   ($field:ident) => {
+                       paste::paste! {
+                           settings_state.[<set_key_ $field>](slint::SharedString::from(key_bindings.$field[0].as_str()));
+                           settings_state.[<set_key_ $field _2>](slint::SharedString::from(key_bindings.$field[1].as_str()));
+                       }
+                   };
+                }
+
                 settings_state.set_xray_size(*xray_size as i32);
                 settings_state.set_sfx_volume(*sfx_volume);
                 settings_state.set_music_volume(*music_volume);
                 settings_state.set_scale(*scale);
-                settings_state
-                    .set_key_move_up(slint::SharedString::from(key_bindings.move_up.as_str()));
-                settings_state
-                    .set_key_move_down(slint::SharedString::from(key_bindings.move_down.as_str()));
-                settings_state
-                    .set_key_move_left(slint::SharedString::from(key_bindings.move_left.as_str()));
-                settings_state.set_key_move_right(slint::SharedString::from(
-                    key_bindings.move_right.as_str(),
-                ));
-                settings_state
-                    .set_key_inventory(slint::SharedString::from(key_bindings.inventory.as_str()));
-                settings_state
-                    .set_key_skills(slint::SharedString::from(key_bindings.skills.as_str()));
-                settings_state
-                    .set_key_spells(slint::SharedString::from(key_bindings.spells.as_str()));
-                settings_state
-                    .set_key_settings(slint::SharedString::from(key_bindings.settings.as_str()));
-                settings_state
-                    .set_key_refresh(slint::SharedString::from(key_bindings.refresh.as_str()));
-                settings_state.set_key_basic_attack(slint::SharedString::from(
-                    key_bindings.basic_attack.as_str(),
-                ));
-                settings_state.set_key_hotbar_slot_1(slint::SharedString::from(
-                    key_bindings.hotbar_slot_1.as_str(),
-                ));
-                settings_state.set_key_hotbar_slot_2(slint::SharedString::from(
-                    key_bindings.hotbar_slot_2.as_str(),
-                ));
-                settings_state.set_key_hotbar_slot_3(slint::SharedString::from(
-                    key_bindings.hotbar_slot_3.as_str(),
-                ));
-                settings_state.set_key_hotbar_slot_4(slint::SharedString::from(
-                    key_bindings.hotbar_slot_4.as_str(),
-                ));
-                settings_state.set_key_hotbar_slot_5(slint::SharedString::from(
-                    key_bindings.hotbar_slot_5.as_str(),
-                ));
-                settings_state.set_key_hotbar_slot_6(slint::SharedString::from(
-                    key_bindings.hotbar_slot_6.as_str(),
-                ));
-                settings_state.set_key_hotbar_slot_7(slint::SharedString::from(
-                    key_bindings.hotbar_slot_7.as_str(),
-                ));
-                settings_state.set_key_hotbar_slot_8(slint::SharedString::from(
-                    key_bindings.hotbar_slot_8.as_str(),
-                ));
-                settings_state.set_key_hotbar_slot_9(slint::SharedString::from(
-                    key_bindings.hotbar_slot_9.as_str(),
-                ));
-                settings_state.set_key_hotbar_slot_10(slint::SharedString::from(
-                    key_bindings.hotbar_slot_10.as_str(),
-                ));
-                settings_state.set_key_hotbar_slot_11(slint::SharedString::from(
-                    key_bindings.hotbar_slot_11.as_str(),
-                ));
-                settings_state.set_key_hotbar_slot_12(slint::SharedString::from(
-                    key_bindings.hotbar_slot_12.as_str(),
-                ));
-                settings_state.set_key_switch_to_inventory(slint::SharedString::from(
-                    key_bindings.switch_to_inventory.as_str(),
-                ));
-                settings_state.set_key_switch_to_skills(slint::SharedString::from(
-                    key_bindings.switch_to_skills.as_str(),
-                ));
-                settings_state.set_key_switch_to_spells(slint::SharedString::from(
-                    key_bindings.switch_to_spells.as_str(),
-                ));
-                settings_state.set_key_switch_to_hotbar_1(slint::SharedString::from(
-                    key_bindings.switch_to_hotbar_1.as_str(),
-                ));
-                settings_state.set_key_switch_to_hotbar_2(slint::SharedString::from(
-                    key_bindings.switch_to_hotbar_2.as_str(),
-                ));
-                settings_state.set_key_switch_to_hotbar_3(slint::SharedString::from(
-                    key_bindings.switch_to_hotbar_3.as_str(),
-                ));
+
+                set_keys!(move_up);
+                set_keys!(move_down);
+                set_keys!(move_left);
+                set_keys!(move_right);
+                set_keys!(inventory);
+                set_keys!(skills);
+                set_keys!(spells);
+                set_keys!(settings);
+                set_keys!(refresh);
+                set_keys!(basic_attack);
+                set_keys!(hotbar_slot_1);
+                set_keys!(hotbar_slot_2);
+                set_keys!(hotbar_slot_3);
+                set_keys!(hotbar_slot_4);
+                set_keys!(hotbar_slot_5);
+                set_keys!(hotbar_slot_6);
+                set_keys!(hotbar_slot_7);
+                set_keys!(hotbar_slot_8);
+                set_keys!(hotbar_slot_9);
+                set_keys!(hotbar_slot_10);
+                set_keys!(hotbar_slot_11);
+                set_keys!(hotbar_slot_12);
+                set_keys!(switch_to_inventory);
+                set_keys!(switch_to_skills);
+                set_keys!(switch_to_spells);
+                set_keys!(switch_to_hotbar_1);
+                set_keys!(switch_to_hotbar_2);
+                set_keys!(switch_to_hotbar_3);
             }
         }
     }

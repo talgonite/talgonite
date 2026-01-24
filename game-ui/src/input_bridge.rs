@@ -49,6 +49,9 @@ pub enum QueuedKeyAction {
 pub struct QueuedKeyEvent {
     pub code: KeyCode,
     pub action: QueuedKeyAction,
+    pub ctrl: bool,
+    pub shift: bool,
+    pub alt: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -91,6 +94,25 @@ pub fn pump_slint_key_events_system(
     };
 
     for event in events {
+        // Synchronize modifier states to Bevy's input set
+        if event.ctrl {
+            kb.press(KeyCode::ControlLeft);
+        } else {
+            kb.release(KeyCode::ControlLeft);
+        }
+
+        if event.shift {
+            kb.press(KeyCode::ShiftLeft);
+        } else {
+            kb.release(KeyCode::ShiftLeft);
+        }
+
+        if event.alt {
+            kb.press(KeyCode::AltLeft);
+        } else {
+            kb.release(KeyCode::AltLeft);
+        }
+
         match event.action {
             QueuedKeyAction::Press => {
                 kb.press(event.code);
@@ -292,6 +314,9 @@ fn map_special_key(text: &str) -> Option<KeyCode> {
         "\u{f70d}" | "F10" => Some(F10),
         "\u{f70e}" | "F11" => Some(F11),
         "\u{f70f}" | "F12" => Some(F12),
+        "Control" => Some(ControlLeft),
+        "Shift" => Some(ShiftLeft),
+        "Alt" => Some(AltLeft),
         _ => None,
     }
 }

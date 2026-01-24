@@ -163,48 +163,78 @@ export component LabeledSlider inherits Rectangle {
 export component KeyBindingRow inherits Rectangle {
     in property <string> action-label;
     in property <string> current-key;
+    in property <string> current-key-2;
     in property <string> action-id;
     in property <bool> is-rebinding;
-    callback start-rebind();
+    in property <int> rebinding-index;
+    callback start-rebind(int);
+    callback unbind-key(int);
     height: 32px;
     background: transparent;
     HorizontalBox {
-        spacing: 8px;
+        spacing: 12px;
         Text {
             text: action-label;
-            font-size: 12px;
+            font-size: 13px;
             color: Theme.foreground;
             vertical-alignment: center;
             horizontal-stretch: 1;
         }
 
+        // Primary Key Slot
         Rectangle {
-            width: 100px;
-            height: 24px;
-            background: is-rebinding ? Theme.accent-subtle : Theme.surface-card;
+            width: 120px;
+            height: 26px;
+            background: (is-rebinding && rebinding-index == 0) ? Theme.accent-subtle : Theme.surface-card;
             border-radius: Theme.radius-small;
             border-width: 1px;
-            border-color: is-rebinding ? Theme.accent : Theme.border-muted;
+            border-color: (is-rebinding && rebinding-index == 0) ? Theme.accent : Theme.border-muted;
             Text {
-                text: is-rebinding ? "Press key..." : current-key;
+                text: (is-rebinding && rebinding-index == 0) ? "Press key..." : (current-key == "" ? "---" : current-key);
                 font-size: 11px;
-                color: is-rebinding ? Theme.accent : Theme.foreground-muted;
+                color: (is-rebinding && rebinding-index == 0) ? Theme.accent : (current-key == "" ? Theme.foreground-muted : Theme.foreground);
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
 
-            key-touch := TouchArea {
+            TouchArea {
+                pointer-event(event) => {
+                    if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                        root.unbind-key(0);
+                    }
+                }
                 clicked => {
-                    root.start-rebind();
+                    root.start-rebind(0);
                 }
             }
+        }
 
-            states [
-                hover when key-touch.has-hover && !is-rebinding: {
-                    background: #00000050;
-                    border-color: #00000080;
+        // Secondary Key Slot
+        Rectangle {
+            width: 120px;
+            height: 26px;
+            background: (is-rebinding && rebinding-index == 1) ? Theme.accent-subtle : Theme.surface-card;
+            border-radius: Theme.radius-small;
+            border-width: 1px;
+            border-color: (is-rebinding && rebinding-index == 1) ? Theme.accent : Theme.border-muted;
+            Text {
+                text: (is-rebinding && rebinding-index == 1) ? "Press key..." : (current-key-2 == "" ? "---" : current-key-2);
+                font-size: 11px;
+                color: (is-rebinding && rebinding-index == 1) ? Theme.accent : (current-key-2 == "" ? Theme.foreground-muted : Theme.foreground);
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            TouchArea {
+                pointer-event(event) => {
+                    if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                        root.unbind-key(1);
+                    }
                 }
-            ]
+                clicked => {
+                    root.start-rebind(1);
+                }
+            }
         }
     }
 }
@@ -235,7 +265,6 @@ export component MenuButton inherits Rectangle {
             Theme.border-muted
         }
     };
-
     Text {
         text: label;
         font-size: Theme.font-size-medium;

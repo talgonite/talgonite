@@ -1,6 +1,6 @@
 use super::{GameAction, GamepadConfig, GamepadInputType, KeyBinding};
-use bevy::input::keyboard::KeyCode;
 use bevy::input::ButtonInput;
+use bevy::input::keyboard::KeyCode;
 use bevy::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,6 +119,55 @@ impl UnifiedInputBindings {
         Self { bindings }
     }
 
+    pub fn from_settings(settings: &game_types::KeyBindings) -> Self {
+        let mut unified = Self::with_defaults();
+
+        macro_rules! bind {
+            ($field:ident, $action:ident) => {
+                for (i, key_str) in settings.$field.iter().enumerate() {
+                    if !key_str.is_empty() {
+                        if let Some(kb) = KeyBinding::from_dom_code(key_str) {
+                            unified.set_keyboard_binding(GameAction::$action, kb, i);
+                        }
+                    } else {
+                        unified.unbind_keyboard_at(GameAction::$action, i);
+                    }
+                }
+            };
+        }
+
+        bind!(move_up, MoveUp);
+        bind!(move_down, MoveDown);
+        bind!(move_left, MoveLeft);
+        bind!(move_right, MoveRight);
+        bind!(inventory, Inventory);
+        bind!(skills, Skills);
+        bind!(spells, Spells);
+        bind!(settings, Settings);
+        bind!(refresh, Refresh);
+        bind!(basic_attack, BasicAttack);
+        bind!(hotbar_slot_1, HotbarSlot1);
+        bind!(hotbar_slot_2, HotbarSlot2);
+        bind!(hotbar_slot_3, HotbarSlot3);
+        bind!(hotbar_slot_4, HotbarSlot4);
+        bind!(hotbar_slot_5, HotbarSlot5);
+        bind!(hotbar_slot_6, HotbarSlot6);
+        bind!(hotbar_slot_7, HotbarSlot7);
+        bind!(hotbar_slot_8, HotbarSlot8);
+        bind!(hotbar_slot_9, HotbarSlot9);
+        bind!(hotbar_slot_10, HotbarSlot10);
+        bind!(hotbar_slot_11, HotbarSlot11);
+        bind!(hotbar_slot_12, HotbarSlot12);
+        bind!(switch_to_inventory, SwitchToInventory);
+        bind!(switch_to_skills, SwitchToSkills);
+        bind!(switch_to_spells, SwitchToSpells);
+        bind!(switch_to_hotbar_1, SwitchToHotbar1);
+        bind!(switch_to_hotbar_2, SwitchToHotbar2);
+        bind!(switch_to_hotbar_3, SwitchToHotbar3);
+
+        unified
+    }
+
     pub fn get(&self, action: GameAction) -> Option<&[InputSource]> {
         self.bindings.get(&action).map(|v| v.as_slice())
     }
@@ -127,10 +176,48 @@ impl UnifiedInputBindings {
         self.bindings.entry(action).or_default().push(source);
     }
 
-    pub fn set_keyboard_binding(&mut self, action: GameAction, binding: KeyBinding) {
+    pub fn set_keyboard_binding(&mut self, action: GameAction, binding: KeyBinding, index: usize) {
         let sources = self.bindings.entry(action).or_default();
-        sources.retain(|s| !matches!(s, InputSource::Keyboard(_)));
-        sources.push(InputSource::Keyboard(binding));
+
+        let mut current_kb_count = 0;
+        let mut target_idx = None;
+
+        for (i, s) in sources.iter().enumerate() {
+            if matches!(s, InputSource::Keyboard(_)) {
+                if current_kb_count == index {
+                    target_idx = Some(i);
+                    break;
+                }
+                current_kb_count += 1;
+            }
+        }
+
+        if let Some(i) = target_idx {
+            sources[i] = InputSource::Keyboard(binding);
+        } else {
+            sources.push(InputSource::Keyboard(binding));
+        }
+    }
+
+    pub fn unbind_keyboard_at(&mut self, action: GameAction, index: usize) {
+        if let Some(sources) = self.bindings.get_mut(&action) {
+            let mut current_kb_count = 0;
+            let mut target_idx = None;
+
+            for (i, s) in sources.iter().enumerate() {
+                if matches!(s, InputSource::Keyboard(_)) {
+                    if current_kb_count == index {
+                        target_idx = Some(i);
+                        break;
+                    }
+                    current_kb_count += 1;
+                }
+            }
+
+            if let Some(i) = target_idx {
+                sources.remove(i);
+            }
+        }
     }
 
     pub fn set_gamepad_binding(&mut self, action: GameAction, binding: GamepadInputType) {
@@ -139,9 +226,9 @@ impl UnifiedInputBindings {
         sources.push(InputSource::Gamepad(binding));
     }
 
-    pub fn set_binding(&mut self, action: GameAction, source: InputSource) {
+    pub fn set_binding(&mut self, action: GameAction, source: InputSource, index: usize) {
         match source {
-            InputSource::Keyboard(kb) => self.set_keyboard_binding(action, kb),
+            InputSource::Keyboard(kb) => self.set_keyboard_binding(action, kb, index),
             InputSource::Gamepad(gp) => self.set_gamepad_binding(action, gp),
         }
     }
@@ -166,7 +253,9 @@ impl UnifiedInputBindings {
                 }
                 InputSource::Gamepad(gi) => {
                     if let (Some(config), Some(query)) = (gamepad_config, gamepad_query) {
-                        if let Some(gamepad) = config.primary_gamepad.and_then(|e| query.get(e).ok()) {
+                        if let Some(gamepad) =
+                            config.primary_gamepad.and_then(|e| query.get(e).ok())
+                        {
                             if gi.is_pressed(gamepad, config.stick_threshold) {
                                 return true;
                             }
@@ -199,7 +288,9 @@ impl UnifiedInputBindings {
                 }
                 InputSource::Gamepad(gi) => {
                     if let (Some(config), Some(query)) = (gamepad_config, gamepad_query) {
-                        if let Some(gamepad) = config.primary_gamepad.and_then(|e| query.get(e).ok()) {
+                        if let Some(gamepad) =
+                            config.primary_gamepad.and_then(|e| query.get(e).ok())
+                        {
                             if gi.is_just_pressed(gamepad) {
                                 return true;
                             }

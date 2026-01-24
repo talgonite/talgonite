@@ -39,70 +39,142 @@ impl XRaySize {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct KeyBinding(pub [String; 2]);
+
+impl std::ops::Deref for KeyBinding {
+    type Target = [String; 2];
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for KeyBinding {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a KeyBinding {
+    type Item = &'a String;
+    type IntoIter = std::slice::Iter<'a, String>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for KeyBinding {
+    type Item = String;
+    type IntoIter = std::array::IntoIter<String, 2>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl Serialize for KeyBinding {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if self.0[1].is_empty() {
+            serializer.serialize_str(&self.0[0])
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for KeyBinding {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Either {
+            Single(String),
+            Multiple(Vec<String>),
+        }
+
+        match Either::deserialize(deserializer)? {
+            Either::Single(s) => Ok(KeyBinding([s, "".to_string()])),
+            Either::Multiple(v) => {
+                let mut bindings = ["".to_string(), "".to_string()];
+                for (i, s) in v.into_iter().enumerate().take(2) {
+                    bindings[i] = s;
+                }
+                Ok(KeyBinding(bindings))
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct KeyBindings {
-    pub move_up: String,
-    pub move_down: String,
-    pub move_left: String,
-    pub move_right: String,
-    pub inventory: String,
-    pub skills: String,
-    pub spells: String,
-    pub settings: String,
-    pub refresh: String,
-    pub basic_attack: String,
-    pub hotbar_slot_1: String,
-    pub hotbar_slot_2: String,
-    pub hotbar_slot_3: String,
-    pub hotbar_slot_4: String,
-    pub hotbar_slot_5: String,
-    pub hotbar_slot_6: String,
-    pub hotbar_slot_7: String,
-    pub hotbar_slot_8: String,
-    pub hotbar_slot_9: String,
-    pub hotbar_slot_10: String,
-    pub hotbar_slot_11: String,
-    pub hotbar_slot_12: String,
-    pub switch_to_inventory: String,
-    pub switch_to_skills: String,
-    pub switch_to_spells: String,
-    pub switch_to_hotbar_1: String,
-    pub switch_to_hotbar_2: String,
-    pub switch_to_hotbar_3: String,
+    pub move_up: KeyBinding,
+    pub move_down: KeyBinding,
+    pub move_left: KeyBinding,
+    pub move_right: KeyBinding,
+    pub inventory: KeyBinding,
+    pub skills: KeyBinding,
+    pub spells: KeyBinding,
+    pub settings: KeyBinding,
+    pub refresh: KeyBinding,
+    pub basic_attack: KeyBinding,
+    pub hotbar_slot_1: KeyBinding,
+    pub hotbar_slot_2: KeyBinding,
+    pub hotbar_slot_3: KeyBinding,
+    pub hotbar_slot_4: KeyBinding,
+    pub hotbar_slot_5: KeyBinding,
+    pub hotbar_slot_6: KeyBinding,
+    pub hotbar_slot_7: KeyBinding,
+    pub hotbar_slot_8: KeyBinding,
+    pub hotbar_slot_9: KeyBinding,
+    pub hotbar_slot_10: KeyBinding,
+    pub hotbar_slot_11: KeyBinding,
+    pub hotbar_slot_12: KeyBinding,
+    pub switch_to_inventory: KeyBinding,
+    pub switch_to_skills: KeyBinding,
+    pub switch_to_spells: KeyBinding,
+    pub switch_to_hotbar_1: KeyBinding,
+    pub switch_to_hotbar_2: KeyBinding,
+    pub switch_to_hotbar_3: KeyBinding,
 }
 
 impl Default for KeyBindings {
     fn default() -> Self {
         Self {
-            move_up: "ArrowUp".to_string(),
-            move_down: "ArrowDown".to_string(),
-            move_left: "ArrowLeft".to_string(),
-            move_right: "ArrowRight".to_string(),
-            inventory: "KeyI".to_string(),
-            skills: "KeyK".to_string(),
-            spells: "KeyP".to_string(),
-            settings: "Escape".to_string(),
-            refresh: "F5".to_string(),
-            basic_attack: "Space".to_string(),
-            hotbar_slot_1: "Digit1".to_string(),
-            hotbar_slot_2: "Digit2".to_string(),
-            hotbar_slot_3: "Digit3".to_string(),
-            hotbar_slot_4: "Digit4".to_string(),
-            hotbar_slot_5: "Digit5".to_string(),
-            hotbar_slot_6: "Digit6".to_string(),
-            hotbar_slot_7: "Digit7".to_string(),
-            hotbar_slot_8: "Digit8".to_string(),
-            hotbar_slot_9: "Digit9".to_string(),
-            hotbar_slot_10: "Digit0".to_string(),
-            hotbar_slot_11: "Minus".to_string(),
-            hotbar_slot_12: "Equal".to_string(),
-            switch_to_inventory: "KeyA".to_string(),
-            switch_to_skills: "KeyS".to_string(),
-            switch_to_spells: "KeyD".to_string(),
-            switch_to_hotbar_1: "KeyF".to_string(),
-            switch_to_hotbar_2: "KeyG".to_string(),
-            switch_to_hotbar_3: "KeyH".to_string(),
+            move_up: KeyBinding(["ArrowUp".to_string(), "".to_string()]),
+            move_down: KeyBinding(["ArrowDown".to_string(), "".to_string()]),
+            move_left: KeyBinding(["ArrowLeft".to_string(), "".to_string()]),
+            move_right: KeyBinding(["ArrowRight".to_string(), "".to_string()]),
+            inventory: KeyBinding(["KeyI".to_string(), "".to_string()]),
+            skills: KeyBinding(["KeyK".to_string(), "".to_string()]),
+            spells: KeyBinding(["KeyP".to_string(), "".to_string()]),
+            settings: KeyBinding(["Escape".to_string(), "".to_string()]),
+            refresh: KeyBinding(["F5".to_string(), "".to_string()]),
+            basic_attack: KeyBinding(["Space".to_string(), "".to_string()]),
+            hotbar_slot_1: KeyBinding(["Digit1".to_string(), "".to_string()]),
+            hotbar_slot_2: KeyBinding(["Digit2".to_string(), "".to_string()]),
+            hotbar_slot_3: KeyBinding(["Digit3".to_string(), "".to_string()]),
+            hotbar_slot_4: KeyBinding(["Digit4".to_string(), "".to_string()]),
+            hotbar_slot_5: KeyBinding(["Digit5".to_string(), "".to_string()]),
+            hotbar_slot_6: KeyBinding(["Digit6".to_string(), "".to_string()]),
+            hotbar_slot_7: KeyBinding(["Digit7".to_string(), "".to_string()]),
+            hotbar_slot_8: KeyBinding(["Digit8".to_string(), "".to_string()]),
+            hotbar_slot_9: KeyBinding(["Digit9".to_string(), "".to_string()]),
+            hotbar_slot_10: KeyBinding(["Digit0".to_string(), "".to_string()]),
+            hotbar_slot_11: KeyBinding(["Minus".to_string(), "".to_string()]),
+            hotbar_slot_12: KeyBinding(["Equal".to_string(), "".to_string()]),
+            switch_to_inventory: KeyBinding(["KeyA".to_string(), "".to_string()]),
+            switch_to_skills: KeyBinding(["KeyS".to_string(), "".to_string()]),
+            switch_to_spells: KeyBinding(["KeyD".to_string(), "".to_string()]),
+            switch_to_hotbar_1: KeyBinding(["KeyF".to_string(), "".to_string()]),
+            switch_to_hotbar_2: KeyBinding(["KeyG".to_string(), "".to_string()]),
+            switch_to_hotbar_3: KeyBinding(["KeyH".to_string(), "".to_string()]),
         }
     }
 }
