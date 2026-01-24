@@ -83,7 +83,7 @@ pub enum UiToCore {
     /// User selected a menu entry.
     MenuSelect {
         /// For text menus: the option's pursuit_id. For shop menus: unused.
-        id: u16,
+        id: i32,
         /// For shop menus: the item name to send as Topics. Empty for text menus.
         name: String,
     },
@@ -121,7 +121,7 @@ pub enum UiToCore {
 pub struct MenuEntryUi {
     pub text: String,
     /// Option ID for text menus, item index for shop menus
-    pub id: u16,
+    pub id: i32,
     /// Sprite ID for icon loading (0 = no icon, text-only)
     pub sprite: u16,
     /// Color/palette index for the sprite
@@ -132,7 +132,7 @@ pub struct MenuEntryUi {
 
 impl MenuEntryUi {
     /// Create a text-only menu option
-    pub fn text_option(text: String, id: u16) -> Self {
+    pub fn text_option(text: String, id: i32) -> Self {
         Self {
             text,
             id,
@@ -143,7 +143,7 @@ impl MenuEntryUi {
     }
 
     /// Create a shop item entry
-    pub fn shop_item(name: String, index: u16, sprite: u16, color: u8, cost: i32) -> Self {
+    pub fn shop_item(name: String, index: i32, sprite: u16, color: u8, cost: i32) -> Self {
         Self {
             text: name,
             id: index,
@@ -154,7 +154,7 @@ impl MenuEntryUi {
     }
 
     /// Create a spell/skill entry (no cost)
-    pub fn ability(name: String, index: u16, sprite: u16) -> Self {
+    pub fn ability(name: String, index: i32, sprite: u16) -> Self {
         Self {
             text: name,
             id: index,

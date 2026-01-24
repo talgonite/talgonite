@@ -43,7 +43,7 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
         let tx = tx.clone();
         npc_dialog.on_select_option(move |id, name: slint::SharedString| {
             let _ = tx.send(UiToCore::MenuSelect {
-                id: id as u16,
+                id,
                 name: name.to_string(),
             });
         });

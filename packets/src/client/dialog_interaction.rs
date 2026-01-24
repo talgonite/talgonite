@@ -32,10 +32,15 @@ impl ToBytes for DialogInteraction {
         p.extend_from_slice(&self.dialog_id.to_be_bytes());
 
         match &self.args {
+            DialogInteractionArgs::None => {
+                p.push(0);
+            }
             DialogInteractionArgs::MenuResponse { option } => {
+                p.push(1);
                 p.push(*option);
             }
             DialogInteractionArgs::TextResponse { args } => {
+                p.push(2);
                 for arg in args {
                     let encoded = WINDOWS_949
                         .encode(arg, EncoderTrap::Strict)
@@ -45,7 +50,6 @@ impl ToBytes for DialogInteraction {
                     p.extend_from_slice(&encoded);
                 }
             }
-            _ => {}
         }
         bytes.extend_from_slice(&crate::dialog_encrypt(&p));
     }

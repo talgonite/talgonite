@@ -206,9 +206,15 @@ fn handle_ui_inbound_ingame(
             UiToCore::MenuSelect { id, name } => {
                 if let Some(dialog_id) = menu_ctx.dialog_id {
                     if let Some(entity_type) = menu_ctx.entity_type {
-                        let args = if *id == dialog_id {
+                        let mut final_dialog_id = *id;
+                        let args = if *id == dialog_id as i32 {
                             packets::client::DialogInteractionArgs::TextResponse {
                                 args: vec![name.clone()],
+                            }
+                        } else if *id >= 100_000 {
+                            final_dialog_id = dialog_id as i32 + 1;
+                            packets::client::DialogInteractionArgs::MenuResponse {
+                                option: (*id - 100_000 + 1) as u8,
                             }
                         } else {
                             packets::client::DialogInteractionArgs::None
@@ -218,7 +224,7 @@ fn handle_ui_inbound_ingame(
                             entity_type,
                             entity_id: menu_ctx.entity_id,
                             pursuit_id: menu_ctx.pursuit_id,
-                            dialog_id: *id,
+                            dialog_id: final_dialog_id as u16,
                             args,
                         });
                     }
@@ -251,7 +257,7 @@ fn handle_ui_inbound_ingame(
 
                     (menu_ctx.pursuit_id, args)
                 } else {
-                    (*id, packets::client::MenuInteractionArgs::Slot(0))
+                    (*id as u16, packets::client::MenuInteractionArgs::Slot(0))
                 };
 
                 if let Some(entity_type) = menu_ctx.entity_type {
@@ -1069,17 +1075,18 @@ fn bridge_session_events(
                         if header.has_previous_button {
                             entries.push(MenuEntryUi::text_option(
                                 "Previous".to_string(),
-                                header.dialog_id - 1,
+                                header.dialog_id as i32 - 1,
                             ));
                         }
 
                         match payload {
                             packets::server::DisplayDialogPayload::DialogMenu { options }
                             | packets::server::DisplayDialogPayload::CreatureMenu { options } => {
-                                for option in options {
+                                for (idx, option) in options.iter().enumerate() {
+                                    // Use a high range for menu options to avoid collisions with Previous/Next/Base IDs
                                     entries.push(MenuEntryUi::text_option(
                                         option.clone(),
-                                        header.dialog_id,
+                                        100_000 + idx as i32,
                                     ));
                                 }
                             }
@@ -1089,7 +1096,7 @@ fn bridge_session_events(
                         if header.has_next_button {
                             entries.push(MenuEntryUi::text_option(
                                 "Next".to_string(),
-                                header.dialog_id + 1,
+                                header.dialog_id as i32 + 1,
                             ));
                         }
 
@@ -1176,7 +1183,7 @@ fn bridge_session_events(
                         menu_ctx.pursuit_id = 0;
                         entries = options
                             .iter()
-                            .map(|(text, id)| MenuEntryUi::text_option(text.clone(), *id))
+                            .map(|(text, id)| MenuEntryUi::text_option(text.clone(), *id as i32))
                             .collect();
                     }
                     DisplayMenuPayload::ShowItems { pursuit_id, items } => {
@@ -1188,7 +1195,7 @@ fn bridge_session_events(
                             .map(|(idx, item)| {
                                 MenuEntryUi::shop_item(
                                     item.name.clone(),
-                                    idx as u16,
+                                    idx as i32,
                                     item.sprite,
                                     item.color,
                                     item.cost,
@@ -1203,7 +1210,7 @@ fn bridge_session_events(
                             .iter()
                             .enumerate()
                             .map(|(idx, spell)| {
-                                MenuEntryUi::ability(spell.name.clone(), idx as u16, spell.sprite)
+                                MenuEntryUi::ability(spell.name.clone(), idx as i32, spell.sprite)
                             })
                             .collect();
                     }
@@ -1214,7 +1221,7 @@ fn bridge_session_events(
                             .iter()
                             .enumerate()
                             .map(|(idx, skill)| {
-                                MenuEntryUi::ability(skill.name.clone(), idx as u16, skill.sprite)
+                                MenuEntryUi::ability(skill.name.clone(), idx as i32, skill.sprite)
                             })
                             .collect();
                     }
@@ -1236,7 +1243,7 @@ fn bridge_session_events(
                                 inv_state.0.iter().find(|i| i.slot == slot).map(|item| {
                                     MenuEntryUi::shop_item(
                                         item.name.clone(),
-                                        slot as u16,
+                                        slot as i32,
                                         item.sprite,
                                         item.color,
                                         item.count as i32,
@@ -1254,7 +1261,7 @@ fn bridge_session_events(
                             .map(|spell| {
                                 MenuEntryUi::ability(
                                     spell.panel_name.clone(),
-                                    spell.slot as u16,
+                                    spell.slot as i32,
                                     spell.sprite,
                                 )
                             })
@@ -1269,7 +1276,7 @@ fn bridge_session_events(
                             .map(|skill| {
                                 MenuEntryUi::ability(
                                     skill.name.clone(),
-                                    skill.slot as u16,
+                                    skill.slot as i32,
                                     skill.sprite,
                                 )
                             })
