@@ -55,9 +55,10 @@ pub struct ItemInfo {
     pub color: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, TryFromPrimitive)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, IntoPrimitive, TryFromPrimitive)]
 #[repr(u8)]
 pub enum SocialStatus {
+    #[default]
     Awake = 0,
     DoNotDisturb = 1,
     DayDreaming = 2,

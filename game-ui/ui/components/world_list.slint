@@ -1,4 +1,5 @@
 import { GameState, WorldListMemberUi } from "../game_state.slint";
+import { SocialStatusState, SocialStatusEntry } from "../social_status_state.slint";
 import { Theme } from "../theme.slint";
 import {
     ScrollView,
@@ -110,10 +111,28 @@ export component WorldListPanel inherits BasePanel {
                         height: 32px;
                         background: Theme.surface-card;
                         border-radius: Theme.radius-small;
+                        
+                        private property <SocialStatusEntry> status-entry: SocialStatusState.get-by-id(member.social_status);
+                        
                         HorizontalBox {
                             padding-left: Theme.spacing-small;
                             padding-right: Theme.spacing-small;
-                            spacing: Theme.spacing-medium;
+                            spacing: Theme.spacing-small;
+                            
+                            Rectangle {
+                                width: 20px;
+                                height: 20px;
+                                y: (parent.height - self.height) / 2;
+                                
+                                Text {
+                                    text: status-entry.icon;
+                                    color: status-entry.color;
+                                    font-size: 12px;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            
                             Text {
                                 text: member.name;
                                 color: member.color;
@@ -126,7 +145,7 @@ export component WorldListPanel inherits BasePanel {
                                 text: member.title;
                                 color: Theme.foreground;
                                 overflow: elide;
-                                width: 150px;
+                                width: 130px;
                             }
 
                             Text {

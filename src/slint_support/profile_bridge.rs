@@ -108,6 +108,7 @@ pub fn sync_profile_to_slint(
         profile.town = slint::SharedString::from(format!("{:?}", profile_state.nation));
         profile.group_requests_enabled = profile_state.group_open;
         profile.profile_text = slint::SharedString::from(profile_state.profile_text.as_str());
+        profile.social_status = profile_state.social_status as u8 as i32;
 
         let legend_marks: Vec<LegendMarkData> = profile_state
             .legend_marks
@@ -243,6 +244,7 @@ pub fn handle_show_self_profile(
         profile.town = slint::SharedString::from(format!("{:?}", profile_state.nation));
         profile.group_requests_enabled = profile_state.group_open;
         profile.profile_text = slint::SharedString::from(profile_state.profile_text.as_str());
+        profile.social_status = profile_state.social_status as u8 as i32;
 
         let legend_marks: Vec<LegendMarkData> = profile_state
             .legend_marks

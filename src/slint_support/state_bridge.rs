@@ -746,6 +746,7 @@ pub fn apply_core_to_slint(
                 class: slint::SharedString::from(m.class.as_str()),
                 color: slint::Color::from_argb_f32(m.color[3], m.color[0], m.color[1], m.color[2]),
                 is_master: m.is_master,
+                social_status: m.social_status as i32,
             });
         }
 
@@ -949,4 +950,22 @@ pub fn sync_installer_to_slint(
             installer_state.set_is_installing(false);
         }
     }
+}
+
+pub fn sync_social_status_to_slint(
+    local_status: Res<crate::ecs::social_status::LocalSocialStatus>,
+    win: Res<SlintWindow>,
+    mut last_version: Local<u32>,
+) {
+    if local_status.version == *last_version {
+        return;
+    }
+
+    let Some(strong) = win.0.upgrade() else {
+        return;
+    };
+    let social_status_state = slint::ComponentHandle::global::<crate::SocialStatusState>(&strong);
+    social_status_state.set_current_status(local_status.status as u8 as i32);
+
+    *last_version = local_status.version;
 }

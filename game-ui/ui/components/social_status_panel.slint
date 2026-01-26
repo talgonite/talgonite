@@ -1,0 +1,197 @@
+import { Theme } from "../theme.slint";
+import { ScrollView } from "std-widgets.slint";
+import { SocialStatusState, SocialStatusEntry } from "../social_status_state.slint";
+
+component StatusDot inherits Rectangle {
+    in property <color> status-color: #22c55e;
+    in property <bool> pulsing: false;
+    
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    background: @radial-gradient(circle, status-color 0%, status-color.darker(0.3) 100%);
+    border-width: 1px;
+    border-color: status-color.darker(0.2);
+}
+
+component StatusOptionRow inherits Rectangle {
+    in property <SocialStatusEntry> entry;
+    in property <bool> is-selected: false;
+    callback clicked();
+    
+    height: 36px;
+    background: is-selected ? Theme.accent-subtle : touch.has-hover ? Theme.surface-secondary : transparent;
+    border-radius: Theme.radius-small;
+    
+    animate background { duration: 100ms; }
+    
+    HorizontalLayout {
+        padding-left: Theme.spacing-small;
+        padding-right: Theme.spacing-small;
+        spacing: Theme.spacing-small;
+        
+        StatusDot {
+            status-color: entry.color;
+            y: (parent.height - self.height) / 2;
+        }
+        
+        VerticalLayout {
+            spacing: 1px;
+            alignment: center;
+            
+            Text {
+                text: entry.name;
+                color: is-selected ? Theme.accent : Theme.foreground;
+                font-size: Theme.font-size-small;
+                font-weight: is-selected ? 700 : 400;
+            }
+            
+            Text {
+                text: entry.description;
+                color: Theme.foreground-subtle;
+                font-size: Theme.font-size-xsmall;
+            }
+        }
+        
+        Rectangle { }
+        
+        if is-selected: Text {
+            text: "✓";
+            color: Theme.accent;
+            font-size: Theme.font-size-medium;
+            vertical-alignment: center;
+        }
+    }
+    
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+export component SocialStatusIndicator inherits Rectangle {
+    in property <bool> interactive: true;
+    in property <int> status-id: SocialStatusState.current-status;
+    
+    private property <SocialStatusEntry> current: SocialStatusState.get-by-id(status-id);
+    
+    width: 120px;
+    height: 28px;
+    background: interactive && touch.has-hover ? Theme.surface-secondary : Theme.surface-muted;
+    border-radius: Theme.radius-small;
+    border-width: 1px;
+    border-color: SocialStatusState.dropdown-open && interactive ? Theme.accent : Theme.border-muted;
+    
+    animate border-color { duration: 100ms; }
+    
+    HorizontalLayout {
+        padding-left: Theme.spacing-small;
+        padding-right: Theme.spacing-xsmall;
+        spacing: Theme.spacing-small;
+        
+        Rectangle {
+            width: 14px;
+            
+            StatusDot {
+                status-color: current.color;
+                pulsing: current.id == 3 || current.id == 7;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+        }
+        
+        Text {
+            text: current.name;
+            color: Theme.foreground;
+            font-size: Theme.font-size-small;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        
+        Rectangle { }
+        
+        if interactive: Text {
+            text: SocialStatusState.dropdown-open ? "▲" : "▼";
+            color: Theme.foreground-muted;
+            font-size: 8px;
+            vertical-alignment: center;
+        }
+    }
+    
+    touch := TouchArea {
+        enabled: interactive;
+        clicked => {
+            SocialStatusState.toggle-dropdown();
+        }
+    }
+}
+
+export component SocialStatusDropdown inherits Rectangle {
+    in property <bool> show-above: false;
+    in property <length> anchor-x: 0px;
+    in property <length> anchor-y: 0px;
+    in property <length> anchor-width: 120px;
+    in property <length> anchor-height: 28px;
+    
+    visible: SocialStatusState.dropdown-open && SocialStatusState.enabled;
+    x: anchor-x;
+    y: show-above ? (anchor-y - self.height - 4px) : (anchor-y + anchor-height + 4px);
+    width: max(anchor-width, 200px);
+    height: min(240px, SocialStatusState.status-options.length * 38px + 8px);
+    background: Theme.panel-background;
+    border-radius: Theme.radius-medium;
+    border-width: 1px;
+    border-color: Theme.border-panel;
+    drop-shadow-blur: 8px;
+    drop-shadow-color: #00000040;
+    drop-shadow-offset-y: 4px;
+    
+    VerticalLayout {
+        padding: 4px;
+        
+        ScrollView {
+            viewport-height: SocialStatusState.status-options.length * 38px;
+            VerticalLayout {
+                spacing: 0px;
+                for entry[idx] in SocialStatusState.status-options: StatusOptionRow {
+                    entry: entry;
+                    is-selected: idx == SocialStatusState.current-status;
+                    clicked => {
+                        SocialStatusState.set-status(entry.id);
+                        SocialStatusState.close-dropdown();
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component SocialStatusDropdownOverlay inherits Rectangle {
+    visible: SocialStatusState.dropdown-open && SocialStatusState.enabled;
+    background: transparent;
+    
+    TouchArea {
+        clicked => {
+            SocialStatusState.close-dropdown();
+        }
+    }
+}
+
+export component SocialStatusPanel inherits Rectangle {
+    in property <bool> show-dropdown-above: false;
+    in property <bool> enabled: true;
+    
+    visible: enabled && SocialStatusState.enabled;
+    width: indicator.width;
+    height: indicator.height;
+    background: transparent;
+    
+    changed visible => {
+        if !self.visible {
+            SocialStatusState.close-dropdown();
+        }
+    }
+    
+    indicator := SocialStatusIndicator {
+        interactive: true;
+    }
+}

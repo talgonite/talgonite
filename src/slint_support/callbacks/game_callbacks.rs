@@ -4,7 +4,7 @@ use crossbeam_channel::Sender;
 use slint::ComponentHandle;
 
 use crate::webui::ipc::{UiToCore, WorldListFilter};
-use crate::{DragDropState, GameState, MainWindow, NpcDialogState, SlotPanelType};
+use crate::{DragDropState, GameState, MainWindow, NpcDialogState, SlotPanelType, SocialStatusState};
 
 /// Convert Slint SlotPanelType to game types.
 fn slint_to_game_panel(panel: SlotPanelType) -> game_types::SlotPanelType {
@@ -218,5 +218,21 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
                 }
             },
         );
+    }
+
+    // Social status callbacks
+    let social_status_state = slint_app.global::<SocialStatusState>();
+    {
+        let tx = tx.clone();
+        social_status_state.on_set_status(move |status| {
+            if tx
+                .send(UiToCore::SetSocialStatus {
+                    status: status as u8,
+                })
+                .is_err()
+            {
+                tracing::error!("Failed to send SetSocialStatus message");
+            }
+        });
     }
 }

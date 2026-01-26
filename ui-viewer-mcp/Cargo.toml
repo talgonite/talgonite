@@ -1,0 +1,18 @@
+[package]
+name = "ui-viewer-mcp"
+version.workspace = true
+edition.workspace = true
+description = "MCP server for Slint UI component visualization and testing"
+
+[[bin]]
+name = "ui-viewer-mcp"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+base64 = "0.22"

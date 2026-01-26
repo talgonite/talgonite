@@ -97,6 +97,7 @@ export struct WorldListMemberUi {
     class: string,
     color: color,
     is_master: bool,
+    social_status: int,
 }
 
 export struct ChatMessage {
@@ -134,7 +135,7 @@ export struct ProfileData {
     portrait: image,
     preview: image,
     profile-text: string,
-    is-afk: bool,
+    social-status: int,
     group-requests-enabled: bool,
     legend-marks: [LegendMarkData],
     // Equipment slots (22 slots total)
@@ -220,7 +221,7 @@ export global GameState {
         title: "",
         town: "Mileth",
         profile-text: "",
-        is-afk: false,
+        social-status: 0,
         group-requests-enabled: true,
     };
     in-out property <int> current-hotbar-panel: 0;

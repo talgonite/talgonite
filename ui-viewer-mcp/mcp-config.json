@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "ui-viewer": {
+      "command": "cargo",
+      "args": [
+        "run",
+        "--package",
+        "ui-viewer-mcp",
+        "--release"
+      ],
+      "cwd": "src\\talgonite"
+    }
+  }
+}
