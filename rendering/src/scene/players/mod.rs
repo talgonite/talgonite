@@ -141,7 +141,7 @@ impl PlayerAssetStore {
             iso_coord_offset = Vec2::new(1., -1.);
         }
 
-        let z = (position.x + position.y) / 65536.0 - 0.000002
+        let z = (position.x + position.y) / 1000.0 - 0.0002
             + (sprite.slot.z_priority(is_towards) * EQUIPMENT_Z_RANGE);
 
         let mut instance = Instance::with_texture_atlas(

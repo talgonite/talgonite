@@ -3,7 +3,7 @@ use formats::epf::{AnimationDirection, EpfAnimation, EpfAnimationType};
 use glam::Vec2;
 use rustc_hash::FxHashMap;
 
-pub const EQUIPMENT_Z_RANGE: f32 = 0.000001;
+pub const EQUIPMENT_Z_RANGE: f32 = 0.0001;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]

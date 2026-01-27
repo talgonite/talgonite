@@ -114,7 +114,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let z_to_check = (player_tile_x
             + player_tile_y
             + 0.75 /* Offset to be in front of player */
-            ) / 65536.0 + 0.000001;
+            ) / 1000.0 + 0.0001;
 
         // Calculate player Z
         let wall_z = in.instance_z;

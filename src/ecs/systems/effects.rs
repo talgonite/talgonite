@@ -28,7 +28,7 @@ pub fn entity_effect_system(
                         if let Some(target_animation) = target_animation {
                             commands.entity(entity).insert(Effect {
                                 effect_id: target_animation,
-                                z_offset: 0.0000001,
+                                z_offset: 0.0001,
                             });
                         }
                     }
@@ -36,7 +36,7 @@ pub fn entity_effect_system(
                         if let Some(source_animation) = source_animation {
                             commands.entity(entity).insert(Effect {
                                 effect_id: source_animation,
-                                z_offset: 0.0000001,
+                                z_offset: 0.0001,
                             });
                         }
                     }
