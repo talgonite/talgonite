@@ -4,7 +4,7 @@ use crossbeam_channel::Sender;
 use slint::ComponentHandle;
 
 use crate::webui::ipc::{UiToCore, WorldListFilter};
-use crate::{DragDropState, GameState, MainWindow, NpcDialogState, SlotPanelType, SocialStatusState};
+use crate::{DragDropState, GameState, MainWindow, NpcDialogState, SlotPanelType, SocialStatus, SocialStatusState};
 
 /// Convert Slint SlotPanelType to game types.
 fn slint_to_game_panel(panel: SlotPanelType) -> game_types::SlotPanelType {
@@ -224,15 +224,29 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
     let social_status_state = slint_app.global::<SocialStatusState>();
     {
         let tx = tx.clone();
-        social_status_state.on_set_status(move |status| {
+        social_status_state.on_status_changed(move |status| {
             if tx
                 .send(UiToCore::SetSocialStatus {
-                    status: status as u8,
+                    status: social_status_to_u8(status),
                 })
                 .is_err()
             {
                 tracing::error!("Failed to send SetSocialStatus message");
             }
         });
+    }
+}
+
+/// Convert SocialStatus enum to u8 for network protocol
+fn social_status_to_u8(status: SocialStatus) -> u8 {
+    match status {
+        SocialStatus::Online => 0,
+        SocialStatus::DoNotDisturb => 1,
+        SocialStatus::DayDreaming => 2,
+        SocialStatus::NeedGroup => 3,
+        SocialStatus::Grouped => 4,
+        SocialStatus::LoneHunter => 5,
+        SocialStatus::GroupHunting => 6,
+        SocialStatus::NeedHelp => 7,
     }
 }

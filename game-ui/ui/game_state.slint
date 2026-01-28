@@ -1,3 +1,23 @@
+// Social status enum
+export enum SocialStatus {
+    Online,
+    DoNotDisturb,
+    DayDreaming,
+    NeedGroup,
+    Grouped,
+    LoneHunter,
+    GroupHunting,
+    NeedHelp,
+}
+
+export struct SocialStatusEntry {
+    status: SocialStatus,
+    name: string,
+    description: string,
+    icon: string,
+    color: color,
+}
+
 export struct WorldMapNode {
     text: string,
     map_id: int,
@@ -97,7 +117,7 @@ export struct WorldListMemberUi {
     class: string,
     color: color,
     is_master: bool,
-    social_status: int,
+    social_status: SocialStatus,
 }
 
 export struct ChatMessage {
@@ -135,7 +155,7 @@ export struct ProfileData {
     portrait: image,
     preview: image,
     profile-text: string,
-    social-status: int,
+    social-status: SocialStatus,
     group-requests-enabled: bool,
     legend-marks: [LegendMarkData],
     // Equipment slots (22 slots total)
@@ -221,7 +241,7 @@ export global GameState {
         title: "",
         town: "Mileth",
         profile-text: "",
-        social-status: 0,
+        social-status: SocialStatus.Online,
         group-requests-enabled: true,
     };
     in-out property <int> current-hotbar-panel: 0;
@@ -281,4 +301,14 @@ export global NpcDialogState {
     callback select-option(int, string);    // id, text
     callback close();
     callback submit-text(string);           // text entry submission
+}
+
+// Social status state for Rust <-> Slint bridge
+// UI-specific concerns (dropdown state, status options) live in the components
+export global SocialStatusState {
+    in-out property <SocialStatus> current-status: SocialStatus.Online;
+    in-out property <bool> enabled: true;
+    
+    // Callback for Rust bridge - called when user changes status
+    callback status-changed(SocialStatus);
 }

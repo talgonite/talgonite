@@ -118,8 +118,6 @@ members = [
     "game-types",
     "game-input",
     "game-ui",
-    "ui-viewer",
-    "ui-viewer-mcp",
 ]
 
 [workspace.dependencies]

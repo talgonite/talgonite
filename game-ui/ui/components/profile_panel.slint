@@ -1,5 +1,4 @@
-import { GameState, ProfileData, EquipmentSlotData } from "../game_state.slint";
-import { SocialStatusState, SocialStatusEntry } from "../social_status_state.slint";
+import { GameState, ProfileData, EquipmentSlotData, SocialStatusState, SocialStatus } from "../game_state.slint";
 import { Theme } from "../theme.slint";
 import { ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
 import { Icon } from "icon.slint";
@@ -118,6 +117,8 @@ export component ProfilePanel inherits Rectangle {
     property <ProfileData> data: GameState.profile;
     property <string> active-tab: "profile";
     in property <float> preview-zoom: 2.0;
+    // Local dropdown state for social status
+    property <bool> status-dropdown-open: false;
     width: 520px;
     height: 480px;
 
@@ -312,12 +313,12 @@ export component ProfilePanel inherits Rectangle {
                 }
 
                 // Status indicator below preview
-                // Status indicator below preview
-                SocialStatusIndicator {
+                status-indicator := SocialStatusIndicator {
                     x: 77px; // Centered under preview (80px + 114px/2 - 120px/2)
                     y: 238px;
                     interactive: data.is-self;
-                    status-id: data.is-self ? SocialStatusState.current-status : data.social-status;
+                    status: data.is-self ? SocialStatusState.current-status : data.social-status;
+                    dropdown-open <=> root.status-dropdown-open;
                 }
 
                 // -- BOTTOM CENTER: Boots (shifted down) --
@@ -544,6 +545,7 @@ export component ProfilePanel inherits Rectangle {
         SocialStatusDropdownOverlay {
             width: 100%;
             height: 100%;
+            open <=> root.status-dropdown-open;
         }
         
         SocialStatusDropdown {
@@ -554,6 +556,7 @@ export component ProfilePanel inherits Rectangle {
             anchor-width: 120px;
             anchor-height: 28px;
             show-above: self.anchor-y > 240px; // Dynamic placement
+            open <=> root.status-dropdown-open;
         }
     }
 }

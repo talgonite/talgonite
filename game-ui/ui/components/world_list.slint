@@ -1,5 +1,5 @@
-import { GameState, WorldListMemberUi } from "../game_state.slint";
-import { SocialStatusState, SocialStatusEntry } from "../social_status_state.slint";
+import { GameState, WorldListMemberUi, SocialStatusState, SocialStatusEntry } from "../game_state.slint";
+import { SocialStatusOptions } from "social_status_panel.slint";
 import { Theme } from "../theme.slint";
 import {
     ScrollView,
@@ -112,7 +112,7 @@ export component WorldListPanel inherits BasePanel {
                         background: Theme.surface-card;
                         border-radius: Theme.radius-small;
                         
-                        private property <SocialStatusEntry> status-entry: SocialStatusState.get-by-id(member.social_status);
+                        private property <SocialStatusEntry> status-entry: SocialStatusOptions.get-entry(member.social_status);
                         
                         HorizontalBox {
                             padding-left: Theme.spacing-small;

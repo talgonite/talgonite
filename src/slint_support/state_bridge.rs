@@ -746,7 +746,7 @@ pub fn apply_core_to_slint(
                 class: slint::SharedString::from(m.class.as_str()),
                 color: slint::Color::from_argb_f32(m.color[3], m.color[0], m.color[1], m.color[2]),
                 is_master: m.is_master,
-                social_status: m.social_status as i32,
+                social_status: u8_to_social_status(m.social_status),
             });
         }
 
@@ -965,7 +965,22 @@ pub fn sync_social_status_to_slint(
         return;
     };
     let social_status_state = slint::ComponentHandle::global::<crate::SocialStatusState>(&strong);
-    social_status_state.set_current_status(local_status.status as u8 as i32);
+    social_status_state.set_current_status(u8_to_social_status(local_status.status as u8));
 
     *last_version = local_status.version;
+}
+
+/// Convert u8 from network protocol to SocialStatus enum
+pub fn u8_to_social_status(value: u8) -> crate::SocialStatus {
+    match value {
+        0 => crate::SocialStatus::Online,
+        1 => crate::SocialStatus::DoNotDisturb,
+        2 => crate::SocialStatus::DayDreaming,
+        3 => crate::SocialStatus::NeedGroup,
+        4 => crate::SocialStatus::Grouped,
+        5 => crate::SocialStatus::LoneHunter,
+        6 => crate::SocialStatus::GroupHunting,
+        7 => crate::SocialStatus::NeedHelp,
+        _ => crate::SocialStatus::Online,
+    }
 }
