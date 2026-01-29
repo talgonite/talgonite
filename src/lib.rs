@@ -4,7 +4,8 @@ pub use game_ui::slint_types::{
     ChatMessage, Cooldown, DragDropState, EquipmentSlotData, GameState, HotbarEntry, InputBridge,
     InstallerState, InventoryItem, LegendMarkData, LobbyState, LoginBridge, LoginState, MainWindow,
     MenuEntry, NpcDialogState, ProfileData, SavedLoginItem, ServerItem, SettingsState, Skill,
-    SlotPanelType, Spell, WorldLabel, WorldListMemberUi, WorldMapNode,
+    SlotPanelType, SocialStatus, SocialStatusEntry, SocialStatusState, Spell, WorldLabel,
+    WorldListMemberUi, WorldMapNode,
 };
 
 pub mod app_state;

@@ -1,4 +1,4 @@
-import { GameState, DragDropState, SlotPanelType } from "../game_state.slint";
+import { GameState, DragDropState, SlotPanelType, SocialStatusState } from "../game_state.slint";
 import { InputBridge } from "../input_bridge.slint";
 import { UiSettings } from "../ui-settings.slint";
 import { SettingsState } from "../settings_state.slint";
@@ -18,6 +18,7 @@ import { ChatLog } from "./chat_log.slint";
 import { PopupPanel } from "./popup_panel.slint";
 import { ProfilePanel } from "./profile_panel.slint";
 import { WorldListPanel } from "./world_list.slint";
+import { SocialStatusDropdown, SocialStatusDropdownOverlay } from "./social_status_panel.slint";
 import { PopupState, NpcDialogState } from "../game_state.slint";
 import {
     HorizontalBox,
@@ -153,6 +154,8 @@ export component GameScene inherits Rectangle {
         width: 100%;
         height: 100%;
     }
+
+
     PopupPanel {
         screen-width: parent.width;
         screen-height: parent.height;
