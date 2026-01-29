@@ -125,7 +125,7 @@ impl EffectManager {
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Effect Pipeline Layout"),
             bind_group_layouts: &[&bind_group_layout, camera_bind_group_layout],
-            push_constant_ranges: &[],
+            immediate_size: 0,
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -160,7 +160,7 @@ impl EffectManager {
                 bias: wgpu::DepthBiasState::default(),
             }),
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
         });
 
         let vertices = make_quad(VERTEX_SIZE as u32, VERTEX_SIZE as u32).to_vec();

@@ -5,6 +5,11 @@ edition.workspace = true
 
 [dependencies]
 game-types.workspace = true
-bevy = { version = "0.17", default-features = false, features = ["bevy_state"] }
+bevy = { version = "0.18", default-features = false, features = [
+    "bevy_state",
+    "mouse",
+    "keyboard",
+    "gamepad",
+] }
 gilrs = "0.11"
 tracing = "0.1"

@@ -876,7 +876,7 @@ pub fn sync_world_labels_to_slint(
                 }
 
                 slint_labels.push(crate::WorldLabel {
-                    entity_id: entity.index() as i32,
+                    entity_id: entity.index().index() as i32,
                     text: slint::SharedString::from(label.text.as_str()),
                     world_x: world_pos.x,
                     world_y: world_pos.y,
@@ -904,7 +904,7 @@ pub fn sync_world_labels_to_slint(
 
         if !hp_assigned && hp >= 0 {
             slint_labels.push(crate::WorldLabel {
-                entity_id: entity.index() as i32,
+                entity_id: entity.index().index() as i32,
                 text: slint::SharedString::default(),
                 world_x: world_pos.x,
                 world_y: world_pos.y,

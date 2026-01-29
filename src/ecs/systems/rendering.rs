@@ -540,8 +540,7 @@ pub fn render_player_batch_to_target(
                 }),
                 stencil_ops: None,
             }),
-            timestamp_writes: None,
-            occlusion_query_set: None,
+            ..Default::default()
         });
 
         render_pass.set_pipeline(&renderer.scene.pipeline);

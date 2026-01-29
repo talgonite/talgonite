@@ -2,10 +2,10 @@
 
 use bevy::prelude::*;
 
+use crate::WindowSurface;
 use crate::app_state::AppState;
 use crate::resources::ZoomState;
 use crate::slint_support::frame_exchange::{BackBufferPool, ControlMessage, FrameChannels};
-use crate::WindowSurface;
 
 /// Handle BeforeRendering: sync display size/zoom and exchange frame textures.
 pub fn handle_before_rendering<W: slint::ComponentHandle>(
@@ -83,7 +83,7 @@ pub fn handle_before_rendering<W: slint::ComponentHandle>(
 
         if let Ok(new_texture) = ch.front_buffer_rx.try_recv() {
             let current = get_texture(slint_app);
-            if let Some(old) = current.to_wgpu_27_texture() {
+            if let Some(old) = current.to_wgpu_28_texture() {
                 let _ = ch
                     .control_tx
                     .try_send(ControlMessage::ReleaseFrontBufferTexture { texture: old });
@@ -96,12 +96,7 @@ pub fn handle_before_rendering<W: slint::ComponentHandle>(
 }
 
 /// Seed the back buffer pool with initial textures.
-pub fn seed_back_buffers(
-    app: &mut App,
-    device: &wgpu::Device,
-    width: u32,
-    height: u32,
-) {
+pub fn seed_back_buffers(app: &mut App, device: &wgpu::Device, width: u32, height: u32) {
     // Grab control sender clone without holding a mutable borrow to the World
     let ctrl_sender = app
         .world()

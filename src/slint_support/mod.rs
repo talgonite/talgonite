@@ -12,8 +12,8 @@ pub use gpu_init::initialize_gpu_world;
 pub use profile_bridge::{ShowSelfProfileEvent, handle_show_self_profile, sync_profile_to_slint};
 
 use bevy::prelude::*;
-use slint::wgpu_27::{WGPUConfiguration, WGPUSettings};
 use slint::ComponentHandle;
+use slint::wgpu_28::{WGPUConfiguration, WGPUSettings};
 
 use crate::MainWindow;
 use state_bridge::{SlintUiChannels, SlintWindow};
@@ -32,11 +32,11 @@ pub struct SlintDoubleClickEvent(pub f32, pub f32);
 pub fn attach_slint_ui(mut app: App) -> MainWindow {
     // Configure WGPU for Slint backend
     let mut wgpu_settings = WGPUSettings::default();
-    wgpu_settings.device_required_features = wgpu::Features::PUSH_CONSTANTS;
-    wgpu_settings.device_required_limits.max_push_constant_size = 16;
+    wgpu_settings.device_required_features = wgpu::Features::IMMEDIATES;
+    wgpu_settings.device_required_limits.max_immediate_size = 16;
 
     slint::BackendSelector::new()
-        .require_wgpu_27(WGPUConfiguration::Automatic(wgpu_settings))
+        .require_wgpu_28(WGPUConfiguration::Automatic(wgpu_settings))
         .select()
         .expect("Unable to create Slint backend with WGPU based renderer");
 
@@ -53,9 +53,15 @@ pub fn attach_slint_ui(mut app: App) -> MainWindow {
     let double_click_queue = input_bridge::new_shared_double_click_queue();
 
     app.insert_resource(input_bridge::SlintKeyEventQueue(key_event_queue.clone()));
-    app.insert_resource(input_bridge::SlintPointerEventQueue(pointer_event_queue.clone()));
-    app.insert_resource(input_bridge::SlintScrollEventQueue(scroll_event_queue.clone()));
-    app.insert_resource(input_bridge::SlintDoubleClickQueue(double_click_queue.clone()));
+    app.insert_resource(input_bridge::SlintPointerEventQueue(
+        pointer_event_queue.clone(),
+    ));
+    app.insert_resource(input_bridge::SlintScrollEventQueue(
+        scroll_event_queue.clone(),
+    ));
+    app.insert_resource(input_bridge::SlintDoubleClickQueue(
+        double_click_queue.clone(),
+    ));
 
     // Wire input callbacks
     callbacks::wire_input_callbacks(
@@ -67,7 +73,8 @@ pub fn attach_slint_ui(mut app: App) -> MainWindow {
     );
 
     // Install weak handle so Bevy systems can mutate properties
-    app.world_mut().insert_resource(SlintWindow(slint_app.as_weak()));
+    app.world_mut()
+        .insert_resource(SlintWindow(slint_app.as_weak()));
 
     // Wire UI callbacks -> crossbeam channel -> UiInbound messages
     if let Some(ch) = app.world().get_resource::<SlintUiChannels>() {
@@ -83,7 +90,7 @@ pub fn attach_slint_ui(mut app: App) -> MainWindow {
         .window()
         .set_rendering_notifier(move |rendering_state, graphics_api| match rendering_state {
             slint::RenderingState::RenderingSetup => {
-                if let slint::GraphicsAPI::WGPU27 { device, queue, .. } = graphics_api {
+                if let slint::GraphicsAPI::WGPU28 { device, queue, .. } = graphics_api {
                     let Some(strong) = slint_app_handle.upgrade() else {
                         return;
                     };
@@ -98,7 +105,12 @@ pub fn attach_slint_ui(mut app: App) -> MainWindow {
                     );
                     let size = window.size();
 
-                    rendering_notifier::seed_back_buffers(&mut app, &device, size.width, size.height);
+                    rendering_notifier::seed_back_buffers(
+                        &mut app,
+                        &device,
+                        size.width,
+                        size.height,
+                    );
 
                     tracing::info!("WGPU Rendering setup complete (Slint -> Bevy bridge)");
 
