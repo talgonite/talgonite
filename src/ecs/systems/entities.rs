@@ -46,6 +46,7 @@ pub fn spawn_entities_system(
     mut settings: ResMut<crate::settings::Settings>,
     current_session: Option<Res<crate::CurrentSession>>,
     mut show_profile: MessageWriter<crate::slint_plugin::ShowSelfProfileEvent>,
+    mut tile_counters: ResMut<crate::resources::ItemTileCounters>,
 ) {
     // Handle session events first to set local player ID
     for event in session_events.read() {
@@ -69,22 +70,53 @@ pub fn spawn_entities_system(
         }
     }
 
-    // Process entity events in reverse to handle latest state first
-    let mut added_ids: FastHashSet<u32> = FastHashSet::default();
-    let mut entity_events_rev: Vec<_> = entity_events.read().collect();
-    entity_events_rev.reverse();
+    // Two-pass: first find which event index is the "latest" for each entity ID,
+    // then process in forward order so spawn_order reflects arrival time
+    let events: Vec<_> = entity_events.read().collect();
 
-    for event in entity_events_rev {
+    // Build map of entity_id -> last event index that contains it
+    let mut latest_event_for_id: FastHashSet<(u32, usize)> = FastHashSet::default();
+    for (event_idx, event) in events.iter().enumerate() {
         match event {
             EntityEvent::DisplayEntities(entities) => {
-                spawn_display_entities(&mut commands, &entities.entities, &mut added_ids);
+                for info in &entities.entities {
+                    let id = match info {
+                        packets::server::EntityInfo::Item { id, .. } => *id,
+                        packets::server::EntityInfo::Creature { id, .. } => *id,
+                    };
+                    latest_event_for_id.retain(|(eid, _)| *eid != id);
+                    latest_event_for_id.insert((id, event_idx));
+                }
             }
             EntityEvent::DisplayPlayer(player) => {
+                latest_event_for_id.retain(|(eid, _)| *eid != player.id);
+                latest_event_for_id.insert((player.id, event_idx));
+            }
+            _ => {}
+        }
+    }
+
+    // Process in forward order, only spawning from the latest event for each ID
+    for (event_idx, event) in events.iter().enumerate() {
+        match event {
+            EntityEvent::DisplayEntities(entities) => {
+                spawn_display_entities(
+                    &mut commands,
+                    &entities.entities,
+                    event_idx,
+                    &latest_event_for_id,
+                    &mut tile_counters,
+                );
+            }
+            EntityEvent::DisplayPlayer(player) => {
+                // Skip if this isn't the latest event for this player ID
+                if !latest_event_for_id.contains(&(player.id, event_idx)) {
+                    continue;
+                }
                 let is_local = local_id.id.map(|id| id == player.id).unwrap_or(false);
                 spawn_display_player(
                     &mut commands,
                     player,
-                    &mut added_ids,
                     local_id.id,
                     &mut settings,
                     current_session.as_deref(),
@@ -101,7 +133,9 @@ pub fn spawn_entities_system(
 fn spawn_display_entities(
     commands: &mut Commands,
     entities: &[packets::server::EntityInfo],
-    added_ids: &mut FastHashSet<u32>,
+    event_idx: usize,
+    latest_event_for_id: &FastHashSet<(u32, usize)>,
+    tile_counters: &mut crate::resources::ItemTileCounters,
 ) {
     for entity_info in entities {
         let target_id = match entity_info {
@@ -109,7 +143,8 @@ fn spawn_display_entities(
             packets::server::EntityInfo::Creature { id, .. } => *id,
         };
 
-        if !added_ids.insert(target_id) {
+        // Skip if this isn't the latest event for this entity ID
+        if !latest_event_for_id.contains(&(target_id, event_idx)) {
             continue;
         }
 
@@ -121,6 +156,7 @@ fn spawn_display_entities(
                 sprite,
                 color,
             } => {
+                let spawn_order = tile_counters.next_order(*x, *y);
                 commands.spawn((
                     ItemBundle {
                         entity_id: EntityId { id: *id },
@@ -131,6 +167,7 @@ fn spawn_display_entities(
                         sprite: ItemSprite {
                             id: *sprite,
                             color: *color,
+                            spawn_order,
                         },
                     },
                     InGameScoped,
@@ -177,15 +214,10 @@ fn spawn_display_entities(
 fn spawn_display_player(
     commands: &mut Commands,
     player: &packets::server::display_player::DisplayPlayer,
-    added_ids: &mut FastHashSet<u32>,
     local_id: Option<u32>,
     settings: &mut ResMut<crate::settings::Settings>,
     current_session: Option<&crate::CurrentSession>,
 ) {
-    if !added_ids.insert(player.id) {
-        return;
-    }
-
     let DisplayArgs::Normal {
         head_sprite,
         body_sprite: body_sprite_raw,

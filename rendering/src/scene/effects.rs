@@ -9,6 +9,7 @@ use glam::Vec2;
 
 use crate::instance::InstanceFlag;
 use crate::scene::texture_atlas::TextureAtlas;
+use crate::scene::utils::calculate_tile_z;
 use crate::scene::{TILE_HEIGHT, get_isometric_coordinate};
 use crate::{Instance, InstanceRaw, SharedInstanceBatch, Vertex, make_quad, texture};
 
@@ -155,7 +156,7 @@ impl EffectManager {
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: texture::Texture::DEPTH_FORMAT,
                 depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
+                depth_compare: wgpu::CompareFunction::Greater,
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
@@ -411,7 +412,7 @@ impl EffectManager {
         let (offset_x, offset_y) = *loaded.frame_offsets.get(frame_index)?;
 
         let world_pos = get_isometric_coordinate(x, y);
-        let z = (x + y) / 1000.0 + z_offset;
+        let z = calculate_tile_z(x, y, 1.0) + z_offset;
 
         let atlas_w = ATLAS_WIDTH as f32;
         let atlas_h = ATLAS_HEIGHT as f32;

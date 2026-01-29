@@ -49,7 +49,6 @@ impl Default for MapDownloadState {
     }
 }
 
-
 pub struct SessionRuntimePlugin;
 
 impl Plugin for SessionRuntimePlugin {
@@ -529,10 +528,7 @@ fn parse_packet<T: TryFromBytes>(data: &Vec<u8>) -> Option<T> {
     }
 }
 
-fn handle_map_load_complete(
-    session: &mut NetSessionState,
-    outbox: &crate::network::PacketOutbox,
-) {
+fn handle_map_load_complete(session: &mut NetSessionState, outbox: &crate::network::PacketOutbox) {
     // Only request metadata checksums once per session
     if !session.metadata_requested {
         tracing::info!("Map load complete, requesting metadata checksums");
@@ -548,7 +544,10 @@ fn handle_metadata(
 ) {
     match metadata {
         server::MetaData::AllCheckSums { collection } => {
-            tracing::info!("Received {} metadata checksums from server", collection.len());
+            tracing::info!(
+                "Received {} metadata checksums from server",
+                collection.len()
+            );
 
             // Request any metafiles that are missing or have mismatched checksums
             let mut request_count = 0;

@@ -132,6 +132,7 @@ pub fn sync_lobby_portraits(
                         2, // Down
                         0.0,
                         0.0,
+                        0, // No stacking for preview
                         InstanceFlag::None,
                         glam::Vec3::ZERO,
                     );
@@ -217,6 +218,7 @@ pub fn sync_items_to_renderer(
                 y: position.y as u16,
                 sprite: sprite.id,
                 color: sprite.color,
+                spawn_order: sprite.spawn_order,
             },
         ) {
             commands.entity(entity).insert(ItemInstance { handle });
@@ -245,6 +247,7 @@ pub fn update_items_to_renderer(
                 y: position.y as u16,
                 sprite: sprite.id,
                 color: sprite.color,
+                spawn_order: sprite.spawn_order,
             },
         );
     }
@@ -256,13 +259,19 @@ pub fn sync_players_to_renderer(
     shared_state: Res<RendererState>,
     game_files: Res<GameFiles>,
     added_sprites: Query<(Entity, &ChildOf, &PlayerSprite), Added<PlayerSprite>>,
-    player_query: Query<(&Position, &Direction, &Player, Option<&TargetingHover>)>,
+    player_query: Query<(
+        &Position,
+        &Direction,
+        &Player,
+        &EntityId,
+        Option<&TargetingHover>,
+    )>,
     mut store_state: ResMut<PlayerAssetStoreState>,
     batch_state: Res<PlayerBatchState>,
 ) {
     let mut sprites_to_add = Vec::new();
     for (sprite_entity, child_of, sprite) in added_sprites.iter() {
-        if let Ok((position, direction, player, targeting_hover)) =
+        if let Ok((position, direction, player, entity_id, targeting_hover)) =
             player_query.get(child_of.parent())
         {
             sprites_to_add.push((
@@ -272,13 +281,22 @@ pub fn sync_players_to_renderer(
                 position,
                 direction,
                 player,
+                entity_id,
                 targeting_hover,
             ));
         }
     }
 
-    for (sprite_entity, _child_of, sprite, position, direction, player, targeting_hover) in
-        sprites_to_add
+    for (
+        sprite_entity,
+        _child_of,
+        sprite,
+        position,
+        direction,
+        player,
+        entity_id,
+        targeting_hover,
+    ) in sprites_to_add
     {
         let gender = if player.is_male {
             Gender::Male
@@ -300,6 +318,7 @@ pub fn sync_players_to_renderer(
             *direction as u8,
             position.x,
             position.y,
+            entity_id.id,
             InstanceFlag::None,
             tint,
         );
@@ -486,6 +505,7 @@ pub fn sync_player_portrait(
                     1, // "Towards" direction
                     0.0,
                     0.0,
+                    0, // No stacking for portrait
                     rendering::instance::InstanceFlag::None,
                     glam::Vec3::ZERO,
                 );
@@ -535,7 +555,7 @@ pub fn render_player_batch_to_target(
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: depth_view,
                 depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
+                    load: wgpu::LoadOp::Clear(0.0),
                     store: wgpu::StoreOp::Store,
                 }),
                 stencil_ops: None,
@@ -601,6 +621,7 @@ pub fn sync_profile_portrait(
                     1, // "Towards" direction
                     0.0,
                     0.0,
+                    0, // No stacking for portrait
                     rendering::instance::InstanceFlag::None,
                     glam::Vec3::ZERO,
                 );

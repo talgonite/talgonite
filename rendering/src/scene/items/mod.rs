@@ -11,7 +11,9 @@ use tracing::error;
 use crate::{
     SharedInstanceBatch,
     instance::InstanceFlag,
-    scene::{Instance, get_isometric_coordinate, texture_bind::TextureBind},
+    scene::{
+        Instance, get_isometric_coordinate, texture_bind::TextureBind, utils::calculate_tile_z,
+    },
     texture,
 };
 
@@ -29,8 +31,11 @@ pub struct ItemAssetStore {
 
 pub struct ItemBatch {
     pub(crate) instances: SharedInstanceBatch,
-    pub(crate) item_order_counter: u32,
 }
+
+pub const ITEM_Z_RANGE: f32 = 0.1;
+/// Item z-order is based on item.id % this value for deterministic ordering
+const ITEM_COUNT_BUCKET_SIZE: u32 = 20;
 
 impl ItemAssetStore {
     pub fn new(
@@ -112,10 +117,12 @@ impl ItemBatch {
     pub fn new(device: &wgpu::Device, store: &ItemAssetStore) -> Self {
         let vertices = crate::make_quad(512, 512).to_vec();
         let batch = SharedInstanceBatch::new(device, vertices, store.bind_group.clone());
-        Self {
-            instances: batch,
-            item_order_counter: 1,
-        }
+        Self { instances: batch }
+    }
+
+    /// Clear all item instances.
+    pub fn clear(&self) {
+        self.instances.clear();
     }
 
     pub fn add_item(
@@ -197,7 +204,11 @@ impl ItemBatch {
 
         let item_offset = Vec2::new(offset_x, offset_y);
 
-        let z = -0.5 + self.item_order_counter as f32 * 0.000001;
+        // Use spawn_order for z-ordering (set by network receive order)
+        // Modulo ensures we stay within ITEM_Z_RANGE even if spawn_order exceeds bucket size
+        let item_order = item.spawn_order.min(ITEM_COUNT_BUCKET_SIZE as u8 - 1);
+        let z_within_tile = (item_order as f32 / ITEM_COUNT_BUCKET_SIZE as f32) * ITEM_Z_RANGE;
+        let z = calculate_tile_z(item.x as f32, item.y as f32, z_within_tile);
 
         let instance = Instance::with_texture_atlas(
             (world_pos + item_offset).extend(z),
@@ -222,8 +233,6 @@ impl ItemBatch {
             false,
             InstanceFlag::None,
         );
-
-        self.item_order_counter = self.item_order_counter.wrapping_add(1);
 
         let idx = self.instances.add(queue, instance)?;
         Some(ItemInstanceHandle(idx))
@@ -273,7 +282,10 @@ impl ItemBatch {
 
         let item_offset = Vec2::new(offset_x, offset_y);
 
-        let z = 0.00001;
+        // Apply modulo to ensure z stays within ITEM_Z_RANGE
+        let item_order = item.spawn_order.min(ITEM_COUNT_BUCKET_SIZE as u8 - 1);
+        let z_within_tile = (item_order as f32 / ITEM_COUNT_BUCKET_SIZE as f32) * ITEM_Z_RANGE;
+        let z = calculate_tile_z(item.x as f32, item.y as f32, z_within_tile);
 
         let instance = Instance::with_texture_atlas(
             (world_pos + item_offset).extend(z),
@@ -304,5 +316,7 @@ impl ItemBatch {
 
     pub fn remove_item(&self, queue: &wgpu::Queue, handle: ItemInstanceHandle) {
         self.instances.remove(queue, handle.0);
+        // Note: we don't free the order slot - counter always increments
+        // so newer items always have higher z (show on top)
     }
 }

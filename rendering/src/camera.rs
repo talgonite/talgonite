@@ -19,7 +19,11 @@ impl Camera {
     }
 
     pub fn build_view_projection_matrix(&self) -> [[f32; 4]; 4] {
-        let projection = Mat4::orthographic_rh(0.0, self.width, self.height, 0.0, -1.0, 1.0);
+        // Z range [-1, 1] with reversed-Z (CompareFunction::Greater).
+        // Higher z values map to lower NDC, but with Greater comparison and
+        // clear to 0.0, higher world z (closer tiles) correctly wins.
+        // Changed divisor from 1000 to 512 in calculate_tile_z for better precision.
+        let projection = Mat4::orthographic_rh(0.0, self.width, self.height, 0.0, 1.0, -1.0);
         let center_translation =
             Mat4::from_translation(Vec3::new(self.width / 2.0, self.height / 2.0, 0.0).floor());
         let scale = Mat4::from_scale(Vec3::new(self.zoom, self.zoom, 1.0));

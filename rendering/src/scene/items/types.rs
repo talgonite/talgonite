@@ -8,6 +8,8 @@ pub struct Item {
     pub y: u16,
     pub sprite: u16,
     pub color: u8,
+    /// Network receive order for z-ordering (lower = below)
+    pub spawn_order: u8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

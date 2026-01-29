@@ -13,6 +13,7 @@ use wgpu;
 use crate::{
     instance::{InstanceFlag, SharedInstanceBatch},
     make_quad,
+    scene::utils::calculate_tile_z,
 };
 use crate::{
     scene::{
@@ -267,7 +268,7 @@ fn get_instance_for_frame(
     Ok(Instance::with_texture_atlas(
         (get_isometric_coordinate(position.x, position.y)
             - Vec2::new(offset_x, (frame_detail.center_y - frame_detail.top) as f32))
-        .extend((position.x + position.y) / 1000.0 - 0.0001),
+        .extend(calculate_tile_z(position.x, position.y, 0.21)),
         Vec2::new(
             first_frame.rectangle.min.x as f32 / ATLAS_WIDTH as f32,
             first_frame.rectangle.min.y as f32 / ATLAS_HEIGHT as f32,

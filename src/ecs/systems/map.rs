@@ -18,13 +18,19 @@ pub fn map_system(
     settings: Res<crate::settings::Settings>,
     mut map_renderer_state: Option<ResMut<MapRendererState>>,
     mut map_collision: Option<ResMut<crate::ecs::collision::MapCollisionData>>,
+    mut tile_counters: ResMut<crate::resources::ItemTileCounters>,
 ) {
     let mut local_map_renderer: Option<MapRenderer> = None;
 
     for event in map_events.read() {
         match event {
             MapEvent::Clear => {
-                handle_map_clear(&mut commands, &scoped_q, &mut local_map_renderer);
+                handle_map_clear(
+                    &mut commands,
+                    &scoped_q,
+                    &mut local_map_renderer,
+                    &mut tile_counters,
+                );
             }
             MapEvent::SetInfo(map_info, map_bytes) => {
                 // Check if we're already on this map (happens during refresh)
@@ -75,6 +81,7 @@ fn handle_map_clear(
     commands: &mut Commands,
     scoped_q: &Query<Entity, With<MapScoped>>,
     local_map_renderer: &mut Option<MapRenderer>,
+    tile_counters: &mut crate::resources::ItemTileCounters,
 ) {
     info!("Map change pending: clearing current map entities");
     let mut count = 0;
@@ -85,6 +92,7 @@ fn handle_map_clear(
     info!("Despawned {} MapScoped entities", count);
     commands.remove_resource::<MapRendererState>();
     commands.remove_resource::<crate::ecs::collision::MapCollisionData>();
+    tile_counters.counters.clear();
     *local_map_renderer = None;
 }
 

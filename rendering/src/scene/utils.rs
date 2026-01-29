@@ -30,3 +30,18 @@ pub fn tile_to_screen(tile: Vec2, camera_pos: Vec2, window_size: Vec2, zoom: f32
     let offset = Vec2::new(0., TILE_HEIGHT_HALF as f32);
     (iso_coords - camera_pos - offset) * zoom + window_size * 0.5
 }
+
+/// Calculate Z depth for a tile at (x, y) with an intra-tile offset.
+///
+/// The z value is used for depth testing to ensure proper draw order in isometric view.
+/// Closer tiles (higher x+y) get higher z values.
+///
+/// `z_within_tile` should be in range [0, 1] for most cases:
+/// - 0.0 = furthest back within the tile (floors, backgrounds)
+/// - 0.5 = middle (items, creatures)
+/// - 1.0 = closest to camera within the tile (walls, effects)
+pub fn calculate_tile_z(x: f32, y: f32, z_within_tile: f32) -> f32 {
+    // Current setup: Clear Z to 0.0, use Greater comparison.
+    // Higher x+y is closer to camera, so it must have higher Z.
+    (x + y + z_within_tile) / 1000.0
+}

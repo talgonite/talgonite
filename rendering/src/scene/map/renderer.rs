@@ -1,5 +1,8 @@
 use crate::{
-    Instance, InstanceBatch, instance::InstanceFlag, make_quad, scene::map::door_data::DOOR_DATA,
+    Instance, InstanceBatch,
+    instance::InstanceFlag,
+    make_quad,
+    scene::{map::door_data::DOOR_DATA, utils::calculate_tile_z},
 };
 use etagere::Allocation;
 use glam::Vec2;
@@ -217,7 +220,7 @@ impl MapRenderer {
             let tilemap_x = tile_id - (tilemap_y * TILEMAP_COLUMNS);
             let coord = FloorTile::get_position(x as f32, y as f32);
             Instance {
-                position: coord.extend(-0.75),
+                position: coord.extend(0.0),
                 tex_min: Vec2::new(
                     tilemap_x as f32 * TILEMAP_TILE_WIDTH,
                     tilemap_y as f32 * TILEMAP_TILE_HEIGHT,
@@ -395,7 +398,7 @@ impl MapRenderer {
             let coord = wall.side.get_position(x, y, height as f32);
             let palette_offset = *wall_palette_table.get(&wall.palette_index()).unwrap_or(&0);
             Instance {
-                position: coord.extend((x as f32 + y as f32) / 1000.0),
+                position: coord.extend(calculate_tile_z(x, y, 0.98)),
                 tex_min: Vec2::new(
                     a.rectangle.min.x as f32 / WALL_ATLAS_WIDTH as f32,
                     a.rectangle.min.y as f32 / WALL_ATLAS_HEIGHT as f32,

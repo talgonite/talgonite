@@ -109,6 +109,8 @@ pub struct ItemBundle {
 pub struct ItemSprite {
     pub id: u16,
     pub color: u8,
+    /// Z-ordering within tile, assigned at spawn time
+    pub spawn_order: u8,
 }
 
 #[derive(Component)]

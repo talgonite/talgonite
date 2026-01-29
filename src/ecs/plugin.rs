@@ -21,6 +21,7 @@ impl Plugin for GamePlugin {
 
         app.init_resource::<SpellCastingState>()
             .init_resource::<crate::resources::LobbyPortraits>()
+            .init_resource::<crate::resources::ItemTileCounters>()
             .add_message::<super::components::MapPrepared>()
             .add_systems(
                 OnEnter(crate::app_state::AppState::InGame),

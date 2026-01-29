@@ -12,6 +12,7 @@ use rustc_hash::FxHashMap;
 use wgpu;
 
 use crate::instance::InstanceFlag;
+use crate::scene::utils::calculate_tile_z;
 use crate::{SharedInstanceBatch, make_quad};
 use crate::{
     scene::{
@@ -36,6 +37,13 @@ pub struct PlayerAssetStore {
     palettes: PlayerPalettes,
     bind_group: wgpu::BindGroup,
 }
+
+/// Max players per tile for z-ordering (wraps after this)
+const PLAYERS_PER_TILE: u8 = 3;
+/// Z range within a tile allocated for player stacking.
+/// Must be much smaller than z_priority layer differences (~0.01) to avoid
+/// equipment parts from different players interleaving.
+const PLAYER_STACK_Z_RANGE: f32 = 0.003;
 
 pub struct PlayerBatch {
     instances: SharedInstanceBatch,
@@ -86,6 +94,7 @@ impl PlayerAssetStore {
         dye_color: u8,
         flags: InstanceFlag,
         tint: Vec3,
+        stack_order: u8,
     ) -> anyhow::Result<Instance> {
         let (palette_v, palette_dye) = palettes.get_palette_params(sprite, dye_color);
         let direction = if is_towards {
@@ -141,8 +150,14 @@ impl PlayerAssetStore {
             iso_coord_offset = Vec2::new(1., -1.);
         }
 
-        let z = (position.x + position.y) / 1000.0 - 0.0002
-            + (sprite.slot.z_priority(is_towards) * EQUIPMENT_Z_RANGE);
+        let z = calculate_tile_z(
+            position.x,
+            position.y,
+            // Player Z range is 0.1 to 0.2, with stack_order adding a small offset
+            // to separate multiple players on the same tile
+            0.1 + (sprite.slot.z_priority(is_towards) * 0.1)
+                + (stack_order as f32 / PLAYERS_PER_TILE as f32) * PLAYER_STACK_Z_RANGE,
+        );
 
         let mut instance = Instance::with_texture_atlas(
             (get_isometric_coordinate(
@@ -270,6 +285,7 @@ impl PlayerBatch {
         direction: u8,
         x: f32,
         y: f32,
+        entity_id: u32,
         flags: InstanceFlag,
         tint: Vec3,
     ) -> anyhow::Result<PlayerSpriteHandle> {
@@ -293,6 +309,9 @@ impl PlayerBatch {
 
         let (is_towards, flip) = direction_to_orientation(direction);
 
+        // Use entity_id as tiebreaker for players on the same tile
+        let stack_order = (entity_id % PLAYERS_PER_TILE as u32) as u8;
+
         let instance = PlayerAssetStore::get_instance_for_frame(
             &store.palettes,
             loaded_sprite,
@@ -305,6 +324,7 @@ impl PlayerBatch {
             color,
             flags,
             tint,
+            stack_order,
         )?;
 
         let instance_index = self
@@ -315,6 +335,7 @@ impl PlayerBatch {
         Ok(PlayerSpriteHandle {
             key: sprite,
             index: PlayerSpriteIndex(instance_index),
+            stack_order,
         })
     }
 
@@ -349,6 +370,7 @@ impl PlayerBatch {
             color,
             flags,
             tint,
+            handle.stack_order,
         )?;
         self.instances.update(queue, handle.index.0, instance);
 
@@ -404,6 +426,7 @@ impl PlayerBatch {
             color,
             flags,
             tint,
+            handle.stack_order,
         )
         .unwrap_or_default();
 

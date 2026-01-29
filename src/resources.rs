@@ -58,6 +58,22 @@ pub struct ItemBatchState {
     pub batch: items::ItemBatch,
 }
 
+/// Per-tile spawn order counters for item z-ordering.
+/// Map-scoped: auto-cleared when map changes via Bevy resource removal.
+#[derive(Resource, Default)]
+pub struct ItemTileCounters {
+    pub counters: std::collections::HashMap<(u16, u16), u8>,
+}
+
+impl ItemTileCounters {
+    pub fn next_order(&mut self, x: u16, y: u16) -> u8 {
+        let counter = self.counters.entry((x, y)).or_insert(0);
+        let order = *counter;
+        *counter = counter.wrapping_add(1);
+        order
+    }
+}
+
 #[derive(Resource)]
 pub struct EffectManagerState {
     pub effect_manager: EffectManager,
