@@ -1,30 +1,22 @@
-use crate::storage_dir;
 use bevy::prelude::*;
 use std::fs;
 use std::path::PathBuf;
 use tracing::{error, info};
 
 #[derive(Resource)]
-pub struct MapStore {
-    base_path: PathBuf,
-}
+pub struct MapStore;
 
 impl MapStore {
     pub fn new() -> Self {
-        let mut base_path = storage_dir();
-        base_path.push("maps");
-        if let Err(e) = fs::create_dir_all(&base_path) {
-            error!("Failed to create maps directory: {}", e);
-        }
-        Self { base_path }
+        Self
     }
 
-    fn map_path(&self, id: u16) -> PathBuf {
-        self.base_path.join(format!("lod{:03}.map", id))
+    fn map_path(&self, server_id: u32, id: u16) -> PathBuf {
+        crate::server_maps_dir(server_id).join(format!("lod{:03}.map", id))
     }
 
-    pub fn get_map(&self, id: u16) -> Option<Vec<u8>> {
-        let path = self.map_path(id);
+    pub fn get_map(&self, server_id: u32, id: u16) -> Option<Vec<u8>> {
+        let path = self.map_path(server_id, id);
         if !path.exists() {
             return None;
         }
@@ -38,8 +30,8 @@ impl MapStore {
         }
     }
 
-    pub fn save_map(&self, id: u16, data: &[u8]) {
-        let path = self.map_path(id);
+    pub fn save_map(&self, server_id: u32, id: u16, data: &[u8]) {
+        let path = self.map_path(server_id, id);
         if let Err(e) = fs::write(&path, data) {
             error!("Failed to save map file {:?}: {}", path, e);
         } else {

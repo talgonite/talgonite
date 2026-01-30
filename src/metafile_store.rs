@@ -1,4 +1,3 @@
-use crate::storage_dir;
 use bevy::prelude::*;
 use flate2::read::ZlibDecoder;
 use formats::meta_file::MetaFile;
@@ -16,28 +15,37 @@ fn crc32(data: &[u8]) -> u32 {
 
 #[derive(Resource)]
 pub struct MetafileStore {
-    base_path: PathBuf,
+    server_id: Option<u32>,
     metafiles: HashMap<String, MetaFile>,
 }
 
 impl MetafileStore {
     pub fn new() -> Self {
-        let mut base_path = storage_dir();
-        base_path.push("metafile");
-        if let Err(e) = fs::create_dir_all(&base_path) {
-            error!("Failed to create metafile directory: {}", e);
-        }
-
-        let mut store = Self {
-            base_path,
+        Self {
+            server_id: None,
             metafiles: HashMap::new(),
-        };
-        store.reload_all();
-        store
+        }
+    }
+
+    pub fn set_server(&mut self, server_id: u32) {
+        if self.server_id == Some(server_id) {
+            return;
+        }
+        self.server_id = Some(server_id);
+        self.reload_all();
+    }
+
+    fn base_path(&self) -> Option<PathBuf> {
+        self.server_id.map(crate::server_metafile_dir)
     }
 
     pub fn reload_all(&mut self) {
-        if let Ok(entries) = fs::read_dir(&self.base_path) {
+        let Some(base_path) = self.base_path() else {
+            return;
+        };
+
+        if let Ok(entries) = fs::read_dir(&base_path) {
+            self.metafiles.clear();
             for entry in entries.flatten() {
                 if let Ok(file_type) = entry.file_type() {
                     if file_type.is_file() {
@@ -62,13 +70,13 @@ impl MetafileStore {
         self.metafiles.get(name)
     }
 
-    fn metafile_path(&self, name: &str) -> PathBuf {
-        self.base_path.join(name)
+    fn metafile_path(&self, name: &str) -> Option<PathBuf> {
+        self.base_path().map(|p| p.join(name))
     }
 
     /// Returns the metafile data and its checksum (as u32 for comparison with server)
     pub fn get_metafile(&self, name: &str) -> Option<(Vec<u8>, u32)> {
-        let path = self.metafile_path(name);
+        let path = self.metafile_path(name)?;
         if !path.exists() {
             return None;
         }
@@ -87,7 +95,7 @@ impl MetafileStore {
 
     /// Get just the checksum of a metafile without loading all the data
     pub fn get_checksum(&self, name: &str) -> Option<u32> {
-        let path = self.metafile_path(name);
+        let path = self.metafile_path(name)?;
         if !path.exists() {
             return None;
         }
@@ -109,6 +117,10 @@ impl MetafileStore {
         compressed_data: &[u8],
         expected_checksum: u32,
     ) -> bool {
+        let Some(path) = self.metafile_path(name) else {
+            return false;
+        };
+
         // Decompress the data
         let mut decoder = ZlibDecoder::new(compressed_data);
         let mut decompressed = Vec::new();
@@ -128,7 +140,6 @@ impl MetafileStore {
         }
 
         // Save decompressed data to disk
-        let path = self.metafile_path(name);
         if let Err(e) = fs::write(&path, &decompressed) {
             error!("Failed to save metafile {:?}: {}", path, e);
             return false;

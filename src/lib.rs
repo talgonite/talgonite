@@ -34,6 +34,30 @@ pub fn storage_dir() -> std::path::PathBuf {
     path
 }
 
+pub fn server_dir(server_id: u32) -> std::path::PathBuf {
+    let path = storage_dir().join("servers").join(server_id.to_string());
+    let _ = std::fs::create_dir_all(&path);
+    path
+}
+
+pub fn server_maps_dir(server_id: u32) -> std::path::PathBuf {
+    let path = server_dir(server_id).join("maps");
+    let _ = std::fs::create_dir_all(&path);
+    path
+}
+
+pub fn server_metafile_dir(server_id: u32) -> std::path::PathBuf {
+    let path = server_dir(server_id).join("metafile");
+    let _ = std::fs::create_dir_all(&path);
+    path
+}
+
+pub fn server_characters_dir(server_id: u32) -> std::path::PathBuf {
+    let path = server_dir(server_id).join("characters");
+    let _ = std::fs::create_dir_all(&path);
+    path
+}
+
 pub use resources::{
     Camera, CreatureAssetStoreState, CreatureBatchState, EffectManagerState, ItemAssetStoreState,
     ItemBatchState, MapRendererState, PlayerAssetStoreState, PlayerBatchState, PlayerPortraitState,

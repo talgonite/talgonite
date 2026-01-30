@@ -91,7 +91,14 @@ fn process_net_packets(
     mut session_events: MessageWriter<SessionEvent>,
     map_store: Res<crate::map_store::MapStore>,
     mut metafile_store: ResMut<crate::metafile_store::MetafileStore>,
+    current_session: Option<Res<crate::CurrentSession>>,
 ) {
+    let Some(current_session) = current_session else {
+        return;
+    };
+    let server_id = current_session.server_id;
+    metafile_store.set_server(server_id);
+
     for evt in net_events.read() {
         match evt {
             NetworkEvent::Connected => {
@@ -127,12 +134,19 @@ fn process_net_packets(
                 }
                 &server::Codes::MapInfo => {
                     if let Some(q) = parse_packet::<server::MapInfo>(data) {
-                        handle_map_info(&mut session, &outbox, &mut map_events, q, &map_store);
+                        handle_map_info(
+                            &mut session,
+                            &outbox,
+                            &mut map_events,
+                            q,
+                            &map_store,
+                            server_id,
+                        );
                     }
                 }
                 &server::Codes::MapData => {
                     if let Some(seg) = parse_packet::<server::MapData>(data) {
-                        handle_map_data(&mut session, &mut map_events, seg, &map_store);
+                        handle_map_data(&mut session, &mut map_events, seg, &map_store, server_id);
                     }
                 }
                 &server::Codes::ServerMessage => {
@@ -407,11 +421,12 @@ fn handle_map_info(
     map_events: &mut MessageWriter<MapEvent>,
     map_info: server::MapInfo,
     map_store: &crate::map_store::MapStore,
+    server_id: u32,
 ) {
     let map_id = map_info.map_id;
     let checksum = map_info.check_sum;
 
-    let cached_data = if let Some(data) = map_store.get_map(map_id) {
+    let cached_data = if let Some(data) = map_store.get_map(server_id, map_id) {
         let cached_checksum = crc16(&data);
         if cached_checksum == checksum {
             Some(data)
@@ -466,6 +481,7 @@ fn handle_map_data(
     map_events: &mut MessageWriter<MapEvent>,
     seg: server::MapData,
     map_store: &crate::map_store::MapStore,
+    server_id: u32,
 ) {
     let MapDownloadState::Requested { map_info, map_buf } = &mut session.map_download else {
         return;
@@ -495,7 +511,7 @@ fn handle_map_data(
     if end >= map_buf.len() {
         let checksum = crc16(&map_buf);
         if checksum == map_info.check_sum {
-            map_store.save_map(map_info.map_id, &map_buf);
+            map_store.save_map(server_id, map_info.map_id, &map_buf);
             let owned = std::mem::take(map_buf);
             map_events.write(MapEvent::SetInfo(
                 map_info.clone(),

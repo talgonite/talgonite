@@ -32,33 +32,15 @@ impl Settings {
             default_settings
         };
 
-        // Load profiles
-        let profiles_dir = root.join("profiles");
-        if profiles_dir.exists() {
-            if let Ok(server_dirs) = fs::read_dir(profiles_dir) {
+        // Load profiles from servers/{server_id}/characters/
+        let servers_dir = root.join("servers");
+        if servers_dir.exists() {
+            if let Ok(server_dirs) = fs::read_dir(servers_dir) {
                 for server_dir in server_dirs.flatten() {
                     if server_dir.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                        if let Ok(char_files) = fs::read_dir(server_dir.path()) {
-                            for char_file in char_files.flatten() {
-                                if char_file.path().extension().and_then(|s| s.to_str())
-                                    == Some("toml")
-                                {
-                                    if let Ok(content) = fs::read_to_string(char_file.path()) {
-                                        if let Ok(profile) =
-                                            toml::from_str::<CharacterProfile>(&content)
-                                        {
-                                            settings.saved_credentials.push(SavedCredential {
-                                                id: profile.id.clone(),
-                                                server_id: profile.server_id,
-                                                username: profile.username.clone(),
-                                                last_used: profile.last_used,
-                                                preview: profile.preview,
-                                            });
-                                            settings.hotbars.insert(profile.id, profile.hotbars);
-                                        }
-                                    }
-                                }
-                            }
+                        let characters_dir = server_dir.path().join("characters");
+                        if characters_dir.exists() {
+                            load_profiles_from_dir(&characters_dir, &mut settings);
                         }
                     }
                 }
@@ -96,9 +78,8 @@ impl Settings {
                 hotbars,
             };
 
-            let profiles_dir = root.join("profiles").join(cred.server_id.to_string());
-            let _ = fs::create_dir_all(&profiles_dir);
-            let profile_path = profiles_dir.join(format!("{}.toml", cred.username));
+            let profile_path = crate::server_characters_dir(cred.server_id)
+                .join(format!("{}.toml", cred.username));
 
             match toml::to_string_pretty(&profile) {
                 Ok(content) => {
@@ -114,10 +95,7 @@ impl Settings {
     pub fn remove_credential(&mut self, id: &str) {
         if let Some(idx) = self.saved_credentials.iter().position(|c| c.id == id) {
             let cred = self.saved_credentials.remove(idx);
-            let root = storage_dir();
-            let profile_path = root
-                .join("profiles")
-                .join(cred.server_id.to_string())
+            let profile_path = crate::server_characters_dir(cred.server_id)
                 .join(format!("{}.toml", cred.username));
             if profile_path.exists() {
                 let _ = fs::remove_file(profile_path);
@@ -178,5 +156,26 @@ fn save_settings_on_change(
 
     if timer.0.just_finished() {
         settings.save();
+    }
+}
+
+fn load_profiles_from_dir(dir: &std::path::Path, settings: &mut Settings) {
+    if let Ok(char_files) = fs::read_dir(dir) {
+        for char_file in char_files.flatten() {
+            if char_file.path().extension().and_then(|s| s.to_str()) == Some("toml") {
+                if let Ok(content) = fs::read_to_string(char_file.path()) {
+                    if let Ok(profile) = toml::from_str::<CharacterProfile>(&content) {
+                        settings.saved_credentials.push(SavedCredential {
+                            id: profile.id.clone(),
+                            server_id: profile.server_id,
+                            username: profile.username.clone(),
+                            last_used: profile.last_used,
+                            preview: profile.preview,
+                        });
+                        settings.hotbars.insert(profile.id, profile.hotbars);
+                    }
+                }
+            }
+        }
     }
 }
