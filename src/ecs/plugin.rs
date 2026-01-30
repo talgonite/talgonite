@@ -75,13 +75,6 @@ impl Plugin for GamePlugin {
                     .run_if(in_state(crate::app_state::AppState::InGame))
                     .in_set(GameSet::Spawning),
             )
-            // === Despawning Systems ===
-            .add_systems(
-                Update,
-                systems::handle_remove_entity_event
-                    .run_if(in_state(crate::app_state::AppState::InGame))
-                    .in_set(GameSet::Despawning),
-            )
             // === Movement Systems ===
             .add_systems(
                 Update,
