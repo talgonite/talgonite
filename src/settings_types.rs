@@ -17,8 +17,12 @@ pub struct AudioSettings {
 pub struct GraphicsSettings {
     pub xray_size: XRaySize,
     pub scale: f32,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub high_quality_scaling: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -60,7 +64,7 @@ impl Default for Settings {
             graphics: GraphicsSettings {
                 xray_size: XRaySize::Medium,
                 scale: 1.0,
-                high_quality_scaling: false,
+                high_quality_scaling: true,
             },
             gameplay: GameplaySettings {
                 current_server_id: Some(1),

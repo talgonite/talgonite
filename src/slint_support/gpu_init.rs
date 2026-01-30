@@ -54,7 +54,7 @@ pub fn initialize_gpu_world(
     let (initial_zoom, high_quality_scaling) = world
         .get_resource::<crate::settings_types::Settings>()
         .map(|s| (s.graphics.scale, s.graphics.high_quality_scaling))
-        .unwrap_or((1.0, false));
+        .unwrap_or((1.0, true));
     world.insert_resource(ZoomState::new(
         size.width,
         size.height,

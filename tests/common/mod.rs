@@ -75,7 +75,7 @@ impl TestScene {
             graphics: talgonite::settings::GraphicsSettings {
                 xray_size: talgonite::settings::XRaySize::Off,
                 scale: 2.0,
-                high_quality_scaling: false,
+                high_quality_scaling: true,
             },
             gameplay: talgonite::settings::GameplaySettings {
                 current_server_id: None,
