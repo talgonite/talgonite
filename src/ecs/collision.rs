@@ -1,8 +1,8 @@
 use bevy::prelude::*;
-use rendering::scene::map::map_tile::MapTile;
 use rendering::scene::map::door_data;
-use std::io::Cursor;
+use rendering::scene::map::map_tile::MapTile;
 use std::collections::HashMap;
+use std::io::Cursor;
 
 #[derive(Resource)]
 pub struct WallCollisionTable {
@@ -23,22 +23,63 @@ impl WallCollisionTable {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct WallInteraction {
+    pub x: u8,
+    pub y: u8,
+    pub is_right: bool,
+    pub height: u16,
+}
+
 #[derive(Resource)]
 pub struct MapCollisionData {
     walls: Vec<(u16, u16)>,
-    width: u8,
-    height: u8,
+    pub width: u8,
+    pub height: u8,
+    // organized by x - y. index = (x - y) + (map_height - 1)
+    pub strips: Vec<Vec<WallInteraction>>,
 }
 
 impl MapCollisionData {
-    pub fn from_map_bytes(map_bytes: &[u8], width: u8, height: u8) -> Self {
+    pub fn from_map_bytes(
+        map_bytes: &[u8],
+        width: u8,
+        height: u8,
+        wall_heights: &HashMap<u16, u16>,
+    ) -> Self {
         let mut cursor = Cursor::new(map_bytes);
         let mut walls = Vec::with_capacity((width as usize) * (height as usize));
+        let num_strips = (width as usize) + (height as usize);
+        let mut strips = vec![Vec::new(); num_strips];
+        let strip_offset = (height as i32) - 1;
 
-        for _y in 0..height {
-            for _x in 0..width {
+        for y in 0..height {
+            for x in 0..width {
                 let tile = MapTile::read_from_reader(&mut cursor);
                 walls.push((tile.wall_left.id, tile.wall_right.id));
+
+                let d = (x as i32) - (y as i32);
+
+                let mut push_wall = |id: u16, is_right: bool| {
+                    if (id % 10000) > 2 {
+                        if let Some(&h) = wall_heights.get(&id) {
+                            if h > 0 {
+                                let s_idx = d + (if is_right { 0 } else { -1 }) + strip_offset;
+                                if s_idx >= 0 && (s_idx as usize) < num_strips {
+                                    strips[s_idx as usize].push(WallInteraction {
+                                        x,
+                                        y,
+                                        is_right,
+                                        height: h,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                };
+
+                push_wall(tile.wall_left.id, false);
+                push_wall(tile.wall_right.id, true);
             }
         }
 
@@ -46,6 +87,7 @@ impl MapCollisionData {
             walls,
             width,
             height,
+            strips,
         }
     }
 
@@ -78,9 +120,15 @@ impl MapCollisionData {
         };
 
         let new_right = if closed {
-            open_to_closed.get(&wall_right).copied().unwrap_or(wall_right)
+            open_to_closed
+                .get(&wall_right)
+                .copied()
+                .unwrap_or(wall_right)
         } else {
-            closed_to_open.get(&wall_right).copied().unwrap_or(wall_right)
+            closed_to_open
+                .get(&wall_right)
+                .copied()
+                .unwrap_or(wall_right)
         };
 
         self.set_walls_at(x, y, new_left, new_right);

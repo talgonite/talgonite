@@ -63,7 +63,8 @@ impl Plugin for CoreEventsPlugin {
             // Interaction events
             .add_message::<events::EntityHoverEvent>()
             .add_message::<events::EntityClickEvent>()
-            .add_message::<events::TileClickEvent>();
+            .add_message::<events::TileClickEvent>()
+            .add_message::<events::WallClickEvent>();
     }
 }
 

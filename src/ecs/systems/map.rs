@@ -126,6 +126,7 @@ fn handle_map_set_info(
         map_bytes,
         map_info.width,
         map_info.height,
+        &prepared_map.wall_heights,
     );
     commands.insert_resource(map_collision);
 

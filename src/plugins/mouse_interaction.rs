@@ -5,7 +5,7 @@ use rendering::scene::utils::screen_to_iso_tile;
 use crate::ecs::components::{EntityId, Hitbox, ItemSprite, LocalPlayer, NPC, Player, Position};
 use crate::ecs::interaction::HoveredEntity;
 use crate::ecs::spell_casting::SpellCastingState;
-use crate::events::{EntityClickEvent, EntityHoverEvent, TileClickEvent};
+use crate::events::{EntityClickEvent, EntityHoverEvent, TileClickEvent, WallClickEvent};
 use crate::network::PacketOutbox;
 use crate::resources::ZoomState;
 use crate::slint_plugin::{ShowSelfProfileEvent, SlintDoubleClickEvent};
@@ -29,7 +29,7 @@ impl Plugin for MouseInteractionPlugin {
                     mouse_interaction_system,
                     handle_double_clicks,
                     handle_entity_clicks,
-                    handle_tile_clicks,
+                    handle_wall_clicks,
                 )
                     .chain()
                     .in_set(MouseInteractionSet)
@@ -62,6 +62,7 @@ fn mouse_interaction_system(
     mut hover_events: MessageWriter<EntityHoverEvent>,
     mut click_events: MessageWriter<EntityClickEvent>,
     mut tile_click_events: MessageWriter<TileClickEvent>,
+    mut wall_click_events: MessageWriter<WallClickEvent>,
     map_collision: Option<Res<crate::ecs::collision::MapCollisionData>>,
 ) {
     let Some(window_surface) = window_surface else {
@@ -82,21 +83,29 @@ fn mouse_interaction_system(
     let cursor_scale = zoom_state.cursor_to_render_scale();
     let screen = Vec2::new(cursor.x * cursor_scale, cursor.y * cursor_scale);
     let tile = screen_to_iso_tile(screen, cam_pos, win_size, zoom);
-    let tile_i = (tile.x.floor() as i32, tile.y.floor() as i32);
 
-    let frac = tile - Vec2::new(tile_i.0 as f32, tile_i.1 as f32);
-    let mut is_right = frac.x >= frac.y;
+    let mut matching_walls = Vec::new();
 
-    if let Some((left_id, right_id)) = map_collision
-        .as_ref()
-        .and_then(|c| c.get_walls_at(tile_i.0.max(0) as u8, tile_i.1.max(0) as u8))
-    {
-        let left_visible = left_id % 10000 > 2;
-        let right_visible = right_id % 10000 > 2;
-        if left_visible != right_visible {
-            is_right = right_visible;
+    if let Some(map_collision) = &map_collision {
+        let d_floor = (tile.x - tile.y).floor() as i32;
+        let s_idx = d_floor + (map_collision.height as i32) - 1;
+
+        if let Some(strip) = map_collision.strips.get(s_idx as usize) {
+            let world_y = (tile.x + tile.y - 1.0) * 14.0;
+
+            for wall in strip {
+                let base_y = (wall.x as f32 + wall.y as f32 + 1.0) * 14.0;
+                let top_y = base_y - wall.height as f32;
+
+                if world_y >= top_y && world_y <= base_y {
+                    matching_walls.push((wall.x as i32, wall.y as i32, wall.is_right));
+                }
+            }
         }
     }
+
+    let ground_x = tile.x.floor() as i32;
+    let ground_y = tile.y.floor() as i32;
 
     // Find hovered entities
     let mut hits = Vec::new();
@@ -142,11 +151,19 @@ fn mouse_interaction_system(
                 button: MouseButton::Left,
                 is_double_click: false,
             });
+        } else if !matching_walls.is_empty() {
+            for (wx, wy, wr) in &matching_walls {
+                wall_click_events.write(WallClickEvent {
+                    tile_x: *wx,
+                    tile_y: *wy,
+                    is_right: *wr,
+                    button: MouseButton::Left,
+                });
+            }
         } else {
             tile_click_events.write(TileClickEvent {
-                tile_x: tile_i.0,
-                tile_y: tile_i.1,
-                is_right,
+                tile_x: ground_x,
+                tile_y: ground_y,
                 button: MouseButton::Left,
             });
         }
@@ -162,9 +179,8 @@ fn mouse_interaction_system(
         }
 
         tile_click_events.write(TileClickEvent {
-            tile_x: tile_i.0,
-            tile_y: tile_i.1,
-            is_right,
+            tile_x: ground_x,
+            tile_y: ground_y,
             button: MouseButton::Right,
         });
     }
@@ -288,35 +304,14 @@ fn handle_entity_clicks(
     }
 }
 
-fn handle_tile_clicks(
-    mut events: MessageReader<TileClickEvent>,
-    outbox: Res<PacketOutbox>,
-    map_collision: Option<Res<crate::ecs::collision::MapCollisionData>>,
-) {
-    for event in events.read() {
+fn handle_wall_clicks(mut wall_events: MessageReader<WallClickEvent>, outbox: Res<PacketOutbox>) {
+    for event in wall_events.read() {
         if event.button == MouseButton::Left {
-            let x = event.tile_x.max(0) as u16;
-            let y = event.tile_y.max(0) as u16;
-
-            let has_wall = map_collision
-                .as_ref()
-                .and_then(|c| c.get_walls_at(x as u8, y as u8))
-                .map(|(l, r)| {
-                    if event.is_right {
-                        r % 10000 > 2
-                    } else {
-                        l % 10000 > 2
-                    }
-                })
-                .unwrap_or(false);
-
-            if has_wall {
-                outbox.send(&Click::TargetWall {
-                    x,
-                    y,
-                    is_right: event.is_right,
-                });
-            }
+            outbox.send(&Click::TargetWall {
+                x: event.tile_x.max(0) as u16,
+                y: event.tile_y.max(0) as u16,
+                is_right: event.is_right,
+            });
         }
     }
 }

@@ -39,6 +39,7 @@ pub struct PreparedMap {
     pub palette_texture_data: Vec<u8>,
     pub wall_palette_data: Vec<u8>,
     pub wall_map_buf: Vec<u8>,
+    pub wall_heights: HashMap<u16, u16>,
     pub animations: Vec<WorldAnimationInstanceData>,
     pub wall_toggle_animations: HashMap<(u8, u8), AnimationInstanceData>,
     pub wall_toggle_tracker: HashMap<(u16, usize), ((u8, u8), Vec<Instance>)>,
@@ -364,6 +365,7 @@ impl MapRenderer {
         );
 
         let mut allocated: HashMap<u16, (etagere::Allocation, Vec<Instance>)> = HashMap::new();
+        let mut wall_heights: HashMap<u16, u16> = HashMap::new();
 
         {
             for wall in required_wall_ids {
@@ -371,6 +373,7 @@ impl MapRenderer {
 
                 let reader = ktx2::Reader::new(bytes).unwrap();
                 let info = reader.header();
+                wall_heights.insert(wall, info.pixel_height as u16);
                 let rounded_height = (info.pixel_height as u32 + 63) & !63;
                 let a = atlas
                     .allocate(etagere::size2(28, rounded_height as i32))
@@ -546,6 +549,7 @@ impl MapRenderer {
             palette_texture_data,
             wall_palette_data,
             wall_map_buf,
+            wall_heights,
             animations,
             wall_toggle_animations: HashMap::new(),
             wall_toggle_tracker,
