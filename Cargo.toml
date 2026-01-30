@@ -93,7 +93,7 @@ slint = { version = "1.15.0", default-features = false, features = [
     "backend-default",
     "compat-1-2",
     "unstable-wgpu-28",
-    "renderer-femtovg-wgpu",
+    "renderer-skia",
     "backend-android-activity-06",
 ] }
 i-slint-core = "=1.15.0"

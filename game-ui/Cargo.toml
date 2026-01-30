@@ -19,7 +19,7 @@ slint = { version = "1.15.0", default-features = false, features = [
     "backend-default",
     "compat-1-2",
     "unstable-wgpu-28",
-    "renderer-femtovg-wgpu",
+    "renderer-skia",
 ] }
 bincode = { version = "2.0", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
