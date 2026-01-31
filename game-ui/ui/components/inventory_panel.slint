@@ -45,7 +45,6 @@ component InventorySlot inherits Rectangle {
             }
         ]
     }
-
     slot-drag := DragDropItem {
         draggable: has-item;
         slot-index: slot;
@@ -65,7 +64,6 @@ component InventorySlot inherits Rectangle {
             PopupState.hide();
         }
     }
-
     states [
         hover when slot-drag.has-hover && !slot-drag.pressed: {
             border-color: Theme.accent-muted;
@@ -78,12 +76,10 @@ export component InventoryPanel inherits BasePanel {
     title: "Inventory";
     visible: true;
     width: 324px;
-
     height: 380px;
     close => {
         GameState.show-inventory = false;
     }
-
     ScrollView {
         viewport-width: self.visible-width;
         GridLayout {
@@ -94,7 +90,6 @@ export component InventoryPanel inherits BasePanel {
                 col: Math.mod(i, 6);
                 width: 44px;
                 height: 44px;
-
                 InventorySlot {
                     item: slot;
                     slot: slot.slot;

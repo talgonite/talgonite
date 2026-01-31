@@ -220,7 +220,12 @@ pub fn apply_core_to_slint(
         }
 
         let inventory_state = game_state.get_inventory();
-        let mut slint_items = vec![crate::InventoryItem::default(); 60];
+        let mut slint_items: Vec<crate::InventoryItem> = (1..=60)
+            .map(|i| crate::InventoryItem {
+                slot: i,
+                ..Default::default()
+            })
+            .collect();
         for item in &inventory.0 {
             let icon = asset_loader
                 .load_item_icon(&game_files, item.sprite)
