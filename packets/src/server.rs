@@ -25,7 +25,7 @@ mod cancel_casting;
 pub use cancel_casting::CancelCasting;
 
 mod client_walk_response;
-pub use client_walk_response::ClientWalkResponse;
+pub use client_walk_response::{ClientWalkResponse, ClientWalkResponseArgs};
 
 mod connection_info;
 pub use connection_info::ConnectionInfo;

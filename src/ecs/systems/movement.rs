@@ -8,21 +8,41 @@ use crate::{
 };
 use bevy::prelude::*;
 use formats::{epf::EpfAnimationType, mpf::MpfAnimationType};
-use packets::{client, server::Sound, types::BodyAnimationKind};
+use packets::{
+    client,
+    server::{ClientWalkResponseArgs, Sound},
+    types::BodyAnimationKind,
+};
 
 /// Handles local player movement from input events.
 /// Performs collision detection against walls and other entities.
 pub fn player_movement_system(
     mut player_actions: MessageReader<PlayerAction>,
-    mut entity_events: MessageReader<EntityEvent>,
     map_query: Query<&GameMap>,
-    mut player_query: Query<(Entity, &mut Position, &mut Direction), With<LocalPlayer>>,
+    mut player_query: Query<
+        (
+            Entity,
+            &mut Position,
+            &mut Direction,
+            &mut UnconfirmedWalks,
+            Option<&MovementTween>,
+        ),
+        With<LocalPlayer>,
+    >,
     entity_positions: Query<&Position, (Or<(With<NPC>, With<Player>)>, Without<LocalPlayer>)>,
     mut commands: Commands,
     collision_table: Option<Res<WallCollisionTable>>,
     map_collision: Option<Res<MapCollisionData>>,
     outbox: Option<Res<crate::network::PacketOutbox>>,
 ) {
+    let Ok((entity, mut position, mut facing, mut unconfirmed, tween)) = player_query.single_mut()
+    else {
+        return;
+    };
+    let Ok(map) = map_query.single() else {
+        return;
+    };
+
     // Handle walk requests from input
     for event in player_actions.read() {
         match event {
@@ -31,14 +51,19 @@ pub fn player_movement_system(
                 source: _,
             } => {
                 if handle_walk_request(
+                    entity,
                     *direction,
-                    &map_query,
-                    &mut player_query,
+                    map,
+                    &mut position,
+                    &mut facing,
+                    tween,
                     &entity_positions,
                     &mut commands,
                     collision_table.as_deref(),
                     map_collision.as_deref(),
                 ) {
+                    unconfirmed.0.push_back(*direction);
+
                     if let Some(outbox) = &outbox {
                         outbox.send(&client::ClientWalk {
                             direction: (*direction).into(),
@@ -59,50 +84,33 @@ pub fn player_movement_system(
             }
         }
     }
-
-    // Handle authoritative position updates from server
-    for event in entity_events.read() {
-        if let EntityEvent::PlayerLocation(location) = event {
-            for (entity, mut position, _dir) in player_query.iter_mut() {
-                position.x = location.x as f32;
-                position.y = location.y as f32;
-                commands.entity(entity).remove::<MovementTween>();
-            }
-        }
-    }
 }
 
 fn handle_walk_request(
+    entity: Entity,
     direction: Direction,
-    map_query: &Query<&GameMap>,
-    player_query: &mut Query<(Entity, &mut Position, &mut Direction), With<LocalPlayer>>,
+    map: &GameMap,
+    position: &mut Position,
+    facing: &mut Direction,
+    tween: Option<&MovementTween>,
     entity_positions: &Query<&Position, (Or<(With<NPC>, With<Player>)>, Without<LocalPlayer>)>,
     commands: &mut Commands,
     collision_table: Option<&WallCollisionTable>,
     map_collision: Option<&MapCollisionData>,
 ) -> bool {
-    let Ok((entity, position, mut facing)) = player_query.single_mut() else {
-        return false;
-    };
-
-    let Ok(map) = map_query.single() else {
-        return false;
-    };
-
-    let (dx, dy) = match direction {
-        Direction::Up => (0, -1),   // up
-        Direction::Right => (1, 0), // right
-        Direction::Down => (0, 1),  // down
-        Direction::Left => (-1, 0), // left
-    };
+    let (dx, dy) = direction.delta();
 
     let new_dir = Direction::from(direction);
     if *facing != new_dir {
         *facing = new_dir;
     }
 
-    let start_x = position.x;
-    let start_y = position.y;
+    let (start_x, start_y) = if let Some(tween) = tween {
+        (tween.end_x, tween.end_y)
+    } else {
+        (position.x, position.y)
+    };
+
     let target_x = (start_x as i16 + dx).max(0).min(map.width as i16 - 1) as f32;
     let target_y = (start_y as i16 + dy).max(0).min(map.height as i16 - 1) as f32;
 
@@ -132,21 +140,22 @@ fn handle_walk_request(
         return false;
     }
 
-    commands.entity(entity).insert(AnimationBundle::new(
-        AnimationMode::OneShot,
-        AnimationType::Player(EpfAnimationType::Walk),
-        0.10,
-        5,
+    commands.entity(entity).insert((
+        AnimationBundle::new(
+            AnimationMode::OneShot,
+            AnimationType::Player(EpfAnimationType::Walk),
+            0.10,
+            5,
+        ),
+        MovementTween {
+            start_x,
+            start_y,
+            end_x: target_x,
+            end_y: target_y,
+            elapsed: 0.0,
+            duration: 0.5,
+        },
     ));
-
-    commands.entity(entity).insert(MovementTween {
-        start_x,
-        start_y,
-        end_x: target_x,
-        end_y: target_y,
-        elapsed: 0.0,
-        duration: 0.5,
-    });
 
     true
 }
@@ -414,6 +423,83 @@ pub fn movement_tween_system(
             pos.x = tween.end_x;
             pos.y = tween.end_y;
             commands.entity(entity).remove::<MovementTween>();
+        }
+    }
+}
+
+/// Handles movement reconciliation for the local player.
+/// Snaps back on rejection and replays unconfirmed steps.
+pub fn player_reconciliation_system(
+    mut entity_events: MessageReader<EntityEvent>,
+    mut map_events: MessageReader<crate::events::MapEvent>,
+    mut player_query: Query<
+        (
+            Entity,
+            &mut Position,
+            &mut UnconfirmedWalks,
+            Option<&mut MovementTween>,
+        ),
+        With<LocalPlayer>,
+    >,
+    mut commands: Commands,
+) {
+    let Ok((entity, mut position, mut unconfirmed, mut active_tween)) = player_query.single_mut()
+    else {
+        return;
+    };
+
+    // Purge on map change
+    for event in map_events.read() {
+        if let crate::events::MapEvent::Clear = event {
+            unconfirmed.0.clear();
+        }
+    }
+
+    for event in entity_events.read() {
+        match event {
+            EntityEvent::PlayerLocation(location) => {
+                position.x = location.x as f32;
+                position.y = location.y as f32;
+                unconfirmed.0.clear();
+                commands.entity(entity).remove::<MovementTween>();
+            }
+            EntityEvent::PlayerWalkResponse(response) => {
+                unconfirmed.0.pop_front();
+
+                if let ClientWalkResponseArgs::Rejected = response.args {
+                    // Snap to server's "from" position (state before the rejected step)
+                    position.x = response.from.0 as f32;
+                    position.y = response.from.1 as f32;
+
+                    // Replay unconfirmed steps
+                    let count = unconfirmed.0.len();
+                    for (idx, &dir) in unconfirmed.0.iter().enumerate() {
+                        let (dx, dy) = dir.delta();
+
+                        if idx < count - 1 {
+                            // Teleport for intermediate steps
+                            position.x += dx as f32;
+                            position.y += dy as f32;
+                        } else if let Some(ref mut tween) = active_tween {
+                            // Final step: update tween
+                            tween.start_x = position.x;
+                            tween.start_y = position.y;
+                            tween.end_x = position.x + dx as f32;
+                            tween.end_y = position.y + dy as f32;
+                            // Position will be updated by movement_tween_system this frame
+                        } else {
+                            // Final step: snap
+                            position.x += dx as f32;
+                            position.y += dy as f32;
+                        }
+                    }
+
+                    if unconfirmed.0.is_empty() {
+                        commands.entity(entity).remove::<MovementTween>();
+                    }
+                }
+            }
+            _ => {}
         }
     }
 }

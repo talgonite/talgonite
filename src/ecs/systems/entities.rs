@@ -57,7 +57,9 @@ pub fn spawn_entities_system(
                 // Retroactively mark existing entity as local player
                 for (entity, ent_id, _pos) in existing_players.iter() {
                     if ent_id.id == *id {
-                        commands.entity(entity).insert((LocalPlayer, CameraTarget));
+                        commands
+                            .entity(entity)
+                            .insert((LocalPlayer, CameraTarget, UnconfirmedWalks::default()));
                         break;
                     }
                 }
@@ -262,7 +264,7 @@ fn spawn_display_player(
 
     let is_local = Some(player.id) == local_id;
     if is_local {
-        player_entity.insert((LocalPlayer, CameraTarget));
+        player_entity.insert((LocalPlayer, CameraTarget, UnconfirmedWalks::default()));
     } else {
         player_entity.insert(HoverName::new(player.name.clone()));
     }

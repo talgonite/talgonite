@@ -10,6 +10,7 @@ use rendering::scene::{
     creatures::AddCreatureResult,
     players::{PlayerPieceType, PlayerSpriteHandle},
 };
+use std::collections::VecDeque;
 
 #[derive(Component, PartialEq)]
 pub struct Position {
@@ -82,6 +83,20 @@ impl Into<PacketDirection> for Direction {
         }
     }
 }
+
+impl Direction {
+    pub fn delta(&self) -> (i16, i16) {
+        match self {
+            Direction::Up => (0, -1),
+            Direction::Right => (1, 0),
+            Direction::Down => (0, 1),
+            Direction::Left => (-1, 0),
+        }
+    }
+}
+
+#[derive(Component, Default)]
+pub struct UnconfirmedWalks(pub VecDeque<Direction>);
 
 #[derive(Component)]
 pub struct LocalPlayer;

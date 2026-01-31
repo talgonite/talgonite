@@ -20,6 +20,7 @@ pub enum EntityEvent {
     DisplayEntities(server::DisplayVisibleEntities),
     Remove(server::RemoveEntity),
     Walk(server::CreatureWalk),
+    PlayerWalkResponse(server::ClientWalkResponse),
     Turn(server::EntityTurn),
     Animate(server::BodyAnimation),
     Effect(server::Animation),

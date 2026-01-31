@@ -2,13 +2,13 @@ use crate::{TryFromBytes, types::Direction};
 use byteorder::{BigEndian, ReadBytesExt};
 use std::io::Cursor;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ClientWalkResponseArgs {
     Rejected,
     Accepted(Direction),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ClientWalkResponse {
     pub args: ClientWalkResponseArgs,
     pub from: (u16, u16),

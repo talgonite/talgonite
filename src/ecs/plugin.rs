@@ -79,6 +79,7 @@ impl Plugin for GamePlugin {
             .add_systems(
                 Update,
                 (
+                    systems::player_reconciliation_system,
                     systems::pathfinding_execution_system.before(systems::player_movement_system),
                     systems::player_movement_system,
                     systems::entity_motion_system,

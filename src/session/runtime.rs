@@ -219,6 +219,11 @@ fn process_net_packets(
                         entity_events.write(EntityEvent::Walk(q));
                     }
                 }
+                &server::Codes::ClientWalkResponse => {
+                    if let Some(q) = parse_packet::<server::ClientWalkResponse>(data) {
+                        entity_events.write(EntityEvent::PlayerWalkResponse(q));
+                    }
+                }
                 &server::Codes::EntityTurn => {
                     if let Some(q) = parse_packet::<server::EntityTurn>(data) {
                         entity_events.write(EntityEvent::Turn(q));
