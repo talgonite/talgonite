@@ -21,6 +21,9 @@ pub fn map_system(
     mut tile_counters: ResMut<crate::resources::ItemTileCounters>,
 ) {
     let mut local_map_renderer: Option<MapRenderer> = None;
+    // Track if we cleared the map this frame - if so, don't skip SetInfo even if
+    // the old GameMap entity still appears in queries (despawn is deferred)
+    let mut cleared_this_frame = false;
 
     for event in map_events.read() {
         match event {
@@ -31,16 +34,21 @@ pub fn map_system(
                     &mut local_map_renderer,
                     &mut tile_counters,
                 );
+                cleared_this_frame = true;
             }
             MapEvent::SetInfo(map_info, map_bytes) => {
                 // Check if we're already on this map (happens during refresh)
-                if let Some(current_map) = map_entities.iter().next() {
-                    if current_map.map_id == map_info.map_id {
-                        info!(
-                            "Skipping SetInfo for map_id {} - already on this map (likely refresh)",
-                            map_info.map_id
-                        );
-                        continue;
+                // Skip this check if we just cleared the map this frame, since the
+                // old GameMap entity is still visible due to deferred despawning
+                if !cleared_this_frame {
+                    if let Some(current_map) = map_entities.iter().next() {
+                        if current_map.map_id == map_info.map_id {
+                            info!(
+                                "Skipping SetInfo for map_id {} - already on this map (likely refresh)",
+                                map_info.map_id
+                            );
+                            continue;
+                        }
                     }
                 }
 
