@@ -304,13 +304,15 @@ impl Hitbox {
                         * Vec2::new(
                             rendering::scene::TILE_WIDTH as f32,
                             rendering::scene::TILE_HEIGHT as f32,
-                        );
+                        )
+                        * zoom;
                 let bounds_max = entity_screen
                     + self.max
                         * Vec2::new(
                             rendering::scene::TILE_WIDTH as f32,
                             rendering::scene::TILE_HEIGHT as f32,
-                        );
+                        )
+                        * zoom;
 
                 test_screen.x >= bounds_min.x
                     && test_screen.x < bounds_max.x
