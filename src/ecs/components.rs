@@ -510,20 +510,33 @@ fn cleanup_creature_instance(mut world: DeferredWorld, ctx: HookContext) {
     }
 }
 
-fn cleanup_item_instance(world: DeferredWorld, ctx: HookContext) {
+fn cleanup_item_instance(mut world: DeferredWorld, ctx: HookContext) {
     let entity = ctx.entity;
-    let Some(instance) = world.get::<ItemInstance>(entity) else {
+    let handle = if let Some(instance) = world.get::<ItemInstance>(entity) {
+        instance.handle
+    } else {
         return;
     };
-    let Some(renderer) = world.get_resource::<crate::RendererState>() else {
+
+    let queue_ptr = if let Some(renderer) = world.get_resource::<crate::RendererState>() {
+        &renderer.queue as *const _
+    } else {
         return;
     };
-    let Some(items_batch) = world.get_resource::<crate::ItemBatchState>() else {
+
+    let cell = world.as_unsafe_world_cell();
+    let mut store_state = unsafe { cell.get_resource_mut::<crate::ItemAssetStoreState>() };
+    let batch_state = unsafe { cell.get_resource::<crate::ItemBatchState>() };
+
+    let (Some(store), Some(batch)) = (store_state.as_mut(), batch_state) else {
         return;
     };
-    items_batch
-        .batch
-        .remove_item(&renderer.queue, instance.handle);
+
+    unsafe {
+        batch
+            .batch
+            .remove_item(&*queue_ptr, &mut store.store, handle);
+    }
 }
 
 #[derive(Component)]

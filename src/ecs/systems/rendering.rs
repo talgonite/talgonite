@@ -58,7 +58,7 @@ pub fn sync_lobby_portraits(
                 continue;
             }
 
-            batch.clear();
+            batch.clear_and_unload(&mut player_store.store);
 
             let gender = if preview.is_male {
                 Gender::Male
@@ -161,6 +161,7 @@ pub fn sync_lobby_portraits(
         }
     }
 
+    batch.clear_and_unload(&mut player_store.store);
     portrait_state.version += 1;
 }
 
@@ -492,7 +493,9 @@ pub fn sync_player_portrait(
 
     if needs_update {
         if let Some((player, children)) = local_player_query.iter().next() {
-            portrait_state.batch.clear();
+            portrait_state
+                .batch
+                .clear_and_unload(&mut player_store.store);
 
             let sprites = collect_player_sprites(player, children, &sprite_query);
             for (key, color) in sprites {
@@ -608,7 +611,9 @@ pub fn sync_profile_portrait(
 
     if portrait_state.dirty {
         if let Some((player, children)) = target_entity {
-            portrait_state.batch.clear();
+            portrait_state
+                .batch
+                .clear_and_unload(&mut player_store.store);
 
             let sprites = collect_player_sprites(player, children, &sprite_query);
             for (key, color) in sprites {

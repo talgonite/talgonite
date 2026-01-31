@@ -163,7 +163,7 @@ pub struct AnimationData {
     pub epf_index: usize,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct PlayerSpriteIndex(pub(crate) usize);
 impl PlayerSpriteIndex {
     pub fn index(&self) -> usize {

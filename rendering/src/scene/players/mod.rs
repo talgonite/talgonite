@@ -27,7 +27,7 @@ use formats::game_files::ArxArchive;
 type Archive = ArxArchive;
 
 const ATLAS_WIDTH: usize = 2048;
-const ATLAS_HEIGHT: usize = 4096;
+const ATLAS_HEIGHT: usize = 8192;
 const VERTEX_WIDTH: usize = 512;
 const VERTEX_HEIGHT: usize = 512;
 const PLAYER_Y_OFFSET: f32 = -70.0;
@@ -48,6 +48,7 @@ const PLAYER_STACK_Z_RANGE: f32 = 0.003;
 
 pub struct PlayerBatch {
     instances: SharedInstanceBatch,
+    handles: std::sync::Mutex<FxHashMap<usize, PlayerSpriteKey>>,
 }
 
 impl PlayerAssetStore {
@@ -279,7 +280,10 @@ impl PlayerBatch {
         let vertices = make_quad(VERTEX_WIDTH as u32, VERTEX_HEIGHT as u32).to_vec();
         let instances = SharedInstanceBatch::new(device, vertices, store.bind_group.clone());
 
-        Self { instances }
+        Self {
+            instances,
+            handles: std::sync::Mutex::new(FxHashMap::default()),
+        }
     }
 
     pub fn preview_instance_count(&self) -> usize {
@@ -287,6 +291,16 @@ impl PlayerBatch {
     }
 
     pub fn clear(&self) {
+        self.instances.clear();
+        self.handles.lock().unwrap().clear();
+    }
+
+    pub fn clear_and_unload(&self, store: &mut PlayerAssetStore) {
+        let mut handles = self.handles.lock().unwrap();
+        for key in handles.values() {
+            store.unload_sprite(*key);
+        }
+        handles.clear();
         self.instances.clear();
     }
 
@@ -347,11 +361,15 @@ impl PlayerBatch {
             .add(queue, instance)
             .expect("Failed to add instance to batch");
 
-        Ok(PlayerSpriteHandle {
+        let handle = PlayerSpriteHandle {
             key: sprite,
             index: PlayerSpriteIndex(instance_index),
             stack_order,
-        })
+        };
+
+        self.handles.lock().unwrap().insert(handle.index.0, handle.key);
+
+        Ok(handle)
     }
 
     pub fn update_player_sprite(
@@ -457,6 +475,8 @@ impl PlayerBatch {
     ) {
         self.instances.remove(queue, handle.index.0);
         store.unload_sprite(handle.key);
+
+        self.handles.lock().unwrap().remove(&handle.index.0);
     }
 
     pub fn render(&self, render_pass: &mut wgpu::RenderPass) {

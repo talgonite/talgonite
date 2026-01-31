@@ -13,9 +13,13 @@ pub struct Item {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ItemInstanceHandle(pub(crate) usize);
+pub struct ItemInstanceHandle {
+    pub(crate) index: usize,
+    pub(crate) sprite_id: u16,
+}
 
 pub(crate) struct LoadedItemSheet {
     pub epf: EpfImage,
     pub allocations: Vec<Option<Allocation>>,
+    pub ref_count: usize,
 }
