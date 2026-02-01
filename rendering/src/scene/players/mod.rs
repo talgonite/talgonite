@@ -26,7 +26,7 @@ use formats::game_files::ArxArchive;
 
 type Archive = ArxArchive;
 
-const ATLAS_WIDTH: usize = 2048;
+const ATLAS_WIDTH: usize = 4096;
 const ATLAS_HEIGHT: usize = 8192;
 const VERTEX_WIDTH: usize = 512;
 const VERTEX_HEIGHT: usize = 512;
@@ -367,7 +367,10 @@ impl PlayerBatch {
             stack_order,
         };
 
-        self.handles.lock().unwrap().insert(handle.index.0, handle.key);
+        self.handles
+            .lock()
+            .unwrap()
+            .insert(handle.index.0, handle.key);
 
         Ok(handle)
     }
