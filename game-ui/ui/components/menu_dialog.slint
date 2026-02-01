@@ -271,14 +271,18 @@ export component NpcDialog inherits Rectangle {
                     alignment: center;
                     padding: 24px;
                     padding-top: 32px;
-                    Text {
-                        font-family: "Lato";
-                        font-size: 16px;
-                        font-weight: 700;
-                        text: NpcDialogState.dialog-text;
-                        horizontal-alignment: left;
-                        wrap: word-wrap;
-                        color: #28210F;
+                    ScrollView {
+                        height: min(text-content.height, 140px);
+                        viewport-height: text-content.height;
+                        text-content := Text {
+                            width: 100%;
+                            font-family: "Lato";
+                            font-size: 16px;
+                            font-weight: 700;
+                            text: NpcDialogState.dialog-text;
+                            wrap: word-wrap;
+                            color: #28210F;
+                        }
                     }
                 }
             }

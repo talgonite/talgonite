@@ -23,8 +23,18 @@ use rendering::scene::utils::screen_to_iso_tile;
 use super::keyring;
 use super::settings::{SavedCredential, SavedCredentialPublic, ServerEntry, SettingsFile};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ActiveWindowType {
+    #[default]
+    None,
+    Dialog,
+    Menu,
+    Info,
+}
+
 #[derive(Resource, Default)]
 pub struct ActiveMenuContext {
+    pub window_type: ActiveWindowType,
     pub entity_type: Option<EntityType>,
     pub entity_id: u32,
     /// For shop menus and text entry, this is the pursuit_id to send back
@@ -157,7 +167,7 @@ fn handle_ui_inbound_ingame(
     mut next_state: ResMut<NextState<AppState>>,
     outbox: Res<crate::network::PacketOutbox>,
     ui_state: UiStateResources,
-    menu_ctx: Res<ActiveMenuContext>,
+    mut menu_ctx: ResMut<ActiveMenuContext>,
     bindings: InputBindingResources,
     hotbar_res: HotbarResources,
     interaction_res: InteractionResources,
@@ -189,6 +199,12 @@ fn handle_ui_inbound_ingame(
                 });
             }
             UiToCore::MenuSelect { id, name } => {
+                if menu_ctx.window_type == ActiveWindowType::Info {
+                    menu_ctx.window_type = ActiveWindowType::None;
+                    outbound.write(UiOutbound(CoreToUi::DisplayMenuClose));
+                    continue;
+                }
+
                 if let Some(dialog_id) = menu_ctx.dialog_id {
                     if let Some(entity_type) = menu_ctx.entity_type {
                         let mut final_dialog_id = *id;
@@ -1104,6 +1120,7 @@ fn handle_ui_inbound_login(
 fn bridge_chat_events(
     mut chat_events: MessageReader<ChatEvent>,
     mut outbound: MessageWriter<UiOutbound>,
+    mut menu_ctx: ResMut<ActiveMenuContext>,
 ) {
     use packets::server::{PublicMessageType, ServerMessageType};
 
@@ -1122,12 +1139,38 @@ fn bridge_chat_events(
                     }
                     ServerMessageType::GroupChat => (true, false, Some("#9acd32".to_string())),
                     ServerMessageType::GuildChat => (true, false, Some("#808000".to_string())),
-                    ServerMessageType::UserOptions
-                    | ServerMessageType::ScrollWindow
+                    ServerMessageType::ScrollWindow
                     | ServerMessageType::NonScrollWindow
-                    | ServerMessageType::WoodenBoard
-                    | ServerMessageType::ClosePopup
-                    | ServerMessageType::PersistentMessage => {
+                    | ServerMessageType::WoodenBoard => {
+                        let title = match pkt.message_type {
+                            ServerMessageType::WoodenBoard => "Wooden Board",
+                            _ => "Information",
+                        };
+                        menu_ctx.window_type = ActiveWindowType::Info;
+                        menu_ctx.dialog_id = None;
+                        menu_ctx.menu_type = None;
+                        menu_ctx.pursuit_id = 0;
+                        menu_ctx.entity_type = None;
+                        menu_ctx.entity_id = 0;
+
+                        outbound.write(UiOutbound(CoreToUi::DisplayMenu {
+                            title: title.to_string(),
+                            text: pkt.message.clone(),
+                            sprite_id: 0,
+                            entry_type: crate::webui::ipc::MenuEntryType::TextOptions,
+                            pursuit_id: 0,
+                            entries: vec![MenuEntryUi::text_option("Close".to_string(), 0)],
+                        }));
+                        continue;
+                    }
+                    ServerMessageType::ClosePopup => {
+                        if menu_ctx.window_type == ActiveWindowType::Info {
+                            menu_ctx.window_type = ActiveWindowType::None;
+                            outbound.write(UiOutbound(CoreToUi::DisplayMenuClose));
+                        }
+                        continue;
+                    }
+                    ServerMessageType::UserOptions | ServerMessageType::PersistentMessage => {
                         continue;
                     }
                 };
@@ -1188,6 +1231,7 @@ fn bridge_session_events(
             SessionEvent::DisplayDialog(pkt) => {
                 match pkt {
                     packets::server::DisplayDialog::Show { header, payload } => {
+                        menu_ctx.window_type = ActiveWindowType::Dialog;
                         menu_ctx.entity_type = Some(header.entity_type);
                         menu_ctx.entity_id = header.source_id;
                         menu_ctx.pursuit_id = header.pursuit_id;
@@ -1253,6 +1297,7 @@ fn bridge_session_events(
                         }
                     }
                     packets::server::DisplayDialog::Close => {
+                        menu_ctx.window_type = ActiveWindowType::None;
                         menu_ctx.dialog_id = None;
                         outbound.write(UiOutbound(CoreToUi::DisplayMenuClose));
                     }
@@ -1311,6 +1356,7 @@ fn bridge_session_events(
                 }));
             }
             SessionEvent::DisplayMenu(pkt) => {
+                menu_ctx.window_type = ActiveWindowType::Menu;
                 menu_ctx.entity_type = pkt.header.entity_type.into();
                 menu_ctx.entity_id = pkt.header.source_id;
                 menu_ctx.menu_type = Some(pkt.menu_type);

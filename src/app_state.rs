@@ -1,18 +1,18 @@
 use bevy::prelude::*;
 
+use crate::ecs::components::InGameScoped;
+use crate::ecs::hotbar::{HotbarPanelState, HotbarState};
+use crate::events::MapEvent;
 use crate::game_files::GameFiles;
+use crate::resources::PlayerAttributes;
+use crate::session::runtime::{NetBgTask, NetEventRx, NetSessionState};
 use crate::slint_support::assets::SlintAssetLoader;
 use crate::slint_support::state_bridge::SlintAssetLoaderRes;
-use crate::events::MapEvent;
-use crate::ecs::components::InGameScoped;
-use crate::resources::PlayerAttributes;
 use crate::webui::plugin::{
-    AbilityState, ActiveMenuContext, EquipmentState, InventoryState, PlayerProfileState,
-    WorldListState,
+    AbilityState, ActiveMenuContext, ActiveWindowType, EquipmentState, InventoryState,
+    PlayerProfileState, WorldListState,
 };
 use crate::{MapRendererState, network::PacketOutbox};
-use crate::ecs::hotbar::{HotbarPanelState, HotbarState};
-use crate::session::runtime::{NetBgTask, NetEventRx, NetSessionState};
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
 pub enum AppState {
@@ -96,11 +96,13 @@ pub fn cleanup_ingame_resources(
         *state = PlayerAttributes::default();
     }
     if let Some(mut state) = menu_ctx {
+        state.window_type = ActiveWindowType::None;
         state.entity_type = None;
         state.entity_id = 0;
         state.pursuit_id = 0;
         state.menu_type = None;
         state.args.clear();
+        state.dialog_id = None;
     }
     if let Some(mut state) = session {
         *state = NetSessionState::default();
