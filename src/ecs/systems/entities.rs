@@ -290,6 +290,7 @@ fn spawn_display_player(
             overcoat_sprite,
             overcoat_color,
             body_color,
+            face_sprite,
             is_male: _, // handled above
             ..
         } => {
@@ -348,6 +349,7 @@ fn spawn_display_player(
                 *accessory_sprite3,
                 *overcoat_sprite,
                 *overcoat_color,
+                *face_sprite,
             );
         }
         DisplayArgs::Sprite {
@@ -408,6 +410,7 @@ fn spawn_player_sprites(
     accessory_sprite3: u16,
     overcoat_sprite: u16,
     overcoat_color: u8,
+    face_sprite: u8,
 ) {
     player_entity.with_children(|parent| {
         parent.spawn(PlayerSprite {
@@ -415,6 +418,21 @@ fn spawn_player_sprites(
             slot: PlayerPieceType::Body,
             color: body_color,
         });
+
+        if face_sprite > 0 {
+            parent.spawn(PlayerSprite {
+                id: face_sprite as u16,
+                slot: PlayerPieceType::Face,
+                color: head_color,
+            });
+        }
+
+        parent.spawn(PlayerSprite {
+            id: 1,
+            slot: PlayerPieceType::Emote,
+            color: head_color,
+        });
+
         if pants_color > 0 {
             parent.spawn(PlayerSprite {
                 id: pants_color as u16,

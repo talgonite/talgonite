@@ -381,20 +381,78 @@ pub fn update_player_sprites(
 
             for child_entity in children.iter() {
                 if let Ok((sprite, sprite_instance)) = children_query.get(child_entity) {
-                    if let Err(e) = batch_state.batch.update_player_sprite_with_animation(
-                        &shared_state.queue,
-                        &store_state.store,
-                        &sprite_instance.handle,
-                        *direction as u8,
-                        position.x,
-                        position.y,
-                        sprite.color,
-                        anim_type,
-                        frame_index,
-                        InstanceFlag::None,
-                        tint,
-                    ) {
-                        tracing::error!("update_player_sprite_with_animation failed: {:?}", e);
+                    if anim_type.is_emote() {
+                        if sprite.slot == PlayerPieceType::Emote {
+                            if batch_state.batch.update_player_sprite_with_animation(
+                                &shared_state.queue,
+                                &store_state.store,
+                                &sprite_instance.handle,
+                                *direction as u8,
+                                position.x,
+                                position.y,
+                                sprite.color,
+                                anim_type,
+                                frame_index,
+                                InstanceFlag::None,
+                                tint,
+                            ).is_err() {
+                                // If emote fails (e.g. facing away), just hide the emote layer
+                                let _ = batch_state.batch.hide_player_sprite(
+                                    &shared_state.queue,
+                                    &sprite_instance.handle,
+                                );
+                            }
+                            continue;
+                        }
+
+                        // Hide face piece when emoting, as emotes usually include the face
+                        if sprite.slot == PlayerPieceType::Face {
+                            let _ = batch_state.batch.hide_player_sprite(
+                                &shared_state.queue,
+                                &sprite_instance.handle,
+                            );
+                            continue;
+                        }
+
+                        // All other layers use Idle
+                        let _ = batch_state.batch.update_player_sprite_with_animation(
+                            &shared_state.queue,
+                            &store_state.store,
+                            &sprite_instance.handle,
+                            *direction as u8,
+                            position.x,
+                            position.y,
+                            sprite.color,
+                            EpfAnimationType::Idle,
+                            0,
+                            InstanceFlag::None,
+                            tint,
+                        );
+                    } else {
+                        // Not an emote
+                        if sprite.slot == PlayerPieceType::Emote {
+                            let _ = batch_state.batch.hide_player_sprite(
+                                &shared_state.queue,
+                                &sprite_instance.handle,
+                            );
+                            continue;
+                        }
+
+                        if let Err(e) = batch_state.batch.update_player_sprite_with_animation(
+                            &shared_state.queue,
+                            &store_state.store,
+                            &sprite_instance.handle,
+                            *direction as u8,
+                            position.x,
+                            position.y,
+                            sprite.color,
+                            anim_type,
+                            frame_index,
+                            InstanceFlag::None,
+                            tint,
+                        ) {
+                            tracing::error!("update_player_sprite_with_animation failed: {:?}", e);
+                        }
                     }
                 }
             }

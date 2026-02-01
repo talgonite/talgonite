@@ -23,7 +23,7 @@ use std::{
 use tracing::{debug, info};
 
 const HEADER_SIZE_TO_SKIP: u64 = 1024 * 50;
-const VERSION_BUF: &[u8] = b"741_1";
+const VERSION_BUF: &[u8] = b"741_2";
 
 pub trait InstallProgress: Send + Sync {
     fn report(&self, percent: f32, message: String);
@@ -545,7 +545,8 @@ pub fn install(output: &Path, progress: Option<Arc<dyn InstallProgress>>) -> any
                                             frames,
                                         };
 
-                                        if dat_name.starts_with("khan")
+                                        if (dat_name.starts_with("khan")
+                                            || file.name.starts_with("emot"))
                                             && file.name != "mf03423.epf"
                                         {
                                             epfs_to_concat.push((file.name, epf));
@@ -570,8 +571,7 @@ pub fn install(output: &Path, progress: Option<Arc<dyn InstallProgress>>) -> any
                                         let mut reader = Cursor::new(file_buffer);
                                         match SpfFile::read_from_da(&mut reader) {
                                             Ok(spf) => {
-                                                let base_name =
-                                                    file.name.trim_end_matches(".spf");
+                                                let base_name = file.name.trim_end_matches(".spf");
 
                                                 for (frame_idx, frame) in
                                                     spf.frames.iter().enumerate()
@@ -587,10 +587,8 @@ pub fn install(output: &Path, progress: Option<Arc<dyn InstallProgress>>) -> any
                                                         frame.data.len() as u64,
                                                     )?;
 
-                                                    let frame_name = format!(
-                                                        "{}.{}.ktx2",
-                                                        base_name, frame_idx
-                                                    );
+                                                    let frame_name =
+                                                        format!("{}.{}.ktx2", base_name, frame_idx);
                                                     let entry = SimpleDataEntry::new(
                                                         &mut Cursor::new(&ktx_header)
                                                             .chain(Cursor::new(&frame.data)),
@@ -861,7 +859,11 @@ pub fn install(output: &Path, progress: Option<Arc<dyn InstallProgress>>) -> any
                             > = std::collections::HashMap::new();
 
                             for (file_name, epf) in epfs_to_concat {
-                                let prefix = file_name[..2].to_string();
+                                let prefix = if file_name.starts_with("emot") {
+                                    "em".to_string()
+                                } else {
+                                    file_name[..2].to_string()
+                                };
 
                                 epfs_by_prefix
                                     .entry(prefix)
@@ -875,7 +877,11 @@ pub fn install(output: &Path, progress: Option<Arc<dyn InstallProgress>>) -> any
                                     Vec<(String, EpfImage)>,
                                 > = std::collections::HashMap::new();
                                 for (file_name, epf) in epfs {
-                                    let num = file_name[2..5].to_string();
+                                    let num = if file_name.starts_with("emot") {
+                                        format!("0{}", &file_name[4..6])
+                                    } else {
+                                        file_name[2..5].to_string()
+                                    };
                                     epfs_by_num.entry(num).or_default().push((file_name, epf));
                                 }
 
@@ -883,7 +889,11 @@ pub fn install(output: &Path, progress: Option<Arc<dyn InstallProgress>>) -> any
                                     let epf_animations = epfs
                                         .iter()
                                         .flat_map(|(file_name, epf)| {
-                                            let suffix = file_name[5..].replace(".epf", "");
+                                            let suffix = if file_name.starts_with("emot") {
+                                                "emot".to_string()
+                                            } else {
+                                                file_name[5..].replace(".epf", "")
+                                            };
 
                                             epf.into_animation(&suffix)
                                         })

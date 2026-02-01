@@ -216,12 +216,16 @@ impl PlayerAssetStore {
         queue: &wgpu::Queue,
         archive: &Archive,
     ) -> anyhow::Result<LoadedSprite> {
-        let path = format!(
-            "khan/{}{}/{:#03}.epfanim",
-            key.gender.char(),
-            prefix,
-            key.sprite_id % 1000
-        );
+        let path = if key.slot == PlayerPieceType::Emote {
+            format!("khan/em/{:03}.epfanim", key.sprite_id % 1000)
+        } else {
+            format!(
+                "khan/{}{}/{:03}.epfanim",
+                key.gender.char(),
+                prefix,
+                key.sprite_id % 1000
+            )
+        };
         let epf_bytes = archive.get_file(&path)?;
         let (epf_image, _) = bincode::decode_from_slice::<Vec<EpfAnimation>, Configuration>(
             &epf_bytes,
@@ -464,6 +468,15 @@ impl PlayerBatch {
         .unwrap_or_default();
 
         self.instances.update(queue, handle.index.0, instance);
+        Ok(())
+    }
+
+    pub fn hide_player_sprite(
+        &self,
+        queue: &wgpu::Queue,
+        handle: &PlayerSpriteHandle,
+    ) -> anyhow::Result<()> {
+        self.instances.update(queue, handle.index.0, Instance::default());
         Ok(())
     }
 

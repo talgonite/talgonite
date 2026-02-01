@@ -39,6 +39,7 @@ pub enum PlayerPieceType {
     Armor,
     Arms,
     Weapon,
+    Emote,
 }
 
 impl PlayerPieceType {
@@ -72,6 +73,7 @@ impl PlayerPieceType {
             | PlayerPieceType::Accessory2Fg
             | PlayerPieceType::Accessory3Fg => 'c',
             PlayerPieceType::Face => 'o',
+            PlayerPieceType::Emote => ' ', // Not used for path construction
         }
     }
 
@@ -89,6 +91,7 @@ impl PlayerPieceType {
                 PlayerPieceType::Boots => 0.25,
                 PlayerPieceType::Pants => 0.2,
                 PlayerPieceType::Arms => 0.175,
+                PlayerPieceType::Emote => 0.16, // Slightly above face
                 PlayerPieceType::Face => 0.15,
                 PlayerPieceType::Body => 0.1,
                 PlayerPieceType::Accessory1Bg => 0.09,
@@ -106,6 +109,7 @@ impl PlayerPieceType {
                 PlayerPieceType::Boots => 0.325,
                 PlayerPieceType::Pants => 0.3,
                 PlayerPieceType::Arms => 0.275,
+                PlayerPieceType::Emote => 0.23, // Slightly above face
                 PlayerPieceType::Face => 0.225,
                 PlayerPieceType::Body => 0.2,
                 PlayerPieceType::Shield => 0.15,
@@ -145,6 +149,7 @@ impl PlayerSpriteKey {
             PlayerPieceType::Accessory1Bg
             | PlayerPieceType::Accessory2Bg
             | PlayerPieceType::Accessory3Bg => 'c',
+            PlayerPieceType::Face | PlayerPieceType::Emote => 'm',
             _ => self.slot.prefix(sprite_id),
         }
     }
