@@ -430,7 +430,7 @@ fn spawn_player_sprites(
         parent.spawn(PlayerSprite {
             id: 1,
             slot: PlayerPieceType::Emote,
-            color: head_color,
+            color: 0,
         });
 
         if pants_color > 0 {

@@ -297,25 +297,42 @@ pub fn player_animation_start_system(
                 BodyAnimationKind::RoundHouseKick => (EpfAnimationType::LongKickAttack, 4),
                 BodyAnimationKind::Stab => (EpfAnimationType::StabAttack, 2),
                 BodyAnimationKind::DoubleStab => (EpfAnimationType::DoubleStabAttack, 2),
+                // Emote set 1
                 BodyAnimationKind::Smile => (EpfAnimationType::Smile, 1),
                 BodyAnimationKind::Cry => (EpfAnimationType::Cry, 1),
                 BodyAnimationKind::Frown => (EpfAnimationType::Sad, 1),
                 BodyAnimationKind::Wink => (EpfAnimationType::Wink, 1),
-                BodyAnimationKind::Surprise => (EpfAnimationType::Surprise, 1),
+                BodyAnimationKind::Surprise => (EpfAnimationType::Stunned, 1),
                 BodyAnimationKind::Tongue => (EpfAnimationType::Raz, 1),
+                BodyAnimationKind::Pleasant => (EpfAnimationType::Surprise, 1),
                 BodyAnimationKind::Snore => (EpfAnimationType::Sleepy, 2),
+                BodyAnimationKind::Mouth => (EpfAnimationType::Yawn, 2),
                 BodyAnimationKind::BlowKiss => (EpfAnimationType::BlowKiss, 2),
                 BodyAnimationKind::Wave => (EpfAnimationType::Wave, 2),
+                // Emote set 2
+                BodyAnimationKind::Silly => (EpfAnimationType::BalloonElder, 1),
+                BodyAnimationKind::Cute => (EpfAnimationType::BalloonJoy, 1),
+                BodyAnimationKind::Yelling => (EpfAnimationType::BalloonSlick, 1),
+                BodyAnimationKind::Mischievous => (EpfAnimationType::BalloonScheme, 1),
+                BodyAnimationKind::Evil => (EpfAnimationType::BalloonLaser, 1),
+                BodyAnimationKind::Horror => (EpfAnimationType::BalloonGloom, 1),
+                BodyAnimationKind::PuppyDog => (EpfAnimationType::BalloonAwe, 1),
+                BodyAnimationKind::StoneFaced => (EpfAnimationType::BalloonShadow, 1),
+                BodyAnimationKind::Tears => (EpfAnimationType::BalloonSob, 3),
+                BodyAnimationKind::FiredUp => (EpfAnimationType::BalloonFire, 3),
+                BodyAnimationKind::Confused => (EpfAnimationType::BalloonDizzy, 3),
+                // Emote set 3
                 BodyAnimationKind::RockOn => (EpfAnimationType::SymbolRock, 1),
                 BodyAnimationKind::Peace => (EpfAnimationType::SymbolScissors, 1),
                 BodyAnimationKind::Stop => (EpfAnimationType::SymbolPaper, 1),
-                BodyAnimationKind::Silly => (EpfAnimationType::SymbolScramble, 1),
+                BodyAnimationKind::Ouch => (EpfAnimationType::SymbolScramble, 1),
+                BodyAnimationKind::Impatient => (EpfAnimationType::SymbolSilence, 3),
+                BodyAnimationKind::Shock => (EpfAnimationType::Mask, 1),
+                BodyAnimationKind::Pleasure => (EpfAnimationType::Blush, 1),
                 BodyAnimationKind::Love => (EpfAnimationType::SymbolLove, 1),
                 BodyAnimationKind::SweatDrop => (EpfAnimationType::SymbolSweat, 1),
                 BodyAnimationKind::Whistle => (EpfAnimationType::SymbolMusic, 1),
                 BodyAnimationKind::Irritation => (EpfAnimationType::SymbolAngry, 1),
-                BodyAnimationKind::Cute => (EpfAnimationType::Blush, 1),
-                BodyAnimationKind::StoneFaced => (EpfAnimationType::Mask, 1),
                 _ => {
                     tracing::info!("Unhandled BodyAnimationKind: {:?}", anim.kind);
                     continue;
@@ -342,7 +359,7 @@ pub fn player_animation_start_system(
                     }
                 }
 
-                if !armor_supports {
+                if !anim_type.is_emote() && !armor_supports {
                     tracing::debug!(
                         "Skipping animation {:?} for player ID {} - armor does not support it",
                         anim_type,

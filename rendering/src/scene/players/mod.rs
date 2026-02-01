@@ -345,7 +345,7 @@ impl PlayerBatch {
         // Use entity_id as tiebreaker for players on the same tile
         let stack_order = (entity_id % PLAYERS_PER_TILE as u32) as u8;
 
-        let instance = PlayerAssetStore::get_instance_for_frame(
+        let instance = match PlayerAssetStore::get_instance_for_frame(
             &store.palettes,
             loaded_sprite,
             &sprite,
@@ -358,7 +358,13 @@ impl PlayerBatch {
             flags,
             tint,
             stack_order,
-        )?;
+        ) {
+            Ok(inst) => inst,
+            Err(_) => {
+                // If Idle is missing (e.g. for purely emote pieces), just use an empty instance
+                Instance::default()
+            }
+        };
 
         let instance_index = self
             .instances
@@ -371,7 +377,10 @@ impl PlayerBatch {
             stack_order,
         };
 
-        self.handles.lock().unwrap().insert(handle.index.0, handle.key);
+        self.handles
+            .lock()
+            .unwrap()
+            .insert(handle.index.0, handle.key);
 
         Ok(handle)
     }
@@ -476,7 +485,8 @@ impl PlayerBatch {
         queue: &wgpu::Queue,
         handle: &PlayerSpriteHandle,
     ) -> anyhow::Result<()> {
-        self.instances.update(queue, handle.index.0, Instance::default());
+        self.instances
+            .update(queue, handle.index.0, Instance::default());
         Ok(())
     }
 

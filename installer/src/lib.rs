@@ -546,10 +546,11 @@ pub fn install(output: &Path, progress: Option<Arc<dyn InstallProgress>>) -> any
                                         };
 
                                         if (dat_name.starts_with("khan")
-                                            || file.name.starts_with("emot"))
+                                            || (dat_name == "Legend"
+                                                && file.name.starts_with("emot")))
                                             && file.name != "mf03423.epf"
                                         {
-                                            epfs_to_concat.push((file.name, epf));
+                                            epfs_to_concat.push((file.name.clone(), epf));
                                             continue;
                                         }
 

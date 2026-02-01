@@ -67,8 +67,8 @@ pub enum EpfAnimationType {
     BalloonFire,    // frames 36-38 in emot01.epf
     BalloonDizzy,   // frames 39-42 in emot01.epf
     SymbolRock,     // frame 12 in emot01.epf
-    SymbolPaper,    // frame 14 in emot01.epf
     SymbolScissors, // frame 13 in emot01.epf
+    SymbolPaper,    // frame 14 in emot01.epf
     SymbolScramble, // frame 15 in emot01.epf
     SymbolSilence,  // frames 16-18 in emot01.epf
     Mask,           // frame 19 in emot01.epf
