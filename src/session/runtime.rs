@@ -109,6 +109,19 @@ fn process_net_packets(
                 tracing::warn!("Network disconnected");
             }
             NetworkEvent::Packet(code, data) => match code {
+                &server::Codes::HeartBeatResponse => {
+                    if let Some(query) = parse_packet::<server::HeartBeatResponse>(data) {
+                        outbox.send(&client::HeartBeat { value: query.value });
+                    }
+                }
+                &server::Codes::SynchronizeTicksResponse => {
+                    if let Some(query) = parse_packet::<server::SynchronizeTicksResponse>(data) {
+                        outbox.send(&client::SynchronizeTicks {
+                            server_ticks: query.ticks as u32,
+                            client_ticks: session.start_time.elapsed().as_millis() as u32,
+                        });
+                    }
+                }
                 &server::Codes::Sound => {
                     if let Some(q) = parse_packet::<server::Sound>(data) {
                         audio_events.write(AudioEvent::PlaySound(q));

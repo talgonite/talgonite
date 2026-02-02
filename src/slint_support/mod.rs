@@ -14,6 +14,8 @@ pub use profile_bridge::{ShowSelfProfileEvent, handle_show_self_profile, sync_pr
 use bevy::prelude::*;
 use slint::ComponentHandle;
 use slint::wgpu_28::{WGPUConfiguration, WGPUSettings};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use crate::MainWindow;
 use state_bridge::{SlintUiChannels, SlintWindow};
@@ -85,60 +87,90 @@ pub fn attach_slint_ui(mut app: App) -> MainWindow {
 
     // Set up rendering notifier
     let slint_app_handle = slint_app.as_weak();
+    let app = Rc::new(RefCell::new(app));
+    let last_update = Rc::new(RefCell::new(std::time::Instant::now()));
+
+    let app_for_notifier = app.clone();
+    let last_update_for_notifier = last_update.clone();
 
     slint_app
         .window()
-        .set_rendering_notifier(move |rendering_state, graphics_api| match rendering_state {
-            slint::RenderingState::RenderingSetup => {
-                if let slint::GraphicsAPI::WGPU28 { device, queue, .. } = graphics_api {
+        .set_rendering_notifier(move |rendering_state, graphics_api| {
+            let mut app = app_for_notifier.borrow_mut();
+            match rendering_state {
+                slint::RenderingState::RenderingSetup => {
+                    if let slint::GraphicsAPI::WGPU28 { device, queue, .. } = graphics_api {
+                        let Some(strong) = slint_app_handle.upgrade() else {
+                            return;
+                        };
+
+                        let window = strong.window();
+                        gpu_init::initialize_gpu_world(
+                            &mut app.world_mut(),
+                            &device,
+                            &queue,
+                            window,
+                            wgpu::TextureFormat::Rgba8Unorm,
+                        );
+                        let size = window.size();
+
+                        rendering_notifier::seed_back_buffers(
+                            &mut app,
+                            &device,
+                            size.width,
+                            size.height,
+                        );
+
+                        tracing::info!("WGPU Rendering setup complete (Slint -> Bevy bridge)");
+
+                        // One update so startup systems that depend on GPU can initialize.
+                        app.update();
+                        *last_update_for_notifier.borrow_mut() = std::time::Instant::now();
+                    }
+                }
+                slint::RenderingState::BeforeRendering => {
+                    app.update();
+                    *last_update_for_notifier.borrow_mut() = std::time::Instant::now();
+
                     let Some(strong) = slint_app_handle.upgrade() else {
                         return;
                     };
+                    strong.window().request_redraw();
 
-                    let window = strong.window();
-                    gpu_init::initialize_gpu_world(
-                        &mut app.world_mut(),
-                        &device,
-                        &queue,
-                        window,
-                        wgpu::TextureFormat::Rgba8Unorm,
-                    );
-                    let size = window.size();
-
-                    rendering_notifier::seed_back_buffers(
+                    rendering_notifier::handle_before_rendering(
                         &mut app,
-                        &device,
-                        size.width,
-                        size.height,
+                        &strong,
+                        |w| w.get_requested_texture_width() as u32,
+                        |w| w.get_requested_texture_height() as u32,
+                        |w| w.get_texture_scale(),
+                        |w, b| w.set_use_pixelated_filtering(b),
+                        |w| w.get_texture(),
+                        |w, img| w.set_texture(img),
                     );
-
-                    tracing::info!("WGPU Rendering setup complete (Slint -> Bevy bridge)");
-
-                    // One update so startup systems that depend on GPU can initialize.
-                    app.update();
                 }
+                _ => {}
             }
-            slint::RenderingState::BeforeRendering => {
-                app.update();
-                let Some(strong) = slint_app_handle.upgrade() else {
-                    return;
-                };
-                strong.window().request_redraw();
-
-                rendering_notifier::handle_before_rendering(
-                    &mut app,
-                    &strong,
-                    |w| w.get_requested_texture_width() as u32,
-                    |w| w.get_requested_texture_height() as u32,
-                    |w| w.get_texture_scale(),
-                    |w, b| w.set_use_pixelated_filtering(b),
-                    |w| w.get_texture(),
-                    |w, img| w.set_texture(img),
-                );
-            }
-            _ => {}
         })
         .expect("Failed to set rendering notifier - WGPU integration may not be available");
+
+    // Background update timer: ensures Bevy keeps ticking (reading packets, etc) even when Slint
+    // pauses rendering because the window is not visible.
+    let app_for_timer = app.clone();
+    let last_update_for_timer = last_update;
+    let timer = slint::Timer::default();
+    timer.start(
+        slint::TimerMode::Repeated,
+        std::time::Duration::from_millis(100),
+        move || {
+            if last_update_for_timer.borrow().elapsed() >= std::time::Duration::from_millis(100) {
+                if let Ok(mut app) = app_for_timer.try_borrow_mut() {
+                    app.update();
+                    *last_update_for_timer.borrow_mut() = std::time::Instant::now();
+                }
+            }
+        },
+    );
+    app.borrow_mut().insert_non_send_resource(timer);
 
     slint_app
 }
