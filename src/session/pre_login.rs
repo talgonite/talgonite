@@ -32,6 +32,7 @@ impl PreLoginSession {
         );
         let connection_string = format!("{}:{}", server_address, server_port);
         let stream = TcpStream::connect(&connection_string).await?;
+        stream.set_nodelay(true).ok();
         tracing::info!("Connected to lobby server.");
         let stream = Arc::new(stream);
         let mut decoder = PacketDecoder::new(stream.clone());
@@ -45,6 +46,7 @@ impl PreLoginSession {
         encoder
             .write(&client::Version { version: VERSION }.to_bytes())
             .await?;
+        encoder.flush().await?;
 
         tracing::info!("Waiting for connection info...");
         let packet = decoder.read().await?;
@@ -66,6 +68,7 @@ impl PreLoginSession {
         sender
             .send_packet(&client::ServerTableRequest::ServerId(0))
             .await?;
+        sender.flush().await?;
 
         let packet = decoder.read().await?;
         assert_eq!(packet[0], server::Codes::Redirect as u8);
@@ -82,6 +85,7 @@ impl PreLoginSession {
         };
 
         let stream = TcpStream::connect(redirect.addr).await?;
+        stream.set_nodelay(true).ok();
         let stream = Arc::new(stream);
         let mut decoder = PacketDecoder::new(stream.clone());
         let mut encoder = PacketEncoder::new(stream);
@@ -90,6 +94,7 @@ impl PreLoginSession {
         assert_eq!(packet[0], 0x7E);
 
         encoder.write(&redirect_response.to_bytes()).await?;
+        encoder.flush().await?;
 
         let sender = EncryptedSender::new(
             encoder,
@@ -114,6 +119,7 @@ impl PreLoginSession {
             })
             .await
             .map_err(|_| LoginError::Network("Failed to send login packet".to_string()))?;
+        self.sender.flush().await.ok();
 
         let login_response = loop {
             let mut packet =
@@ -157,10 +163,12 @@ impl PreLoginSession {
         };
 
         let stream = TcpStream::connect(redirect.addr).await.unwrap();
+        stream.set_nodelay(true).ok();
         let stream = Arc::new(stream);
         let mut encoder = PacketEncoder::new(stream.clone());
 
         encoder.write(&redirect_response.to_bytes()).await.unwrap();
+        encoder.flush().await.unwrap();
 
         Ok((
             DecryptedReceiver::new(

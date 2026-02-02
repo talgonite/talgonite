@@ -15,7 +15,9 @@ impl PacketDecoder {
 
     pub async fn read(&mut self) -> io::Result<Vec<u8>> {
         let mut header = [0; HEADER_SIZE];
-        (&*self.stream).read_exact(&mut header).await?;
+        if let Err(e) = (&*self.stream).read_exact(&mut header).await {
+            return Err(e);
+        }
 
         let magic_val = header[0];
         let length = u16::from_be_bytes([header[1], header[2]]) as usize;
@@ -23,12 +25,14 @@ impl PacketDecoder {
         if magic_val != PACKET_MAGIC {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "invalid packet magic",
+                format!("invalid packet magic: {:#04x}", magic_val),
             ));
         }
 
         let mut buf = vec![0; length];
-        (&*self.stream).read_exact(&mut buf).await?;
+        if let Err(e) = (&*self.stream).read_exact(&mut buf).await {
+            return Err(e);
+        }
 
         Ok(buf)
     }
@@ -63,5 +67,9 @@ impl PacketEncoder {
 
     pub async fn write_raw(&mut self, data: &[u8]) -> io::Result<()> {
         (&*self.stream).write_all(data).await
+    }
+
+    pub async fn flush(&mut self) -> io::Result<()> {
+        (&*self.stream).flush().await
     }
 }

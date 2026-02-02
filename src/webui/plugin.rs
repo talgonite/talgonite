@@ -5,6 +5,7 @@ use bevy::input::mouse::MouseButton;
 use bevy::prelude::*;
 use bevy::tasks::{IoTaskPool, Task};
 use futures_lite::future;
+use slint::ComponentHandle;
 use game_types::SlotPanelType;
 pub use game_ui::CursorPosition;
 use game_ui::{
@@ -2001,6 +2002,8 @@ fn parse_host_port(address: &str) -> Option<(String, u16)> {
     Some((host, port))
 }
 
+use crate::slint_support::state_bridge::SlintWindow;
+
 fn handle_login_results(
     mut commands: Commands,
     mut success_q: Query<(Entity, &mut LoginResultComp)>,
@@ -2008,6 +2011,7 @@ fn handle_login_results(
     mut outbound: MessageWriter<UiOutbound>,
     mut settings: ResMut<SettingsFile>,
     mut next_state: ResMut<NextState<AppState>>,
+    slint_window: Option<Res<SlintWindow>>,
 ) {
     for (e, mut res) in &mut success_q {
         let (receiver, sender, inner) = {
@@ -2029,48 +2033,91 @@ fn handle_login_results(
             inner.username, inner.server_id
         );
         // Install network manager and spawn background receive task piping into NetEventRx
-        use crate::session::runtime::{NetBgTask, NetEventRx};
+        use crate::session::runtime::NetEventRx;
         let (tx, rx) = crossbeam_channel::unbounded::<crate::events::NetworkEvent>();
         commands.insert_resource(NetEventRx(rx));
 
         let (outbox_tx, outbox_rx) = async_channel::unbounded::<Vec<u8>>();
-        commands.insert_resource(crate::network::PacketOutbox(outbox_tx));
+        commands.insert_resource(crate::network::PacketOutbox(outbox_tx.clone()));
 
-        // Spawn the background receiver task
+        let slint_window = slint_window.as_ref().map(|w| (*w).clone());
+        let session_start = std::time::Instant::now();
+
+        // Spawn the background receiver task on a dedicated OS thread to prevent suspension when Bevy is idle.
         let tx_for_task = tx.clone();
-        let reader_task = IoTaskPool::get().spawn(async move {
-            let mut rx_loop = receiver;
-            loop {
-                match rx_loop.receive().await {
-                    Ok((packet_id, packet_data)) => {
-                        match packets::server::Codes::try_from(packet_id) {
-                            Ok(code) => {
-                                let _ = tx_for_task
-                                    .send(crate::events::NetworkEvent::Packet(code, packet_data));
+        let outbox_tx_task = outbox_tx.clone();
+        let mut rx_loop = receiver;
+        let slint_window_task = slint_window.clone();
+        
+        std::thread::Builder::new().name("net-reader".into()).spawn(move || {
+            async_std::task::block_on(async move {
+                loop {
+                    match rx_loop.receive().await {
+                        Ok((packet_id, packet_data)) => {
+                            use packets::{ToBytes, TryFromBytes, client, server};
+                            match server::Codes::try_from(packet_id) {
+                                Ok(server::Codes::HeartBeatResponse) => {
+                                    if let Ok(q) = server::HeartBeatResponse::try_from_bytes(&packet_data) {
+                                        let _ = outbox_tx_task.send(client::HeartBeat { value: q.value }.to_bytes()).await;
+                                    }
+                                }
+                                Ok(server::Codes::SynchronizeTicksResponse) => {
+                                    if let Ok(q) = server::SynchronizeTicksResponse::try_from_bytes(&packet_data) {
+                                        let response = client::SynchronizeTicks {
+                                            server_ticks: q.ticks as u32,
+                                            client_ticks: session_start.elapsed().as_millis() as u32,
+                                        };
+                                        let _ = outbox_tx_task.send(response.to_bytes()).await;
+                                    }
+                                }
+                                Ok(code) => {
+                                    let _ = tx_for_task
+                                        .send(crate::events::NetworkEvent::Packet(code, packet_data));
+
+                                    // Wake up the UI event loop so Bevy can process the packet immediately.
+                                    if let Some(w) = slint_window_task.as_ref() {
+                                        if let Some(strong) = w.0.upgrade() {
+                                            strong.window().request_redraw();
+                                        }
+                                    }
+                                }
+                                Err(_) => (),
                             }
-                            Err(_) => (),
+                        }
+                        Err(_) => {
+                            let _ = tx_for_task.send(crate::events::NetworkEvent::Disconnected);
+                            if let Some(w) = slint_window_task.as_ref() {
+                                if let Some(strong) = w.0.upgrade() {
+                                    strong.window().request_redraw();
+                                }
+                            }
+                            break;
                         }
                     }
-                    Err(_) => {
-                        let _ = tx_for_task.send(crate::events::NetworkEvent::Disconnected);
+                }
+            });
+        }).expect("Failed to spawn net-reader thread");
+
+        // Spawn the background writer task on a dedicated OS thread.
+        std::thread::Builder::new().name("net-writer".into()).spawn(move || {
+            async_std::task::block_on(async move {
+                let mut tx_loop = sender;
+                while let Ok(packet) = outbox_rx.recv().await {
+                    if let Err(_) = tx_loop.send(&packet).await {
                         break;
                     }
-                }
-            }
-        });
 
-        // Spawn the background writer task
-        let writer_task = IoTaskPool::get().spawn(async move {
-            let mut tx_loop = sender;
-            while let Ok(packet) = outbox_rx.recv().await {
-                if let Err(_) = tx_loop.send(&packet).await {
-                    break;
-                }
-            }
-        });
+                    while let Ok(extra_packet) = outbox_rx.try_recv() {
+                        if let Err(_) = tx_loop.send(&extra_packet).await {
+                            return;
+                        }
+                    }
 
-        commands.spawn(NetBgTask(reader_task));
-        commands.spawn(NetBgTask(writer_task));
+                    let _ = tx_loop.flush().await;
+                }
+            });
+        }).expect("Failed to spawn net-writer thread");
+
         // Emit connected event to seed tick timers
         let _ = tx.send(crate::events::NetworkEvent::Connected);
         // On success, if remember was requested, persist cred and password

@@ -53,6 +53,10 @@ impl EncryptedSender {
         self.encoder.write_raw(data).await
     }
 
+    pub async fn flush(&mut self) -> io::Result<()> {
+        self.encoder.flush().await
+    }
+
     fn get_encryption_type(&self, opcode: u8) -> EncryptionType {
         match opcode {
             0 => EncryptionType::None,
