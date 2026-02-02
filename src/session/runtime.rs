@@ -151,7 +151,9 @@ fn process_net_packets(
                 }
                 &server::Codes::ServerMessage => {
                     if let Some(q) = parse_packet::<server::ServerMessage>(data) {
-                        chat_events.write(ChatEvent::ServerMessage(q));
+                        if q.message != "" {
+                            chat_events.write(ChatEvent::ServerMessage(q));
+                        }
                     }
                 }
                 &server::Codes::DisplayPublicMessage => {
