@@ -155,17 +155,19 @@ pub fn attach_slint_ui(mut app: App) -> MainWindow {
 
     // Background update timer: ensures Bevy keeps ticking (reading packets, etc) even when Slint
     // pauses rendering because the window is not visible.
-    let app_for_timer = app.clone();
+    let app_weak = Rc::downgrade(&app);
     let last_update_for_timer = last_update;
     let timer = slint::Timer::default();
     timer.start(
         slint::TimerMode::Repeated,
         std::time::Duration::from_millis(100),
         move || {
-            if last_update_for_timer.borrow().elapsed() >= std::time::Duration::from_millis(100) {
-                if let Ok(mut app) = app_for_timer.try_borrow_mut() {
-                    app.update();
-                    *last_update_for_timer.borrow_mut() = std::time::Instant::now();
+            if let Some(app_rc) = app_weak.upgrade() {
+                if last_update_for_timer.borrow().elapsed() >= std::time::Duration::from_millis(100) {
+                    if let Ok(mut app) = app_rc.try_borrow_mut() {
+                        app.update();
+                        *last_update_for_timer.borrow_mut() = std::time::Instant::now();
+                    }
                 }
             }
         },

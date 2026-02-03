@@ -39,5 +39,12 @@ fn main() {
     // Attach Slint UI and hand off control of the rendering notifier to the plugin.
     let slint_app = slint_plugin::attach_slint_ui(app);
 
-    slint_app.run().unwrap();
+    let result = slint_app.run();
+    
+    // Explicitly drop slint_app to trigger cleanup of Bevy App before main exits.
+    // This prevents "threads should not terminate unexpectedly" panics on shutdown
+    // by ensuring TaskPool threads are joined before the process termination begins.
+    drop(slint_app);
+
+    result.unwrap();
 }
