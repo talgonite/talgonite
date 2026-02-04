@@ -643,6 +643,18 @@ pub fn apply_core_to_slint(
                 set_keys!(hotbar_slot_10);
                 set_keys!(hotbar_slot_11);
                 set_keys!(hotbar_slot_12);
+                set_keys!(hotbar2_slot_1);
+                set_keys!(hotbar2_slot_2);
+                set_keys!(hotbar2_slot_3);
+                set_keys!(hotbar2_slot_4);
+                set_keys!(hotbar2_slot_5);
+                set_keys!(hotbar2_slot_6);
+                set_keys!(hotbar2_slot_7);
+                set_keys!(hotbar2_slot_8);
+                set_keys!(hotbar2_slot_9);
+                set_keys!(hotbar2_slot_10);
+                set_keys!(hotbar2_slot_11);
+                set_keys!(hotbar2_slot_12);
                 set_keys!(switch_to_inventory);
                 set_keys!(switch_to_skills);
                 set_keys!(switch_to_spells);

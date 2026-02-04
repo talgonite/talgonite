@@ -305,6 +305,42 @@ pub fn input_handling_system(
         }
     }
 
+    // Hotbar2 slot activation (always panel 4)
+    let hotbar2_slot_actions = [
+        GameAction::Hotbar2Slot1,
+        GameAction::Hotbar2Slot2,
+        GameAction::Hotbar2Slot3,
+        GameAction::Hotbar2Slot4,
+        GameAction::Hotbar2Slot5,
+        GameAction::Hotbar2Slot6,
+        GameAction::Hotbar2Slot7,
+        GameAction::Hotbar2Slot8,
+        GameAction::Hotbar2Slot9,
+        GameAction::Hotbar2Slot10,
+        GameAction::Hotbar2Slot11,
+        GameAction::Hotbar2Slot12,
+    ];
+
+    for (i, action) in hotbar2_slot_actions.iter().enumerate() {
+        if bindings.is_just_pressed(
+            *action,
+            &keyboard_input,
+            Some(&gamepad_query),
+            Some(&gamepad_config),
+        ) {
+            let panel = 4; // Always second hotbar
+            let slot_index = (panel - 3) as usize * 12 + i;
+            let category = SlotPanelType::Hotbar;
+
+            ui_inbound.write(crate::webui::plugin::UiInbound(
+                crate::webui::ipc::UiToCore::ActivateAction {
+                    category,
+                    index: slot_index,
+                },
+            ));
+        }
+    }
+
     let movement_actions = [
         GameAction::MoveUp,
         GameAction::MoveDown,
