@@ -904,7 +904,7 @@ pub fn sync_world_labels_to_slint(
                 text: slint::SharedString::default(),
                 world_x: world_pos.x,
                 world_y: world_pos.y,
-                y_offset: -55.0,
+                y_offset: -40.0,
                 color_r: 1.0,
                 color_g: 1.0,
                 color_b: 1.0,

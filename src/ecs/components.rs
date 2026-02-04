@@ -436,7 +436,7 @@ impl HoverLabel {
     pub fn to_world_label(&self) -> WorldLabel {
         WorldLabel {
             text: self.text.clone(),
-            y_offset: -55.0,
+            y_offset: -40.0,
             color: self.color,
             is_speech: false,
         }
@@ -466,7 +466,7 @@ impl SpeechBubble {
     pub fn to_world_label(&self) -> WorldLabel {
         WorldLabel {
             text: self.text.clone(),
-            y_offset: -50.0,
+            y_offset: -45.0,
             color: if self.is_shout {
                 glam::Vec4::new(1.0, 1.0, 0.0, 1.0) // Yellow for shouts
             } else {
@@ -498,7 +498,7 @@ impl ChantLabel {
     pub fn to_world_label(&self) -> WorldLabel {
         WorldLabel {
             text: self.text.clone(),
-            y_offset: -65.0,
+            y_offset: -50.0,
             color: glam::Vec4::new(0.5, 0.7, 1.0, 1.0),
             is_speech: false,
         }
