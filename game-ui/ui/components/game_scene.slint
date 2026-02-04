@@ -104,9 +104,15 @@ export component GameScene inherits Rectangle {
     }
 
     // Hot bar at bottom right
-    HotBar {
+    if (SettingsState.show-hotbar-1): HotBar {
         x: parent.width - self.width - Theme.spacing-small;
-        y: parent.height - self.height - Theme.spacing-small;
+        y: parent.height - self.height - Theme.spacing-small - 50px;
+    }
+
+    // Second hotbar below the first
+    AltHotBar {
+        x: parent.width - self.width - Theme.spacing-small;
+        y: parent.height - Theme.spacing-small - 45px;
     }
 
     if (GameState.show-inventory): InventoryPanel {

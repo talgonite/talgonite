@@ -4,6 +4,7 @@ import { ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
 import { MenuButton } from "widgets.slint";
 import { GraphicsTab } from "graphics.slint";
 import { ControlsTab } from "controls.slint";
+import { HotbarsTab } from "hotbars.slint";
 import { BasePanel } from "../base_panel.slint";
 
 export component SettingsPanel inherits BasePanel {
@@ -44,6 +45,14 @@ export component SettingsPanel inherits BasePanel {
                         active-tab = 1;
                     }
                 }
+
+                MenuButton {
+                    label: "Hotbars";
+                    selected: active-tab == 2;
+                    clicked => {
+                        active-tab = 2;
+                    }
+                }
             }
 
             Rectangle {
@@ -62,6 +71,12 @@ export component SettingsPanel inherits BasePanel {
                 if active-tab == 1: ScrollView {
                     viewport-width: self.visible-width;
                     ControlsTab {
+                        alignment: start;
+                    }
+                }
+                if active-tab == 2: ScrollView {
+                    viewport-width: self.visible-width;
+                    HotbarsTab {
                         alignment: start;
                     }
                 }

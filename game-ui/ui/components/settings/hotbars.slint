@@ -1,0 +1,25 @@
+import { Theme } from "../../theme.slint";
+import { SettingsState } from "../../settings_state.slint";
+import { VerticalBox, ScrollView, HorizontalBox, CheckBox } from "std-widgets.slint";
+import { SectionHeader } from "widgets.slint";
+
+export component HotbarsTab inherits VerticalBox {
+    spacing: Theme.spacing-small;
+    padding: Theme.spacing-medium;
+
+    VerticalBox {
+        spacing: Theme.spacing-xsmall;
+        alignment: start;
+        SectionHeader {
+            title: "Hotbars";
+        }
+
+        CheckBox {
+            text: "Show Hotbar 1";
+            checked <=> SettingsState.show-hotbar-1;
+            toggled => {
+                SettingsState.show-hotbar-1-changed(SettingsState.show-hotbar-1);
+            }
+        }
+    }
+}

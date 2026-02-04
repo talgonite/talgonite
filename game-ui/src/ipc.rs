@@ -91,6 +91,7 @@ pub enum UiToCore {
     MenuClose,
     SettingsChange {
         xray_size: u8,
+        show_hotbar_1: Option<bool>,
     },
     VolumeChange {
         sfx: Option<f32>,
@@ -98,6 +99,9 @@ pub enum UiToCore {
     },
     ScaleChange {
         scale: f32,
+    },
+    ShowHotbar1 {
+        show: bool,
     },
     RebindKey {
         action: String,
@@ -227,6 +231,7 @@ pub enum CoreToUi {
         sfx_volume: f32,
         music_volume: f32,
         scale: f32,
+        show_hotbar_1: bool,
         key_bindings: KeyBindingsUi,
     },
 }

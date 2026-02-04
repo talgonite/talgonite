@@ -321,7 +321,7 @@ fn handle_ui_inbound_ingame(
                 outbound.write(UiOutbound(settings.to_snapshot_message(None)));
                 outbound.write(UiOutbound(settings.to_sync_message()));
             }
-            UiToCore::SettingsChange { xray_size } => {
+            UiToCore::SettingsChange { xray_size, show_hotbar_1: _ } => {
                 settings.graphics.xray_size = crate::settings_types::XRaySize::from_u8(*xray_size);
             }
             UiToCore::VolumeChange { sfx, music } => {
@@ -335,6 +335,9 @@ fn handle_ui_inbound_ingame(
             UiToCore::ScaleChange { scale } => {
                 settings.graphics.scale = *scale;
                 zoom_state.set_zoom(*scale);
+            }
+            UiToCore::ShowHotbar1 { show } => {
+                settings.graphics.show_hotbar_1 = *show;
             }
             UiToCore::RebindKey {
                 action,
@@ -966,7 +969,7 @@ fn handle_ui_inbound_login(
                 }
                 outbound.write(UiOutbound(settings.to_snapshot_message(None)));
             }
-            UiToCore::SettingsChange { xray_size } => {
+            UiToCore::SettingsChange { xray_size, show_hotbar_1: _ } => {
                 settings.graphics.xray_size = crate::settings_types::XRaySize::from_u8(*xray_size);
             }
             UiToCore::VolumeChange { sfx, music } => {
@@ -979,6 +982,9 @@ fn handle_ui_inbound_login(
             }
             UiToCore::ScaleChange { scale } => {
                 settings.graphics.scale = *scale;
+            }
+            UiToCore::ShowHotbar1 { show } => {
+                settings.graphics.show_hotbar_1 = *show;
             }
             UiToCore::RebindKey {
                 action,

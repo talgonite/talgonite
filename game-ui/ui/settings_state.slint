@@ -6,7 +6,7 @@ export global SettingsState {
     in-out property <float> music-volume: 1.0;  // 0.0 to 1.0
     in-out property <float> scale: 1.0;  // 1.0 to 5.0
 
-    // Key bindings (Primary and Secondary)
+    in-out property <bool> show-hotbar-1: true;  // Toggle to show/hide hotbar 1
     in-out property <string> key-move-up: "ArrowUp";
     in-out property <string> key-move-up-2: "";
     in-out property <string> key-move-down: "ArrowDown";
@@ -74,6 +74,7 @@ export global SettingsState {
     callback sfx-volume-changed(float);
     callback music-volume-changed(float);
     callback scale-changed(float);
+    callback show-hotbar-1-changed(bool);
     callback start-rebind(string, int);
     callback rebind-key(string);
     callback unbind-key(string, int);
