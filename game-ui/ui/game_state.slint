@@ -99,6 +99,19 @@ export struct WorldListMemberUi {
     is_master: bool,
 }
 
+export struct NpcDialogData {
+    visible: bool,
+    text_entry_visible: bool,
+    is_shop: bool,
+    interaction_enabled: bool,
+    npc_name: string,
+    npc_portrait: image,
+    dialog_text: string,
+    menu_entries: [MenuEntry],
+    text_entry_prompt: string,
+    text_entry_args: string,
+}
+
 export struct ChatMessage {
     text: string,
     color: brush,
@@ -258,25 +271,42 @@ export global PopupState {
 
 // NPC Dialog State - handles conversations and text entry
 export global NpcDialogState {
-    // Visibility
-    in-out property <bool> visible: false;
-    in-out property <bool> text-entry-visible: false;
-    in-out property <bool> is-shop: false;
+    in-out property <NpcDialogData> data: {
+        interaction_enabled: true,
+        visible: false,
+    };
 
-    // NPC identity
-    in-out property <string> npc-name: "";
-    in-out property <image> npc-portrait: @image-url(""); 
+    // Internal request callbacks (Rust listens to these)
+    callback select-option-request(int, string);
+    callback close-request();
+    callback submit-text-request(string);
 
-    // Dialog content
-    in-out property <string> dialog-text: "";
-    in-out property <[MenuEntry]> menu-entries: [];
-
-    // Text entry
-    in-out property <string> text-entry-prompt: "";
-    in-out property <string> text-entry-args: "";
-
-    // Callbacks
-    callback select-option(int, string);    // id, text
-    callback close();
-    callback submit-text(string);           // text entry submission
+    // Public API for UI (handles locking and immediate state changes)
+    public function select-option(id: int, text: string) {
+        if data.interaction_enabled {
+            data.interaction_enabled = false;
+            select-option-request(id, text);
+        }
+    }
+    public function close() {
+        if data.interaction_enabled {
+            data.interaction_enabled = false;
+            data.visible = false;
+            data.text_entry_visible = false;
+            close-request();
+        }
+    }
+    public function submit-text(text: string) {
+        if data.interaction_enabled {
+            data.interaction_enabled = false;
+            data.text_entry_visible = false;
+            submit-text-request(text);
+        }
+    }
+    public function reset() {
+        data = {
+            interaction_enabled: true,
+            visible: false,
+        };
+    }
 }

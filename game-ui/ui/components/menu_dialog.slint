@@ -16,7 +16,7 @@ import "../fonts/Lato-BoldItalic.ttf";
 import "../fonts/Lato-BlackItalic.ttf";
 
 export component NpcDialog inherits Rectangle {
-    property <image> npc-portrait: NpcDialogState.npc-portrait;
+    property <image> npc-portrait: NpcDialogState.data.npc_portrait;
     TouchArea {
         clicked => {
             NpcDialogState.close();
@@ -24,6 +24,11 @@ export component NpcDialog inherits Rectangle {
     }
 
     background: #0007;
+
+    if (!NpcDialogState.data.interaction_enabled): TouchArea {
+        z: 100;
+    }
+
     HorizontalLayout {
         alignment: center;
         VerticalLayout {
@@ -79,7 +84,7 @@ export component NpcDialog inherits Rectangle {
                                         portrait-npc-name := Text {
                                             font-family: "Lato";
                                             font-size: 20px;
-                                            text: NpcDialogState.npc-name;
+                                            text: NpcDialogState.data.npc_name;
                                             vertical-alignment: center;
                                             font-weight: 500;
                                         }
@@ -92,8 +97,10 @@ export component NpcDialog inherits Rectangle {
 
                         // Menu options
                         VerticalLayout {
+                            opacity: NpcDialogState.data.interaction_enabled ? 1.0 : 0.6;
+                            animate opacity { duration: 150ms; }
                             alignment: end;
-                            if (NpcDialogState.text-entry-visible): VerticalLayout {
+                            if (NpcDialogState.data.text_entry_visible): VerticalLayout {
                                 Rectangle {
                                     background: @linear-gradient(0deg, #0000 0%, #0007 15%, #0007 85%, #0000 100%);
                                     preferred-height: 240px;
@@ -102,14 +109,14 @@ export component NpcDialog inherits Rectangle {
                                         padding: 16px;
                                         spacing: 12px;
                                         alignment: center;
-                                        if NpcDialogState.text-entry-args != "": Rectangle {
+                                        if NpcDialogState.data.text_entry_args != "": Rectangle {
                                             height: 32px;
                                             background: #FFC04010;
                                             border-radius: 6px;
                                             border-width: 1px;
                                             border-color: #FFC04030;
                                             Text {
-                                                text: NpcDialogState.text-entry-args;
+                                                text: NpcDialogState.data.text_entry_args;
                                                 font-size: 13px;
                                                 font-weight: 500;
                                                 color: Theme.accent;
@@ -119,7 +126,7 @@ export component NpcDialog inherits Rectangle {
                                         }
                                         npc-input := LineEdit {
                                             height: 36px;
-                                            placeholder-text: NpcDialogState.text-entry-prompt != "" ? NpcDialogState.text-entry-prompt : "Type here...";
+                                            placeholder-text: NpcDialogState.data.text_entry_prompt != "" ? NpcDialogState.data.text_entry_prompt : "Type here...";
                                             accepted => {
                                                 if self.text != "" {
                                                     NpcDialogState.submit-text(self.text);
@@ -157,12 +164,12 @@ export component NpcDialog inherits Rectangle {
                                     }
                                 }
                             }
-                            if (!NpcDialogState.is-shop && NpcDialogState.menu-entries.length > 0): VerticalLayout {
+                            if (!NpcDialogState.data.is_shop && NpcDialogState.data.menu_entries.length > 0): VerticalLayout {
                                 Rectangle {
                                     background: @linear-gradient(0deg, #0000 0%, #0007 15%, #0007 85%, #0000 100%);
                                     VerticalLayout {
                                         padding: 24px;
-                                        for entry in NpcDialogState.menu-entries: Rectangle {
+                                        for entry in NpcDialogState.data.menu_entries: Rectangle {
                                             animate background { duration: 100ms; }
                                             touch := TouchArea {
                                                 mouse-cursor: pointer;
@@ -195,7 +202,7 @@ export component NpcDialog inherits Rectangle {
                                     }
                                 }
                             }
-                            if (NpcDialogState.is-shop && NpcDialogState.menu-entries.length > 0): VerticalLayout {
+                            if (NpcDialogState.data.is_shop && NpcDialogState.data.menu_entries.length > 0): VerticalLayout {
                                 Rectangle {
                                     background: @linear-gradient(0deg, #0000 0%, #0007 15%, #0007 85%, #0000 100%);
                                     preferred-height: 240px;
@@ -204,7 +211,7 @@ export component NpcDialog inherits Rectangle {
                                         GridLayout {
                                             spacing: 10px;
                                             padding: 5px;
-                                            for entry[idx] in NpcDialogState.menu-entries: Rectangle {
+                                            for entry[idx] in NpcDialogState.data.menu_entries: Rectangle {
                                                 row: Math.floor(idx / 2);
                                                 item-touch := TouchArea {
                                                     mouse-cursor: pointer;
@@ -279,7 +286,7 @@ export component NpcDialog inherits Rectangle {
                             font-family: "Lato";
                             font-size: 16px;
                             font-weight: 700;
-                            text: NpcDialogState.dialog-text;
+                            text: NpcDialogState.data.dialog_text;
                             wrap: word-wrap;
                             color: #28210F;
                         }

@@ -41,7 +41,7 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
     // Menu select (option selection)
     {
         let tx = tx.clone();
-        npc_dialog.on_select_option(move |id, name: slint::SharedString| {
+        npc_dialog.on_select_option_request(move |id, name: slint::SharedString| {
             let _ = tx.send(UiToCore::MenuSelect {
                 id,
                 name: name.to_string(),
@@ -52,14 +52,7 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
     // Close dialog
     {
         let tx = tx.clone();
-        let slint_app_weak = slint_app.as_weak();
-        npc_dialog.on_close(move || {
-            // Hide the dialog immediately in UI
-            if let Some(app) = slint_app_weak.upgrade() {
-                let npc = app.global::<NpcDialogState>();
-                npc.set_visible(false);
-                npc.set_text_entry_visible(false);
-            }
+        npc_dialog.on_close_request(move || {
             let _ = tx.send(UiToCore::MenuClose);
         });
     }
@@ -67,12 +60,7 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
     // Text entry submission
     {
         let tx = tx.clone();
-        let slint_app_weak = slint_app.as_weak();
-        npc_dialog.on_submit_text(move |text: slint::SharedString| {
-            if let Some(app) = slint_app_weak.upgrade() {
-                let npc = app.global::<NpcDialogState>();
-                npc.set_text_entry_visible(false);
-            }
+        npc_dialog.on_submit_text_request(move |text: slint::SharedString| {
             let _ = tx.send(UiToCore::MenuSelect {
                 id: 0,
                 name: text.to_string(),
