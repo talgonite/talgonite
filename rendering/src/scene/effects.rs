@@ -22,7 +22,7 @@ pub struct EffectFrameSequence {
 }
 
 struct LoadedEffect {
-    allocations: Vec<Allocation>,
+    allocations: Vec<Option<Allocation>>,
     frame_widths: Vec<u16>,
     frame_heights: Vec<u16>,
     frame_offsets: Vec<(i16, i16)>,
@@ -44,7 +44,7 @@ pub struct EffectManager {
     loaded_effects: HashMap<u16, LoadedEffect>,
     frame_sequences: Vec<EffectFrameSequence>,
     palette_data: Option<Vec<u8>>,
-    palette_indices: Vec<u8>,
+    palette_indices: rangemap::RangeMap<u16, u16>,
     instances: SharedInstanceBatch,
     atlas: TextureAtlas,
     pipeline: wgpu::RenderPipeline,
@@ -205,12 +205,22 @@ impl EffectManager {
             .collect()
     }
 
-    fn parse_palette_indices(archive: &ArxArchive) -> Vec<u8> {
+    fn parse_palette_indices(archive: &ArxArchive) -> rangemap::RangeMap<u16, u16> {
         let Ok(data) = archive.get_file("roh/eff.tbl.bin") else {
             tracing::error!("Failed to load eff.tbl.bin");
-            return Vec::new();
+            return rangemap::RangeMap::new();
         };
-        data
+
+        match bincode::serde::decode_from_slice::<rangemap::RangeMap<u16, u16>, _>(
+            &data,
+            bincode::config::standard(),
+        ) {
+            Ok((map, _)) => map,
+            Err(e) => {
+                tracing::error!("Failed to decode eff.tbl.bin: {:?}", e);
+                rangemap::RangeMap::new()
+            }
+        }
     }
 
     fn load_palette(archive: &ArxArchive) -> Option<Vec<u8>> {
@@ -294,8 +304,12 @@ impl EffectManager {
             let w = frame.width as usize;
             let h = frame.height as usize;
 
-            let alloc = self.atlas.allocate(queue, w, h, &frame.data)?;
-            allocations.push(alloc);
+            if w > 0 && h > 0 {
+                let alloc = self.atlas.allocate(queue, w, h, &frame.data);
+                allocations.push(alloc);
+            } else {
+                allocations.push(None);
+            }
             frame_widths.push(frame.width);
             frame_heights.push(frame.height);
             frame_offsets.push((frame.left, frame.top));
@@ -329,11 +343,7 @@ impl EffectManager {
         let (epf, _) =
             bincode::decode_from_slice::<EpfImage, _>(&data, bincode::config::standard()).ok()?;
 
-        let palette_index = self
-            .palette_indices
-            .get(effect_id as usize)
-            .copied()
-            .unwrap_or(0);
+        let palette_index = self.palette_indices.get(&effect_id).copied().unwrap_or(0) as u8;
         let palette = self.palette_data.as_ref()?;
 
         let mut allocations = Vec::with_capacity(epf.frames.len());
@@ -342,19 +352,22 @@ impl EffectManager {
         let mut frame_offsets = Vec::with_capacity(epf.frames.len());
 
         for frame in &epf.frames {
-            let w = frame.right - frame.left;
-            let h = frame.bottom - frame.top;
+            let w = frame.right.saturating_sub(frame.left);
+            let h = frame.bottom.saturating_sub(frame.top);
 
             if w > 0 && h > 0 {
                 let rgba_data = self.apply_palette(&frame.data, palette, palette_index);
 
-                let alloc = self.atlas.allocate(queue, w, h, &rgba_data)?;
+                let alloc = self.atlas.allocate(queue, w, h, &rgba_data);
                 allocations.push(alloc);
                 frame_widths.push(w as u16);
                 frame_heights.push(h as u16);
                 frame_offsets.push((frame.left as i16, frame.top as i16));
             } else {
-                tracing::warn!("Skipping empty EPF frame in effect ID {}", effect_id);
+                allocations.push(None);
+                frame_widths.push(0);
+                frame_heights.push(0);
+                frame_offsets.push((0, 0));
             }
         }
 
@@ -406,13 +419,22 @@ impl EffectManager {
         y: f32,
         z_offset: f32,
     ) -> Option<Instance> {
-        let alloc = loaded.allocations.get(frame_index)?;
         let w = *loaded.frame_widths.get(frame_index)? as f32;
         let h = *loaded.frame_heights.get(frame_index)? as f32;
         let (offset_x, offset_y) = *loaded.frame_offsets.get(frame_index)?;
 
         let world_pos = get_isometric_coordinate(x, y);
         let z = calculate_tile_z(x, y, 1.0) + z_offset;
+
+        let alloc = match loaded.allocations.get(frame_index) {
+            Some(alloc) => alloc,
+            None => {
+                return Some(Instance {
+                    position: world_pos.extend(z),
+                    ..Default::default()
+                });
+            }
+        };
 
         let atlas_w = ATLAS_WIDTH as f32;
         let atlas_h = ATLAS_HEIGHT as f32;

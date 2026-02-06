@@ -3751,7 +3751,6 @@ dependencies = [
  "jubako",
  "libarx",
  "memchr",
- "png 0.18.0",
  "rangemap",
  "reqwest",
  "tracing",
