@@ -281,6 +281,7 @@ pub fn input_handling_system(
                         slot: (slot_index + 1) as u8,
                     });
                 }
+                SlotPanelType::Gold => {}
                 SlotPanelType::Skill => {
                     ability_events.write(crate::events::AbilityEvent::UseSkill {
                         slot: (slot_index + 1) as u8,

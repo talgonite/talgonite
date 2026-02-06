@@ -5,7 +5,10 @@ use crate::{
 use bevy::prelude::*;
 use game_types::SlotPanelType;
 use game_ui::{ActionId, LoginError};
+use game_ui::slint_types::GoldDropState;
 use slint::Model;
+
+const GOLD_SPRITE_ID: u16 = 140;
 
 pub fn sync_portrait_to_slint(
     mut portrait: ResMut<PlayerPortraitState>,
@@ -134,11 +137,13 @@ fn reset_game_state_for_main_menu(window: &crate::MainWindow) {
     game_state.set_max_hp(0);
     game_state.set_current_mp(0);
     game_state.set_max_mp(0);
+    game_state.set_player_gold(0);
     game_state.set_player_id(-1);
     game_state.set_server_name(slint::SharedString::from(""));
     game_state.set_ping_ms(0);
     game_state.set_player_name(slint::SharedString::from(""));
     game_state.set_player_portrait(slint::Image::default());
+    game_state.set_gold_icon(slint::Image::default());
 
     game_state.set_camera_x(0.0);
     game_state.set_camera_y(0.0);
@@ -168,6 +173,11 @@ fn reset_game_state_for_main_menu(window: &crate::MainWindow) {
     npc_dialog.set_menu_entries(empty_model());
     npc_dialog.set_text_entry_prompt(slint::SharedString::from(""));
     npc_dialog.set_text_entry_args(slint::SharedString::from(""));
+
+    let gold_drop = slint::ComponentHandle::global::<GoldDropState>(window);
+    gold_drop.set_visible(false);
+    gold_drop.set_max_gold(0);
+    gold_drop.set_error_text(slint::SharedString::from(""));
 
     game_state.set_inventory(empty_model());
     game_state.set_skills(empty_model());
@@ -202,11 +212,26 @@ pub fn apply_core_to_slint(
     hotbar_panel: Res<crate::ecs::hotbar::HotbarPanelState>,
     lobby_portraits: Res<crate::resources::LobbyPortraits>,
     world_list: Res<crate::webui::plugin::WorldListState>,
+    mut gold_icon_loaded: Local<bool>,
 ) {
     let Some(strong) = win.0.upgrade() else {
         return;
     };
     let asset_loader = &asset_loader.0;
+    let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
+
+    let player_id = game_state.get_player_id();
+    if player_id < 0 {
+        *gold_icon_loaded = false;
+    }
+
+    if !*gold_icon_loaded && player_id >= 0 {
+        let icon = asset_loader
+            .load_item_icon(&game_files, GOLD_SPRITE_ID)
+            .unwrap_or_default();
+        game_state.set_gold_icon(icon);
+        *gold_icon_loaded = true;
+    }
 
     let mut hotbar_dirty = false;
     if inventory.is_changed() {
@@ -589,6 +614,19 @@ pub fn apply_core_to_slint(
                 npc_dialog.set_is_shop(false);
                 npc_dialog.set_visible(true);
             }
+            crate::webui::ipc::CoreToUi::GoldDropPrompt { max_gold, error } => {
+                let gold_drop = slint::ComponentHandle::global::<GoldDropState>(&strong);
+                gold_drop.set_max_gold(*max_gold as i32);
+                gold_drop.set_error_text(slint::SharedString::from(
+                    error.as_deref().unwrap_or(""),
+                ));
+                gold_drop.set_visible(true);
+            }
+            crate::webui::ipc::CoreToUi::GoldDropClose => {
+                let gold_drop = slint::ComponentHandle::global::<GoldDropState>(&strong);
+                gold_drop.set_visible(false);
+                gold_drop.set_error_text(slint::SharedString::from(""));
+            }
             crate::webui::ipc::CoreToUi::SettingsSync {
                 xray_size,
                 sfx_volume,
@@ -826,6 +864,7 @@ pub fn sync_world_labels_to_slint(
     game_state.set_max_hp(player_attrs.max_hp as i32);
     game_state.set_current_mp(player_attrs.current_mp as i32);
     game_state.set_max_mp(player_attrs.max_mp as i32);
+    game_state.set_player_gold(player_attrs.gold as i32);
 
     // Update server name
     game_state.set_server_name(slint::SharedString::from(

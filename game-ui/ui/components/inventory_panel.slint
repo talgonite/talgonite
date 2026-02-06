@@ -7,7 +7,7 @@ import {
 } from "../game_state.slint";
 import { CancelDrag, DragDropItem } from "drag_drop.slint";
 import { Theme } from "../theme.slint";
-import { ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { ScrollView } from "std-widgets.slint";
 import { Icon } from "./icon.slint";
 import { BasePanel } from "./base_panel.slint";
 
@@ -76,24 +76,85 @@ export component InventoryPanel inherits BasePanel {
     title: "Inventory";
     visible: true;
     width: 324px;
-    height: 380px;
+    height: 432px;
     close => {
         GameState.show-inventory = false;
     }
-    ScrollView {
-        viewport-width: self.visible-width;
-        GridLayout {
-            padding: Theme.spacing-small;
-            spacing: Theme.spacing-small;
-            for slot[i] in GameState.inventory: Rectangle {
-                row: i / 6;
-                col: Math.mod(i, 6);
-                width: 44px;
-                height: 44px;
-                InventorySlot {
-                    item: slot;
-                    slot: slot.slot;
+    VerticalLayout {
+        spacing: 0px;
+        ScrollView {
+            min-height: 0px;
+            viewport-width: self.visible-width;
+            GridLayout {
+                padding: Theme.spacing-small;
+                spacing: Theme.spacing-small;
+                for slot[i] in GameState.inventory: Rectangle {
+                    row: i / 6;
+                    col: Math.mod(i, 6);
+                    width: 44px;
+                    height: 44px;
+                    InventorySlot {
+                        item: slot;
+                        slot: slot.slot;
+                    }
                 }
+            }
+        }
+
+        Rectangle {
+            height: 30px;
+            background: Theme.surface-primary;
+            border-width: 1px;
+            border-color: Theme.border-muted;
+            border-bottom-left-radius: 2px;
+            border-bottom-right-radius: 2px;
+            HorizontalLayout {
+                padding: 5px;
+                spacing: Theme.spacing-small;
+                Rectangle {
+                    width: 18px;
+                    height: 18px;
+                    background: Theme.surface-muted;
+                    border-radius: Theme.radius-small;
+                    border-width: 1px;
+                    border-color: Theme.border-muted;
+                    clip: true;
+                    Icon {
+                        icon: GameState.gold_icon;
+                        width: parent.width;
+                        height: parent.height;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                    }
+                    gold-drag := DragDropItem {
+                        draggable: GameState.player_gold > 0;
+                        height: 30px;
+                        slot-index: 0;
+                        x: 5px;
+                        width: 30px;
+                        panel-type: SlotPanelType.gold;
+                    }
+                    states [
+                        dragging when gold-drag.pressed: {
+                            background: Theme.surface-card;
+                            border-width: 2px;
+                            border-color: Theme.accent;
+                        }
+                    ]
+                }
+
+                VerticalLayout {
+                    alignment: LayoutAlignment.center;
+                    spacing: 2px;
+                    Text {
+                        text: GameState.player_gold;
+                        font-size: Theme.font-size-medium;
+                        font-weight: 700;
+                        color: Theme.foreground-strong;
+                    }
+                }
+
+
             }
         }
     }
