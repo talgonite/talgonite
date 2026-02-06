@@ -69,6 +69,10 @@ pub enum UiToCore {
         x: f32,
         y: f32,
     },
+    GoldDropSubmit {
+        amount: String,
+    },
+    GoldDropCancel,
     ChatSubmit {
         mode: String,
         text: String,
@@ -219,6 +223,11 @@ pub enum CoreToUi {
         args: String,
         entries: Vec<MenuEntryUi>,
     },
+    GoldDropPrompt {
+        max_gold: u32,
+        error: Option<String>,
+    },
+    GoldDropClose,
     SettingsSync {
         xray_size: u8,
         sfx_volume: f32,

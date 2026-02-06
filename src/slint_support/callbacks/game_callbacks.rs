@@ -4,12 +4,15 @@ use crossbeam_channel::Sender;
 use slint::ComponentHandle;
 
 use crate::webui::ipc::{UiToCore, WorldListFilter};
+use game_ui::slint_types::GoldDropState;
+
 use crate::{DragDropState, GameState, MainWindow, NpcDialogState, SlotPanelType};
 
 /// Convert Slint SlotPanelType to game types.
 fn slint_to_game_panel(panel: SlotPanelType) -> game_types::SlotPanelType {
     match panel {
         SlotPanelType::Item => game_types::SlotPanelType::Item,
+        SlotPanelType::Gold => game_types::SlotPanelType::Gold,
         SlotPanelType::Skill => game_types::SlotPanelType::Skill,
         SlotPanelType::Spell => game_types::SlotPanelType::Spell,
         SlotPanelType::Hotbar => game_types::SlotPanelType::Hotbar,
@@ -37,6 +40,23 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
 
     // NPC Dialog callbacks
     let npc_dialog = slint_app.global::<NpcDialogState>();
+
+    // Gold drop prompt callbacks
+    let gold_drop = slint_app.global::<GoldDropState>();
+    {
+        let tx = tx.clone();
+        gold_drop.on_submit(move |amount: slint::SharedString| {
+            let _ = tx.send(UiToCore::GoldDropSubmit {
+                amount: amount.to_string(),
+            });
+        });
+    }
+    {
+        let tx = tx.clone();
+        gold_drop.on_cancel(move || {
+            let _ = tx.send(UiToCore::GoldDropCancel);
+        });
+    }
 
     // Menu select (option selection)
     {

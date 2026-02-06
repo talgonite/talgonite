@@ -1,0 +1,129 @@
+import { GoldDropState } from "../game_state.slint";
+import { Theme } from "../theme.slint";
+import { LineEdit } from "std-widgets.slint";
+
+export component GoldDropPrompt inherits Rectangle {
+    width: 100%;
+    height: 100%;
+    background: Theme.overlay-strong;
+    visible: GoldDropState.visible;
+
+    TouchArea { }
+
+    HorizontalLayout {
+        alignment: center;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 280px;
+                border-radius: Theme.radius-medium;
+                background: Theme.surface-modal;
+                border-width: 1px;
+                border-color: Theme.border-panel;
+                drop-shadow-blur: 12px;
+                drop-shadow-color: Theme.overlay-strong;
+
+                VerticalLayout {
+                    padding: Theme.spacing-medium;
+                    spacing: Theme.spacing-small;
+
+                Text {
+                    text: "Drop Gold";
+                    font-size: Theme.font-size-large;
+                    font-weight: 700;
+                    color: Theme.foreground-strong;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: "How much gold do you want to drop?";
+                    font-size: Theme.font-size-medium;
+                    color: Theme.foreground;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: "Max: " + GoldDropState.max-gold;
+                    font-size: Theme.font-size-small;
+                    color: Theme.foreground-muted;
+                    horizontal-alignment: center;
+                }
+
+                amount_input := LineEdit {
+                    height: 36px;
+                    placeholder-text: "Amount";
+                    accepted => {
+                        if self.text != "" {
+                            GoldDropState.submit(self.text);
+                        }
+                    }
+                }
+
+                if GoldDropState.error-text != "": Text {
+                    text: GoldDropState.error-text;
+                    font-size: Theme.font-size-small;
+                    color: Theme.danger-foreground;
+                    horizontal-alignment: center;
+                }
+
+                HorizontalLayout {
+                    spacing: Theme.spacing-small;
+                    Rectangle {
+                        height: 36px;
+                        border-radius: 6px;
+                        background: amount_input.text == "" ? Theme.surface-muted : submit_touch.pressed ? Theme.accent : submit_touch.has-hover ? Theme.accent-muted : Theme.accent-subtle;
+                        border-width: 1px;
+                        border-color: Theme.border-accent;
+                        opacity: amount_input.text == "" ? 0.6 : 1.0;
+                        submit_touch := TouchArea {
+                            mouse-cursor: amount_input.text != "" ? pointer : default;
+                            clicked => {
+                                if amount_input.text != "" {
+                                    GoldDropState.submit(amount_input.text);
+                                }
+                            }
+                        }
+                        Text {
+                            text: "Submit";
+                            font-size: Theme.font-size-medium;
+                            font-weight: 600;
+                            color: Theme.foreground-strong;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Rectangle {
+                        height: 36px;
+                        border-radius: 6px;
+                        background: cancel_touch.pressed ? Theme.surface-secondary : cancel_touch.has-hover ? Theme.surface-primary : Theme.surface-muted;
+                        border-width: 1px;
+                        border-color: Theme.border-muted;
+                        cancel_touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                GoldDropState.cancel();
+                            }
+                        }
+                        Text {
+                            text: "Cancel";
+                            font-size: Theme.font-size-medium;
+                            font-weight: 600;
+                            color: Theme.foreground;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+                }
+            }
+        }
+    }
+
+    changed visible => {
+        if (self.visible) {
+            amount_input.text = "";
+            amount_input.focus();
+        }
+    }
+}

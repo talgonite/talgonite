@@ -9,6 +9,7 @@ pub struct PlayerAttributes {
     pub max_hp: u32,
     pub current_mp: u32,
     pub max_mp: u32,
+    pub gold: u32,
 }
 
 #[derive(Resource)]
