@@ -43,6 +43,8 @@ pub struct ActiveMenuContext {
     pub menu_type: Option<MenuType>,
     pub args: String,
     pub dialog_id: Option<u16>,
+    /// Last menu selection to prevent double-firing (only for shop-style grid menus)
+    pub last_select: Option<(i32, String, Instant)>,
 }
 
 #[derive(Message)]
@@ -199,6 +201,19 @@ fn handle_ui_inbound_ingame(
                 });
             }
             UiToCore::MenuSelect { id, name } => {
+                // Deduplicate for shop-style menus (ShowItems)
+                // where double clicking can cause double-fire TouchArea events
+                let should_dedupe = matches!( menu_ctx.menu_type, Some(MenuType::ShowItems));
+
+                if should_dedupe {
+                    if let Some((last_id, last_name, last_time)) = &menu_ctx.last_select {
+                        if *last_id == *id && last_name == name && last_time.elapsed().as_millis() < 500 {
+                            continue;
+                        }
+                    }
+                    menu_ctx.last_select = Some((*id, name.clone(), Instant::now()));
+                }
+
                 if menu_ctx.window_type == ActiveWindowType::Info {
                     menu_ctx.window_type = ActiveWindowType::None;
                     outbound.write(UiOutbound(CoreToUi::DisplayMenuClose));
