@@ -69,6 +69,8 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
         let tx = tx.clone();
         let slint_app_weak = slint_app.as_weak();
         npc_dialog.on_submit_text(move |text: slint::SharedString| {
+            tracing::debug!("🔍 submit-text callback triggered with text parameter: '{}'", text);
+
             if let Some(app) = slint_app_weak.upgrade() {
                 let npc = app.global::<NpcDialogState>();
                 npc.set_text_entry_visible(false);

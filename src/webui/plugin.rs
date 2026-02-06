@@ -199,6 +199,10 @@ fn handle_ui_inbound_ingame(
                 });
             }
             UiToCore::MenuSelect { id, name } => {
+                tracing::info!("🔍 MenuSelect received: id={}, name='{}', name.len={}", id, name, name.len());
+                tracing::info!("🔍 Menu context: window_type={:?}, pursuit_id={}, dialog_id={:?}, menu_type={:?}, args='{}'",
+                    menu_ctx.window_type, menu_ctx.pursuit_id, menu_ctx.dialog_id, menu_ctx.menu_type, menu_ctx.args);
+
                 if menu_ctx.window_type == ActiveWindowType::Info {
                     menu_ctx.window_type = ActiveWindowType::None;
                     outbound.write(UiOutbound(CoreToUi::DisplayMenuClose));
@@ -241,41 +245,57 @@ fn handle_ui_inbound_ingame(
                     );
 
                     let args = if is_slot_interaction {
+                        tracing::debug!("🔍 Slot interaction, sending slot: {}", *id);
                         packets::client::MenuInteractionArgs::Slot(*id as u8)
                     } else {
                         let mut topics = Vec::new();
                         if !menu_ctx.args.is_empty() {
+                            tracing::debug!("🔍 Adding menu_ctx.args to topics: '{}'", menu_ctx.args);
                             topics.push(menu_ctx.args.clone());
                         }
                         if !name.is_empty() {
+                            tracing::debug!("🔍 Adding name to topics: '{}'", name);
                             topics.push(name.clone());
+                        } else {
+                            tracing::warn!("🔍 name is EMPTY! This will likely fail.");
                         }
+                        tracing::debug!("🔍 Final topics vector: {:?}", topics);
                         packets::client::MenuInteractionArgs::Topics(topics)
                     };
 
                     (menu_ctx.pursuit_id, args)
                 } else {
                     let pursuit_id = *id as u16;
-                    let args = if !menu_ctx.args.is_empty() {
+                    let args = if !menu_ctx.args.is_empty() || !name.is_empty() {
                         let mut topics = Vec::new();
-                        topics.push(menu_ctx.args.clone());
+                        if !menu_ctx.args.is_empty() {
+                            tracing::debug!("🔍 (else branch) Adding menu_ctx.args to topics: '{}'", menu_ctx.args);
+                            topics.push(menu_ctx.args.clone());
+                        }
                         if !name.is_empty() {
+                            tracing::debug!("🔍 (else branch) Adding name to topics: '{}'", name);
                             topics.push(name.clone());
                         }
+                        tracing::debug!("🔍 (else branch) Final topics vector: {:?}", topics);
                         packets::client::MenuInteractionArgs::Topics(topics)
                     } else {
+                        tracing::warn!("🔍 (else branch) Both args and name are EMPTY, using Slot(0)");
                         packets::client::MenuInteractionArgs::Slot(0)
                     };
                     (pursuit_id, args)
                 };
 
                 if let Some(entity_type) = menu_ctx.entity_type {
+                    tracing::debug!("🔍 Sending MenuInteraction packet: entity_type={:?}, entity_id={}, pursuit_id={}, args={:?}",
+                        entity_type, menu_ctx.entity_id, pursuit_id, args);
                     outbox.send(&packets::client::MenuInteraction {
                         entity_type,
                         entity_id: menu_ctx.entity_id,
                         pursuit_id,
                         args,
                     });
+                } else {
+                    tracing::error!("🔍 Cannot send MenuInteraction: entity_type is None!");
                 }
             }
             UiToCore::MenuClose => {
