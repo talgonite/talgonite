@@ -177,7 +177,3 @@ To ensure a robust and maintainable UI, follow the "Backend-as-Source" pattern:
 - **Pre-populated Models**: Initialize models (like inventory grids) in Rust with all constant metadata (IDs, slot indices) even for empty slots. Slint should only be responsible for rendering what it is given.
 - **Dumb Components**: UI components should be "dumb" observers of state. If a value is needed for an action (like a slot index), it should be a property passed from the data model, not derived from the view's layout or iteration index.
 - **Sync over Computation**: Prefer syncing a pre-computed value from Rust over using complex bindings or expressions in Slint.
-
-## Dependencies Note
-
-Slint is patched from a specific git commit (`[patch.crates-io]` in Cargo.toml) for unstable wgpu 27 integration.
