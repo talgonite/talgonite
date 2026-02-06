@@ -8,6 +8,7 @@ use tracing::{info, warn};
 
 use super::animation;
 use super::collision::WallCollisionTable;
+use super::social_status::LocalSocialStatus;
 use super::spell_casting::{self, SpellCastingState};
 use super::systems::{self, GameSet};
 use crate::audio;
@@ -20,6 +21,7 @@ impl Plugin for GamePlugin {
         systems::configure_game_sets(app);
 
         app.init_resource::<SpellCastingState>()
+            .init_resource::<LocalSocialStatus>()
             .init_resource::<crate::resources::LobbyPortraits>()
             .init_resource::<crate::resources::ItemTileCounters>()
             .add_message::<super::components::MapPrepared>()
@@ -155,6 +157,13 @@ impl Plugin for GamePlugin {
                     .run_if(resource_exists::<crate::EffectManagerState>)
                     .run_if(in_state(crate::app_state::AppState::InGame))
                     .in_set(GameSet::RenderSync),
+            )
+            // === UI Sync Systems ===
+            .add_systems(
+                Update,
+                crate::slint_support::state_bridge::sync_social_status_to_slint
+                    .run_if(resource_exists::<crate::slint_support::state_bridge::SlintWindow>)
+                    .run_if(in_state(crate::app_state::AppState::InGame)),
             );
     }
 }

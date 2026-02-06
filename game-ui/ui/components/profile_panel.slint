@@ -1,8 +1,9 @@
-import { GameState, ProfileData, EquipmentSlotData } from "../game_state.slint";
+import { GameState, ProfileData, EquipmentSlotData, SocialStatusState, SocialStatus } from "../game_state.slint";
 import { Theme } from "../theme.slint";
 import { ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
 import { Icon } from "icon.slint";
 import { BasePanel } from "base_panel.slint";
+import { SocialStatusDropdown, SocialStatusDropdownOverlay, SocialStatusIndicator } from "social_status_panel.slint";
 
 component EquipmentSlot inherits Rectangle {
     in property <EquipmentSlotData> slot-data;
@@ -116,6 +117,8 @@ export component ProfilePanel inherits Rectangle {
     property <ProfileData> data: GameState.profile;
     property <string> active-tab: "profile";
     in property <float> preview-zoom: 2.0;
+    // Local dropdown state for social status
+    property <bool> status-dropdown-open: false;
     width: 520px;
     height: 480px;
 
@@ -310,20 +313,12 @@ export component ProfilePanel inherits Rectangle {
                 }
 
                 // Status indicator below preview
-            Rectangle {
-                    x: 108px;
+                status-indicator := SocialStatusIndicator {
+                    x: 77px; // Centered under preview (80px + 114px/2 - 120px/2)
                     y: 238px;
-                    width: 70px;
-                    height: 20px;
-                    background: #00000030;
-                    border-radius: 4px;
-                    Text {
-                        text: data.is-afk ? "Away" : "Online";
-                        font-size: 10px;
-                        color: data.is-afk ? #6b7280 : #22c55e;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
+                    interactive: data.is-self;
+                    status: data.is-self ? SocialStatusState.current-status : data.social-status;
+                    dropdown-open <=> root.status-dropdown-open;
                 }
 
                 // -- BOTTOM CENTER: Boots (shifted down) --
@@ -543,6 +538,25 @@ export component ProfilePanel inherits Rectangle {
                     }
                 }
             }
+        }
+        
+        // Social Status Dropdown - placed outside clipped area but inside BasePanel
+        // so it can overflow the content area if needed
+        SocialStatusDropdownOverlay {
+            width: 100%;
+            height: 100%;
+            open <=> root.status-dropdown-open;
+        }
+        
+        SocialStatusDropdown {
+            // Positioned relative to the indicator: x: 77px
+            // y: 238px + 48px (BasePanel header)
+            anchor-x: 77px;
+            anchor-y: 238px + 48px;
+            anchor-width: 120px;
+            anchor-height: 28px;
+            show-above: self.anchor-y > 240px; // Dynamic placement
+            open <=> root.status-dropdown-open;
         }
     }
 }

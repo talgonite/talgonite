@@ -171,6 +171,7 @@ fn handle_ui_inbound_ingame(
     bindings: InputBindingResources,
     hotbar_res: HotbarResources,
     interaction_res: InteractionResources,
+    mut local_social_status: ResMut<crate::ecs::social_status::LocalSocialStatus>,
 ) {
     let mut hotbar_state = hotbar_res.hotbar_state;
     let mut hotbar_panel_state = hotbar_res.hotbar_panel_state;
@@ -484,6 +485,14 @@ fn handle_ui_inbound_ingame(
             UiToCore::SetWorldListFilter { filter } => {
                 world_list_state.filter = filter.clone();
                 world_list_state.version = world_list_state.version.wrapping_add(1);
+            }
+            UiToCore::SetSocialStatus { status } => {
+                if let Ok(social_status) = packets::types::SocialStatus::try_from(*status) {
+                    local_social_status.set_status(social_status);
+                    outbox.send(&packets::client::SocialStatus {
+                        social_status: *status,
+                    });
+                }
             }
             UiToCore::Unequip { slot } => {
                 inventory_events.write(InventoryEvent::Unequip { slot: *slot });
@@ -1331,6 +1340,7 @@ fn bridge_session_events(
                 profile_state.nation = pkt.nation;
                 profile_state.group_open = pkt.group_open;
                 profile_state.profile_text = pkt.profile_text.clone().unwrap_or_default();
+                profile_state.social_status = pkt.social_status;
                 profile_state.legend_marks = pkt.legend_marks.clone();
                 profile_state.portrait = pkt.portrait.clone();
                 profile_state.equipment = pkt.equipment.clone();
@@ -1624,11 +1634,12 @@ fn update_world_list_filtered(mut state: ResMut<WorldListState>, mut last_versio
             class: format!("{:?}", m.base_class),
             is_master: m.is_master,
             color: match m.color {
-                packets::server::WorldListColor::Guilded => [1.0, 0.75, 0.25, 1.0], // Gold-ish
-                packets::server::WorldListColor::WithinLevelRange => [0.6, 0.6, 1.0, 1.0], // Blue-ish
+                packets::server::WorldListColor::Guilded => [1.0, 0.75, 0.25, 1.0],
+                packets::server::WorldListColor::WithinLevelRange => [0.6, 0.6, 1.0, 1.0],
                 packets::server::WorldListColor::White => [1.0, 1.0, 1.0, 1.0],
-                packets::server::WorldListColor::NotSure => [0.5, 0.5, 0.5, 1.0], // Gray
+                packets::server::WorldListColor::NotSure => [0.5, 0.5, 0.5, 1.0],
             },
+            social_status: m.social_status.into(),
         })
         .collect();
 }
@@ -1654,6 +1665,7 @@ pub struct PlayerProfileState {
     pub group_open: bool,
     pub group_string: String,
     pub profile_text: String,
+    pub social_status: packets::types::SocialStatus,
     pub legend_marks: Vec<packets::types::LegendMarkInfo>,
     pub portrait: Option<Vec<u8>>,
     pub equipment:
