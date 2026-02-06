@@ -27,6 +27,7 @@ struct LoadedEffect {
     frame_heights: Vec<u16>,
     frame_offsets: Vec<(i16, i16)>,
     frame_interval_ms: usize,
+    frame_sequence: Vec<usize>,
     /// Sheet dimensions for EPF-based positioning (0,0 for EFA which uses direct offsets)
     sheet_width: u16,
     sheet_height: u16,
@@ -36,7 +37,7 @@ struct LoadedEffect {
 pub struct EffectHandle {
     pub instance_index: usize,
     pub effect_id: u16,
-    pub frame_sequence: Vec<usize>,
+    pub frame_count: usize,
     pub frame_interval_ms: usize,
 }
 
@@ -48,7 +49,6 @@ pub struct EffectManager {
     instances: SharedInstanceBatch,
     atlas: TextureAtlas,
     pipeline: wgpu::RenderPipeline,
-    effect_ids: Vec<u16>,
 }
 
 impl EffectManager {
@@ -136,7 +136,7 @@ impl EffectManager {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[Vertex::desc(), EffectInstanceRaw::desc()],
+                buffers: &[Vertex::desc(), InstanceRaw::desc()],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -175,7 +175,6 @@ impl EffectManager {
             instances,
             atlas: TextureAtlas::new(diffuse_texture.texture),
             pipeline,
-            effect_ids: Vec::new(),
         }
     }
 
@@ -245,30 +244,15 @@ impl EffectManager {
 
         let loaded = self.loaded_effects.get(&effect_id)?;
 
-        let frame_sequence = self
-            .frame_sequences
-            .get((effect_id - 1) as usize)
-            .map(|s| s.frame_indices.clone());
-
-        let frame_sequence = match frame_sequence {
-            Some(seq) if !(seq.len() == 1 && seq[0] == 0) => seq,
-            _ => (0..loaded.allocations.len()).collect(),
-        };
-
-        let first_frame = *frame_sequence.first()?;
+        let first_frame = *loaded.frame_sequence.first()?;
         let instance = self.create_instance(loaded, first_frame, x, y, z_offset)?;
 
         let instance_index = self.instances.add(queue, instance)?;
 
-        if instance_index >= self.effect_ids.len() {
-            self.effect_ids.resize(instance_index + 1, 0);
-        }
-        self.effect_ids[instance_index] = effect_id;
-
         Some(EffectHandle {
             instance_index,
             effect_id,
-            frame_sequence,
+            frame_count: loaded.frame_sequence.len(),
             frame_interval_ms: loaded.frame_interval_ms,
         })
     }
@@ -279,16 +263,27 @@ impl EffectManager {
         archive: &ArxArchive,
         effect_id: u16,
     ) -> Option<()> {
+        let sequence = self
+            .frame_sequences
+            .get((effect_id - 1) as usize)
+            .map(|s| s.frame_indices.clone());
+
         let efa_path = format!("roh/efct{:03}.efa.bin", effect_id);
 
         if let Ok(data) = archive.get_file(&efa_path) {
-            self.load_efa(queue, effect_id, &data)
+            self.load_efa(queue, effect_id, &data, sequence)
         } else {
-            self.load_epf(queue, archive, effect_id)
+            self.load_epf(queue, archive, effect_id, sequence)
         }
     }
 
-    fn load_efa(&mut self, queue: &wgpu::Queue, effect_id: u16, data: &[u8]) -> Option<()> {
+    fn load_efa(
+        &mut self,
+        queue: &wgpu::Queue,
+        effect_id: u16,
+        data: &[u8],
+        sequence: Option<Vec<usize>>,
+    ) -> Option<()> {
         let (efa, _) = bincode::decode_from_slice::<EfaFile, Configuration>(
             &data,
             bincode::config::standard(),
@@ -315,6 +310,11 @@ impl EffectManager {
             frame_offsets.push((frame.left, frame.top));
         }
 
+        let frame_sequence = match sequence {
+            Some(seq) if !(seq.len() == 1 && seq[0] == 0) => seq,
+            _ => (0..allocations.len()).collect(),
+        };
+
         self.loaded_effects.insert(
             effect_id,
             LoadedEffect {
@@ -323,6 +323,7 @@ impl EffectManager {
                 frame_heights,
                 frame_offsets,
                 frame_interval_ms: efa.frame_interval_ms,
+                frame_sequence,
                 sheet_width: 0,
                 sheet_height: 0,
             },
@@ -336,6 +337,7 @@ impl EffectManager {
         queue: &wgpu::Queue,
         archive: &ArxArchive,
         effect_id: u16,
+        sequence: Option<Vec<usize>>,
     ) -> Option<()> {
         let epf_path = format!("roh/efct{:03}.epf.bin", effect_id);
         let data = archive.get_file(&epf_path).ok()?;
@@ -371,6 +373,11 @@ impl EffectManager {
             }
         }
 
+        let frame_sequence = match sequence {
+            Some(seq) if !(seq.len() == 1 && seq[0] == 0) => seq,
+            _ => (0..allocations.len()).collect(),
+        };
+
         self.loaded_effects.insert(
             effect_id,
             LoadedEffect {
@@ -379,6 +386,7 @@ impl EffectManager {
                 frame_heights,
                 frame_offsets,
                 frame_interval_ms: 100,
+                frame_sequence,
                 sheet_width: epf.width as u16,
                 sheet_height: epf.height as u16,
             },
@@ -389,26 +397,20 @@ impl EffectManager {
 
     fn apply_palette(&self, indexed_data: &[u8], palette: &[u8], palette_row: u8) -> Vec<u8> {
         let row_offset = (palette_row as usize) * 256 * 4;
-        indexed_data
-            .iter()
-            .flat_map(|&idx| {
-                if idx == 0 {
-                    [0, 0, 0, 0]
+        let mut rgba = Vec::with_capacity(indexed_data.len() * 4);
+        for &idx in indexed_data {
+            if idx == 0 {
+                rgba.extend_from_slice(&[0, 0, 0, 0]);
+            } else {
+                let offset = row_offset + (idx as usize) * 4;
+                if offset + 3 < palette.len() {
+                    rgba.extend_from_slice(&palette[offset..offset + 4]);
                 } else {
-                    let offset = row_offset + (idx as usize) * 4;
-                    if offset + 3 < palette.len() {
-                        [
-                            palette[offset],
-                            palette[offset + 1],
-                            palette[offset + 2],
-                            palette[offset + 3],
-                        ]
-                    } else {
-                        [255, 0, 255, 255]
-                    }
+                    rgba.extend_from_slice(&[255, 0, 255, 255]);
                 }
-            })
-            .collect()
+            }
+        }
+        rgba
     }
 
     fn create_instance(
@@ -426,7 +428,7 @@ impl EffectManager {
         let world_pos = get_isometric_coordinate(x, y);
         let z = calculate_tile_z(x, y, 1.0) + z_offset;
 
-        let alloc = match loaded.allocations.get(frame_index) {
+        let alloc = match loaded.allocations.get(frame_index).and_then(|a| a.as_ref()) {
             Some(alloc) => alloc,
             None => {
                 return Some(Instance {
@@ -489,9 +491,9 @@ impl EffectManager {
             return false;
         };
 
-        let frame_index = handle
+        let frame_index = loaded
             .frame_sequence
-            .get(frame_in_sequence % handle.frame_sequence.len())
+            .get(frame_in_sequence % loaded.frame_sequence.len())
             .copied()
             .unwrap_or(0);
 
@@ -527,46 +529,5 @@ impl EffectManager {
             0..self.instances.vertices.len() as u32,
             0..instance_count as u32,
         );
-    }
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct EffectInstanceRaw {
-    pub position: [f32; 3],
-    pub tex_min: [f32; 2],
-    pub tex_max: [f32; 2],
-    pub sprite_size: [f32; 2],
-}
-
-impl EffectInstanceRaw {
-    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
-        use std::mem;
-        wgpu::VertexBufferLayout {
-            array_stride: mem::size_of::<InstanceRaw>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &[
-                wgpu::VertexAttribute {
-                    offset: 0,
-                    shader_location: 5,
-                    format: wgpu::VertexFormat::Float32x3,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    shader_location: 6,
-                    format: wgpu::VertexFormat::Float32x2,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 5]>() as wgpu::BufferAddress,
-                    shader_location: 7,
-                    format: wgpu::VertexFormat::Float32x2,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 7]>() as wgpu::BufferAddress,
-                    shader_location: 8,
-                    format: wgpu::VertexFormat::Float32x2,
-                },
-            ],
-        }
     }
 }

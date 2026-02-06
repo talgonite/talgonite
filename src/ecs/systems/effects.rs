@@ -106,7 +106,7 @@ pub fn update_effects_system(
             instance.current_frame += 1;
             instance.timer.reset();
 
-            let frame_count = instance.handle.frame_sequence.len();
+            let frame_count = instance.handle.frame_count;
             if instance.current_frame >= frame_count {
                 commands.entity(entity).remove::<(Effect, EffectInstance)>();
                 continue;
