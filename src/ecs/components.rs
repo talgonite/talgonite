@@ -282,6 +282,12 @@ pub struct MapPrepared {
 #[derive(Component)]
 pub struct MapScoped;
 
+/// Queue of door states waiting to be applied to the map.
+#[derive(Resource, Default, Debug, Clone)]
+pub struct MapDoorQueue {
+    pub pending: Vec<packets::server::DoorInstance>,
+}
+
 // Marker component: entity is tied to the current in-game session and should
 // be despawned when leaving AppState::InGame.
 #[derive(Component)]

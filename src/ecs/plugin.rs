@@ -22,6 +22,7 @@ impl Plugin for GamePlugin {
         app.init_resource::<SpellCastingState>()
             .init_resource::<crate::resources::LobbyPortraits>()
             .init_resource::<crate::resources::ItemTileCounters>()
+            .init_resource::<super::components::MapDoorQueue>()
             .add_message::<super::components::MapPrepared>()
             .add_systems(
                 OnEnter(crate::app_state::AppState::InGame),
@@ -65,6 +66,7 @@ impl Plugin for GamePlugin {
                 Update,
                 (
                     systems::map_system,
+                    systems::handle_doors,
                     systems::spawn_entities_system,
                     systems::dedupe_entities_by_id,
                     systems::health_bar_system,
