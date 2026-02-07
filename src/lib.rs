@@ -19,6 +19,7 @@ pub mod network;
 pub mod plugins;
 pub mod render_plugin;
 pub mod resources;
+pub mod rich_text;
 pub mod session;
 pub mod session_prelogin;
 pub mod settings;

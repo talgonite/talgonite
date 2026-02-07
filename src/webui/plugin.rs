@@ -18,6 +18,7 @@ use packets::types::{EntityType, MenuType};
 use crate::app_state::AppState;
 use crate::events::{AbilityEvent, ChatEvent, InventoryEvent, SessionEvent};
 use crate::render_plugin::game::WebUi;
+use crate::rich_text::RichText;
 use rendering::scene::utils::screen_to_iso_tile;
 
 use super::keyring;
@@ -1301,9 +1302,9 @@ fn bridge_session_events(
                 profile_state.guild_rank = pkt.guild_rank.clone();
                 profile_state.title = pkt.title.clone();
                 profile_state.nation = pkt.nation;
-                profile_state.group_string = pkt.group_string.clone();
+                profile_state.group_string = RichText::parse(&pkt.group_string);
                 profile_state.group_open = pkt.group_open;
-                profile_state.profile_text = pkt.group_string.clone();
+                profile_state.profile_text = RichText::parse(&pkt.group_string);
                 profile_state.legend_marks = pkt.legend_marks.clone();
                 show_profile.write(crate::slint_plugin::ShowSelfProfileEvent::SelfUpdate);
             }
@@ -1317,7 +1318,8 @@ fn bridge_session_events(
                 profile_state.title = pkt.title.clone();
                 profile_state.nation = pkt.nation;
                 profile_state.group_open = pkt.group_open;
-                profile_state.profile_text = pkt.profile_text.clone().unwrap_or_default();
+                profile_state.profile_text =
+                    RichText::parse(pkt.profile_text.as_deref().unwrap_or_default());
                 profile_state.legend_marks = pkt.legend_marks.clone();
                 profile_state.portrait = pkt.portrait.clone();
                 profile_state.equipment = pkt.equipment.clone();
@@ -1637,8 +1639,8 @@ pub struct PlayerProfileState {
     pub title: String,
     pub nation: packets::types::Nation,
     pub group_open: bool,
-    pub group_string: String,
-    pub profile_text: String,
+    pub group_string: RichText,
+    pub profile_text: RichText,
     pub legend_marks: Vec<packets::types::LegendMarkInfo>,
     pub portrait: Option<Vec<u8>>,
     pub equipment:

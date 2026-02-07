@@ -4,12 +4,21 @@ import { ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
 import { Icon } from "icon.slint";
 import { BasePanel } from "base_panel.slint";
 
+import "../../fonts/JetBrainsMono[wght].ttf";
+
 component EquipmentSlot inherits Rectangle {
     in property <EquipmentSlotData> slot-data;
     in property <int> slot-id: 0;
+    in property <bool> is-self: false;
+    out property <bool> has-hover: touch.has-hover && is-self;
+
     width: 44px;
     height: 44px;
-    border-color: Theme.border-muted;
+    background: Theme.surface-muted.with-alpha(0.05);
+    border-width: 1px;
+    border-radius: Theme.radius-small;
+    border-color: Theme.border-muted.with-alpha(0.2);
+
     if slot-data.has-item: Icon {
         icon: slot-data.icon;
         x: (parent.width - self.width) / 2;
@@ -17,50 +26,24 @@ component EquipmentSlot inherits Rectangle {
         cooldown-total: 100ms;
         cooldown-left: (1.0 - slot-data.durability-percent) * 100ms;
     }
-    if touch.has-hover && slot-data.has-item && slot-data.name != "": Rectangle {
-        y: parent.height + 4px;
-        background: #000000f0;
-        border-radius: 4px;
-        border-width: 1px;
-        border-color: Theme.accent;
-        width: layout.preferred-width + 12px;
-        height: layout.preferred-height + 10px;
-        layout := VerticalLayout {
-            spacing: 2px;
-            Text {
-                text: slot-data.name;
-                font-size: 12px;
-                font-weight: 600;
-                color: #f3f4f6;
-                horizontal-alignment: center;
-            }
 
-            if slot-data.max-durability > 0: Text {
-                text: slot-data.current-durability + " / " + slot-data.max-durability;
-                font-size: 10px;
-                color: #9ca3af;
-                horizontal-alignment: center;
-            }
-        }
-    }
     touch := TouchArea {
-        mouse-cursor: slot-data.has-item ? pointer : default;
+        mouse-cursor: (slot-data.has-item && is-self) ? pointer : default;
         double-clicked => {
-            if slot-data.has-item && GameState.profile.is-self {
+            if slot-data.has-item && is-self {
                 GameState.unequip(slot-id);
             }
         }
     }
 
     states [
-        hovered when touch.has-hover && slot-data.has-item: {
-            background: #ffffff10;
+        hovered when touch.has-hover && is-self: {
             border-color: Theme.accent;
+            background: Theme.surface-muted.with-alpha(0.3);
         }
         not-empty when slot-data.has-item: {
             background: Theme.surface-muted;
-            border-width: 1px;
-            border-radius: Theme.radius-small;
+            border-color: Theme.border-muted;
         }
     ]
 }
@@ -116,16 +99,9 @@ export component ProfilePanel inherits Rectangle {
     property <ProfileData> data: GameState.profile;
     property <string> active-tab: "profile";
     in property <float> preview-zoom: 2.0;
-    width: 520px;
+    width: 560px;
     height: 480px;
 
-    // Prevent interactions from falling through
-    TouchArea {
-        width: 100%;
-        height: 100%;
-    }
-
-    // Tabs hanging off the top
     HorizontalLayout {
         y: -32px;
         height: 36px;
@@ -154,392 +130,408 @@ export component ProfilePanel inherits Rectangle {
         close => {
             GameState.profile.visible = false;
         }
-        width: 100%;
-        height: 100%;
 
-        // Content area inside BasePanel
-        Rectangle {
-            clip: true;
-            
-            // Profile tab content
-            if active-tab == "profile": Rectangle {
-                width: 100%;
-                height: 100%;
+        if active-tab == "profile": HorizontalLayout {
+            padding: 12px;
+            spacing: 12px;
 
-                // === EQUIPMENT GRID ===
-            // Layout: Left column | Center (player preview) | Right column
-            // With helmet up top, boots at bottom
+            VerticalLayout {
+                spacing: 12px;
+                width: 330px;
 
-            // -- TOP CENTER: Helmet area (shifted up) --
-            EquipmentSlot {
-                    x: 60px;
-                    y: 10px;
-                    slot-data: data.eq-earrings;
-                    slot-id: 5;
-                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: center;
+                    
+                    // Column 1: Far Left
+                    VerticalLayout {
+                        spacing: 4px;
+                        alignment: center;
+                        eq14 := EquipmentSlot {
+                            slot-data: data.eq-necklace;
+                            slot-id: 6;
+                            is-self: data.is-self;
+                        }
 
-                EquipmentSlot {
-                    x: 116px;
-                    y: 0px;
-                    slot-data: data.eq-helmet;
-                    slot-id: 4;
-                }
+                        eq6 := EquipmentSlot {
+                            slot-data: data.eq-earrings;
+                            slot-id: 5;
+                            is-self: data.is-self;
+                        }
 
-                EquipmentSlot {
-                    x: 172px;
-                    y: 10px;
-                    slot-data: data.eq-necklace;
-                    slot-id: 6;
-                }
+                        eq17 := EquipmentSlot {
+                            slot-data: data.eq-accessory1;
+                            slot-id: 14;
+                            is-self: data.is-self;
+                        }
+                    }
 
-                EquipmentSlot {
-                    x: 116px;
-                    y: 46px;
-                    slot-data: data.eq-over-helmet;
-                    slot-id: 16;
-                }
+                    // Column 2: Inner Left
+                    VerticalLayout {
+                        spacing: 4px;
+                        alignment: center;
+                        eq15 := EquipmentSlot {
+                            slot-data: data.eq-overcoat;
+                            slot-id: 15;
+                            is-self: data.is-self;
+                        }
 
-                // -- LEFT COLUMN: Weapon/Armor side --
-            EquipmentSlot {
-                    x: 0px;
-                    y: 56px;
-                    slot-data: data.eq-over-armor;
-                    slot-id: 18;
-                }
+                        eq7 := EquipmentSlot {
+                            slot-data: data.eq-weapon;
+                            slot-id: 1;
+                            is-self: data.is-self;
+                        }
 
-                EquipmentSlot {
-                    x: 46px;
-                    y: 56px;
-                    slot-data: data.eq-armor;
-                    slot-id: 2;
-                }
+                        eq8 := EquipmentSlot {
+                            slot-data: data.eq-left-gauntlet;
+                            slot-id: 9;
+                            is-self: data.is-self;
+                        }
 
-                EquipmentSlot {
-                    x: 46px;
-                    y: 102px;
-                    slot-data: data.eq-weapon;
-                    slot-id: 1;
-                }
+                        eq9 := EquipmentSlot {
+                            slot-data: data.eq-left-ring;
+                            slot-id: 7;
+                            is-self: data.is-self;
+                        }
+                    }
 
-                EquipmentSlot {
-                    x: 0px;
-                    y: 148px;
-                    slot-data: data.eq-left-gauntlet;
-                    slot-id: 9;
-                }
+                    // Column 3: Center (Head/Body/Feet)
+                    VerticalLayout {
+                        spacing: 8px;
+                        alignment: center;
+                        
+                        // Helmets on top
+                        HorizontalLayout {
+                            spacing: 4px;
+                            alignment: center;
+                            eq16 := EquipmentSlot {
+                                slot-data: data.eq-over-helmet;
+                                slot-id: 16;
+                                is-self: data.is-self;
+                            }
 
-                EquipmentSlot {
-                    x: 46px;
-                    y: 148px;
-                    slot-data: data.eq-left-ring;
-                    slot-id: 7;
-                }
+                            eq1 := EquipmentSlot {
+                                slot-data: data.eq-helmet;
+                                slot-id: 4;
+                                is-self: data.is-self;
+                            }
+                        }
 
-                EquipmentSlot {
-                    x: 0px;
-                    y: 286px;
-                    slot-data: data.eq-greaves;
-                    slot-id: 12;
-                }
+                        Rectangle {
+                            width: 84px;
+                            height: 110px;
+                            clip: true;
+                            background: #00000020;
+                            border-radius: 4px;
+                            Image {
+                                width: data.preview.width * root.preview-zoom * 1px;
+                                height: data.preview.height * root.preview-zoom * 1px;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                                source: data.preview;
+                                image-rendering: pixelated;
+                            }
+                        }
 
-                // -- RIGHT COLUMN: Shield/Accessory side --
-            EquipmentSlot {
-                    x: 184px;
-                    y: 56px;
-                    slot-data: data.eq-overcoat;
-                    slot-id: 15;
-                }
+                        Rectangle {
+                            width: 60px;
+                            height: 18px;
+                            background: #00000030;
+                            border-radius: 4px;
+                            x: (parent.width - self.width) / 2;
+                            Text {
+                                text: data.is-afk ? "Away" : "Online";
+                                font-size: 9px;
+                                color: data.is-afk ? #6b7280 : #22c55e;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
 
-                EquipmentSlot {
-                    x: 232px;
-                    y: 56px;
-                    slot-data: data.eq-accessory1;
-                    slot-id: 14;
-                }
+                        // Boots/Greaves on bottom
+                        HorizontalLayout {
+                            spacing: 4px;
+                            alignment: center;
+                            eq4 := EquipmentSlot {
+                                slot-data: data.eq-greaves;
+                                slot-id: 12;
+                                is-self: data.is-self;
+                            }
 
-                EquipmentSlot {
-                    x: 184px;
-                    y: 102px;
-                    slot-data: data.eq-shield;
-                    slot-id: 3;
-                }
+                            eq5 := EquipmentSlot {
+                                slot-data: data.eq-boots;
+                                slot-id: 13;
+                                is-self: data.is-self;
+                            }
+                        }
+                    }
 
-                EquipmentSlot {
-                    x: 232px;
-                    y: 102px;
-                    slot-data: data.eq-accessory2;
-                    slot-id: 17;
-                }
+                    // Column 4: Inner Right
+                    VerticalLayout {
+                        spacing: 4px;
+                        alignment: center;
+                        eq2 := EquipmentSlot {
+                            slot-data: data.eq-over-armor;
+                            slot-id: 18;
+                            is-self: data.is-self;
+                        }
 
-                EquipmentSlot {
-                    x: 184px;
-                    y: 148px;
-                    slot-data: data.eq-right-ring;
-                    slot-id: 8;
-                }
+                        eq10 := EquipmentSlot {
+                            slot-data: data.eq-shield;
+                            slot-id: 3;
+                            is-self: data.is-self;
+                        }
 
-                EquipmentSlot {
-                    x: 232px;
-                    y: 148px;
-                    slot-data: data.eq-right-gauntlet;
-                    slot-id: 10;
-                }
+                        eq11 := EquipmentSlot {
+                            slot-data: data.eq-right-gauntlet;
+                            slot-id: 10;
+                            is-self: data.is-self;
+                        }
 
-                EquipmentSlot {
-                    x: 232px;
-                    y: 332px;
-                    slot-data: data.eq-belt;
-                    slot-id: 11;
-                }
+                        eq12 := EquipmentSlot {
+                            slot-data: data.eq-right-ring;
+                            slot-id: 8;
+                            is-self: data.is-self;
+                        }
+                    }
 
-                // -- CENTER: Player preview area --
-            Rectangle {
-                    x: 80px;
-                    y: 100px;
-                    width: 114px;
-                    height: 130px;
-                    clip: true;
-                    Image {
-                        width: data.preview.width * root.preview-zoom * 1px;
-                        height: data.preview.height * root.preview-zoom * 1px;
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2;
-                        source: data.preview;
-                        image-rendering: pixelated;
+                    // Column 5: Far Right
+                    VerticalLayout {
+                        spacing: 4px;
+                        alignment: center;
+                        eq3 := EquipmentSlot {
+                            slot-data: data.eq-armor;
+                            slot-id: 2;
+                            is-self: data.is-self;
+                        }
+
+                        eq13 := EquipmentSlot {
+                            slot-data: data.eq-belt;
+                            slot-id: 11;
+                            is-self: data.is-self;
+                        }
+
+                        eq18 := EquipmentSlot {
+                            slot-data: data.eq-accessory2;
+                            slot-id: 17;
+                            is-self: data.is-self;
+                        }
                     }
                 }
 
-                // Status indicator below preview
-            Rectangle {
-                    x: 108px;
-                    y: 238px;
-                    width: 70px;
-                    height: 20px;
-                    background: #00000030;
+                if data.is-self: Rectangle {
+                    property <EquipmentSlotData> hovered-item: 
+                        eq1.has-hover ? eq1.slot-data : eq2.has-hover ? eq2.slot-data : eq3.has-hover ? eq3.slot-data : eq4.has-hover ? eq4.slot-data : eq5.has-hover ? eq5.slot-data : eq6.has-hover ? eq6.slot-data : eq7.has-hover ? eq7.slot-data : eq8.has-hover ? eq8.slot-data : eq9.has-hover ? eq9.slot-data : eq10.has-hover ? eq10.slot-data : eq11.has-hover ? eq11.slot-data : eq12.has-hover ? eq12.slot-data : eq13.has-hover ? eq13.slot-data : eq14.has-hover ? eq14.slot-data : eq15.has-hover ? eq15.slot-data : eq16.has-hover ? eq16.slot-data : eq17.has-hover ? eq17.slot-data : eq18.has-hover ? eq18.slot-data : { has-item: false };
+
+                    height: 60px;
+                    background: self.hovered-item.has-item ? #00000040 : transparent;
                     border-radius: 4px;
+                    border-width: self.hovered-item.has-item ? 1px : 0px;
+                    border-color: Theme.border-muted.with-alpha(0.3);
+                    if self.hovered-item.has-item: VerticalLayout {
+                        padding: 8px;
+                        spacing: 2px;
+                        Text {
+                            text: hovered-item.name;
+                            font-size: 13px;
+                            font-weight: 700;
+                            color: Theme.accent;
+                        }
+
+                        Text {
+                            text: "Durability: " + hovered-item.current-durability + " / " + hovered-item.max-durability;
+                            font-size: 10px;
+                            color: #94a3b8;
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                width: 1px;
+                background: #00000060;
+            }
+
+            VerticalLayout {
+                spacing: 12px;
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    if data.portrait.width > 0: Rectangle {
+                        width: 68px;
+                        height: 88px;
+                        background: #00000030;
+                        border-radius: 6px;
+                        border-width: 1px;
+                        border-color: #00000050;
+                        Image {
+                            source: data.portrait;
+                            width: parent.width - 4px;
+                            height: parent.height - 4px;
+                            x: 2px;
+                            y: 2px;
+                            image-rendering: pixelated;
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 2px;
+                        alignment: start;
+                        Text {
+                            text: data.name;
+                            font-size: 16px;
+                            font-weight: 700;
+                            color: #e0e0e0;
+                        }
+
+                        Text {
+                            text: data.class;
+                            font-size: 14px;
+                            color: #60a5fa;
+                        }
+
+                        if data.guild != "" || data.title != "": VerticalLayout {
+                            spacing: 1px;
+                            if data.guild != "": Text {
+                                text: "<" + data.guild + "> " + data.guild-rank;
+                                font-size: 11px;
+                                color: #a0a0a0;
+                            }
+                            if data.title != "": Text {
+                                text: "\"" + data.title + "\"";
+                                font-size: 11px;
+                                color: #c084fc;
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    Rectangle {
+                        width: 20px;
+                        height: 14px;
+                        background: data.town-banner.width > 0 ? transparent : #4a5568;
+                        border-radius: 2px;
+                        if data.town-banner.width > 0: Image {
+                            source: data.town-banner;
+                            width: parent.width;
+                            height: parent.height;
+                            image-rendering: pixelated;
+                        }
+                    }
+
                     Text {
-                        text: data.is-afk ? "Away" : "Online";
-                        font-size: 10px;
-                        color: data.is-afk ? #6b7280 : #22c55e;
-                        horizontal-alignment: center;
+                        text: data.town;
+                        font-size: 12px;
+                        color: #9ca3af;
                         vertical-alignment: center;
                     }
                 }
 
-                // -- BOTTOM CENTER: Boots (shifted down) --
-            EquipmentSlot {
-                    x: 116px;
-                    y: 296px;
-                    slot-data: data.eq-boots;
-                    slot-id: 13;
-                }
-
-                // Divider line
-            Rectangle {
-                    x: 288px;
-                    y: 0px;
-                    width: 1px;
-                    height: parent.height;
-                    background: #00000060;
-                }
-
-                // === RIGHT SIDE: Profile info ===
-            // Name
-            Text {
-                    x: 302px;
-                    y: 0px;
-                    text: data.name;
-                    font-size: 18px;
-                    font-weight: 700;
-                    color: #e0e0e0;
-                }
-
-                // Class
-            Text {
-                    x: 302px;
-                    y: 26px;
-                    text: data.class;
-                    font-size: 14px;
-                    color: #60a5fa;
-                }
-
-                // Guild + Rank
-            Text {
-                    x: 302px;
-                    y: 48px;
-                    width: 170px;
-                    text: data.guild != "" ? "<" + data.guild + "> " + data.guild-rank : "";
-                    font-size: 12px;
-                    color: #a0a0a0;
-                }
-
-                // Title
-            Text {
-                    x: 302px;
-                    y: 68px;
-                    width: 170px;
-                    text: data.title != "" ? "\"" + data.title + "\"" : "";
-                    font-size: 12px;
-                    color: #c084fc;
-                }
-
-                // Town with banner placeholder
-            Rectangle {
-                    x: 302px;
-                    y: 92px;
-                    width: 20px;
-                    height: 14px;
-                    background: data.town-banner.width > 0 ? transparent : #4a5568;
-                    border-radius: 2px;
-                    clip: true;
-                    if data.town-banner.width > 0: Image {
-                        source: data.town-banner;
-                        width: parent.width;
-                        height: parent.height;
-                        image-rendering: pixelated;
-                    }
-                }
-
-                Text {
-                    x: 328px;
-                    y: 92px;
-                    text: data.town;
-                    font-size: 12px;
-                    color: #9ca3af;
-                }
-
-                // Portrait (smaller)
-            Rectangle {
-                    x: 302px;
-                    y: 118px;
-                    width: 56px;
-                    height: 72px;
+                if data.profile-text != "": Rectangle {
                     background: #00000030;
                     border-radius: 6px;
                     border-width: 1px;
                     border-color: #00000050;
-                    if data.portrait.width > 0: Image {
-                        source: data.portrait;
-                        width: parent.width - 4px;
-                        height: parent.height - 4px;
-                        x: 2px;
-                        y: 2px;
-                        image-rendering: pixelated;
-                    }
-                }
 
-                // Profile text box (more space)
-            Rectangle {
-                    x: 366px;
-                    y: 118px;
-                    width: 118px;
-                    height: 120px;
-                    background: #00000030;
-                    border-radius: 6px;
-                    border-width: 1px;
-                    border-color: #00000050;
-                    clip: true;
-                    ScrollView {
-                        width: 100%;
-                        height: 100%;
-                        viewport-width: self.visible-width;
+                    VerticalLayout {
+                        padding: 6px;
                         Text {
-                            x: 8px;
-                            y: 8px;
-                            width: 98px;
-                            text: data.profile-text != "" ? data.profile-text : "No profile text.";
-                            font-size: 11px;
-                            color: data.profile-text != "" ? #b0b0b0 : #606060;
+                            text: data.profile-text;
+                            font-size: 13px;
+                            font-family: "JetBrains Mono";
+                            color: #b0b0b0;
                             wrap: word-wrap;
                         }
                     }
                 }
 
-                // Group Request Button
-            if !GameState.profile.is-self: Rectangle {
-                    x: 302px;
-                    y: 250px;
-                    width: 150px;
-                    height: 30px;
-                    background: data.group-requests-enabled ? (group-touch.has-hover ? #3b82f6 : #2563eb) : #4b5563;
-                    border-radius: 6px;
-                    border-width: 1px;
-                    border-color: data.group-requests-enabled ? #60a5fa : #6b7280;
-                    Text {
-                        text: data.group-requests-enabled ? "Request Group" : "Requests Disabled";
-                        font-size: 12px;
-                        font-weight: 600;
-                        color: data.group-requests-enabled ? #ffffff : #9ca3af;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
+                Rectangle { }
 
-                    group-touch := TouchArea {
-                        mouse-cursor: data.group-requests-enabled ? pointer : not-allowed;
+                if !GameState.profile.is-self: HorizontalLayout {
+                    alignment: start;
+                    Rectangle {
+                        width: 150px;
+                        height: 30px;
+                        background: data.group-requests-enabled ? (group-touch.has-hover ? #3b82f6 : #2563eb) : #4b5563;
+                        border-radius: 6px;
+                        border-width: 1px;
+                        border-color: data.group-requests-enabled ? #60a5fa : #6b7280;
+                        Text {
+                            text: data.group-requests-enabled ? "Request Group" : "Requests Disabled";
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: data.group-requests-enabled ? #ffffff : #9ca3af;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        group-touch := TouchArea {
+                            mouse-cursor: data.group-requests-enabled ? pointer : not-allowed;
+                        }
                     }
                 }
             }
+        }
 
-            // Legend tab content
         if active-tab == "legend": Rectangle {
+            width: 100%;
+            height: 100%;
+            ScrollView {
+                y: 35px;
                 width: 100%;
-                height: 100%;
-                ScrollView {
-                    y: 35px;
-                    width: 100%;
-                    height: parent.height - 35px;
-                    viewport-width: self.visible-width;
-                    VerticalLayout {
-                        padding: 10px;
-                        spacing: 6px;
-                        alignment: start;
-                        for mark in data.legend-marks: Rectangle {
-                            width: 100%;
-                            height: 28px;
-                            background: #00000020;
-                            border-radius: 4px;
-                            border-width: 1px;
-                            border-color: #ffffff05;
-                            HorizontalLayout {
-                                padding-left: 8px;
-                                padding-right: 8px;
-                                spacing: 10px;
-                                alignment: start;
+                height: parent.height - 35px;
+                viewport-width: self.visible-width;
+                VerticalLayout {
+                    padding: 10px;
+                    spacing: 6px;
+                    alignment: start;
+                    for mark in data.legend-marks: Rectangle {
+                        width: 100%;
+                        height: 28px;
+                        background: #00000020;
+                        border-radius: 4px;
+                        border-width: 1px;
+                        border-color: #ffffff05;
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            spacing: 10px;
+                            alignment: start;
 
-                                // Icon placeholder - small colored box with icon name
                             Rectangle {
-                                    width: 20px;
-                                    height: 20px;
-                                    y: (parent.height - self.height) / 2;
-                                    background: mark.color.with-alpha(0.1);
-                                    border-radius: 3px;
-                                    border-width: 1px;
-                                    border-color: mark.color.with-alpha(0.3);
-                                    Text {
-                                        text: mark.icon-name == "Yay" ? "★" : mark.icon-name == "Heart" ? "♥" : mark.icon-name == "Victory" ? "V" : mark.icon-name == "Warrior" ? "W" : mark.icon-name == "Rogue" ? "R" : mark.icon-name == "Wizard" ? "Z" : mark.icon-name == "Priest" ? "P" : mark.icon-name == "Monk" ? "M" : "•";
-                                        color: mark.color;
-                                        font-size: 12px;
-                                        font-weight: 700;
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
-                                    }
-                                }
-
+                                width: 20px;
+                                height: 20px;
+                                y: (parent.height - self.height) / 2;
+                                background: mark.color.with-alpha(0.1);
+                                border-radius: 3px;
+                                border-width: 1px;
+                                border-color: mark.color.with-alpha(0.3);
                                 Text {
-                                    text: mark.text;
-                                    color: #d1d5db;
-                                    font-size: 11px;
+                                    text: mark.icon-name == "Yay" ? "★" : mark.icon-name == "Heart" ? "♥" : mark.icon-name == "Victory" ? "V" : mark.icon-name == "Warrior" ? "W" : mark.icon-name == "Rogue" ? "R" : mark.icon-name == "Wizard" ? "Z" : mark.icon-name == "Priest" ? "P" : mark.icon-name == "Monk" ? "M" : "•";
+                                    color: mark.color;
+                                    font-size: 12px;
+                                    font-weight: 700;
+                                    horizontal-alignment: center;
                                     vertical-alignment: center;
-                                    overflow: elide;
                                 }
                             }
+
+                            Text {
+                                text: mark.text;
+                                color: #d1d5db;
+                                font-size: 11px;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
                         }
-                        if data.legend-marks.length == 0: Text {
-                            text: "No legend marks recorded.";
-                            font-size: 12px;
-                            color: #6b7280;
-                            horizontal-alignment: center;
-                        }
+                    }
+                    if data.legend-marks.length == 0: Text {
+                        text: "No legend marks recorded.";
+                        font-size: 12px;
+                        color: #6b7280;
+                        horizontal-alignment: center;
                     }
                 }
             }
