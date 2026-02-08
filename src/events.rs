@@ -107,6 +107,7 @@ impl PlayerAction {
 #[derive(Debug, Clone, Message)]
 pub enum SessionEvent {
     PlayerId(u32),
+    StatusEffects(Vec<server::Effect>),
     WorldMap(server::WorldMap),
     DisplayMenu(server::DisplayMenu),
     DisplayDialog(server::DisplayDialog),

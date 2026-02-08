@@ -13,6 +13,7 @@ import { WorldMap } from "./world_map.slint";
 import { WorldLabels } from "./world_labels.slint";
 import { HotBar } from "./hot_bar.slint";
 import { PlayerHUD } from "./player_hud.slint";
+import { StatusEffectsBar } from "./status_effects_bar.slint";
 import { ActionBarMessages } from "./action_bar_messages.slint";
 import { ChatLog } from "./chat_log.slint";
 import { PopupPanel } from "./popup_panel.slint";
@@ -80,9 +81,22 @@ export component GameScene inherits Rectangle {
         height: 100%;
     }
 
-    player-hud := PlayerHUD {
+    HorizontalLayout {
         x: 20px;
-        y: 20px;
+
+        player-hud := PlayerHUD {
+            y: 20px;
+            min-width: 20px;
+        }
+
+        HorizontalLayout {
+            alignment: center;
+            padding-left: root.width * 5%;
+            padding-right: root.width * 25%;
+
+            // Displays buffs/debuffs active on current player
+            StatusEffectsBar {}
+        }
     }
 
     ActionBarMessages {

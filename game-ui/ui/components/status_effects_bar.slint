@@ -1,0 +1,41 @@
+import { GameState } from "../game_state.slint";
+import { Theme } from "../theme.slint";
+
+export component StatusEffectsBar inherits Rectangle {
+    property <int> columns: 10;
+    property <length> slot-size: 30px;
+    property <length> gap: 4px;
+
+    width: (columns * slot-size) + ((columns - 1) * gap);
+    height: (slot-size * 2) + gap;
+
+    background: transparent;
+    opacity: 0.85;
+
+    for effect[idx] in GameState.status_effects: Rectangle {
+        property <color> bar-color: effect.bar-color;
+        property <float> duration-percent-remaining: effect.duration-percent-remaining;
+        width: slot-size;
+        height: slot-size;
+        x: Math.mod(idx, columns) * (slot-size + gap);
+        y: Math.floor(idx / columns) * (slot-size + gap);
+
+        effect-icon := Image {
+            source: effect.icon;
+            width: parent.width;
+            height: parent.height - 2px;
+            x: 0px;
+            y: 2px;
+        }
+
+        duration-bar := Rectangle {
+            // property <length> bar-padding: 2px;
+            width: (effect-icon.width - 3px) * duration-percent-remaining;
+            height: parent.height * 0.1;
+            // height: 3px;
+            x: 0;
+            y: parent.height;
+            background: bar-color;
+        }
+    }
+}

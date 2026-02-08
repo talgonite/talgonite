@@ -10,7 +10,7 @@ use crate::slint_support::assets::SlintAssetLoader;
 use crate::slint_support::state_bridge::SlintAssetLoaderRes;
 use crate::webui::plugin::{
     AbilityState, ActiveMenuContext, ActiveWindowType, EquipmentState, InventoryState,
-    PlayerProfileState, WorldListState,
+    PlayerProfileState, StatusEffectsState, WorldListState,
 };
 use crate::{MapRendererState, network::PacketOutbox};
 
@@ -58,6 +58,7 @@ pub fn cleanup_ingame_resources(
     world_list: Option<ResMut<WorldListState>>,
     equipment: Option<ResMut<EquipmentState>>,
     profile: Option<ResMut<PlayerProfileState>>,
+    status_effects: Option<ResMut<StatusEffectsState>>,
     hotbar: Option<ResMut<HotbarState>>,
     hotbar_panel: Option<ResMut<HotbarPanelState>>,
     player_attrs: Option<ResMut<PlayerAttributes>>,
@@ -85,6 +86,9 @@ pub fn cleanup_ingame_resources(
     }
     if let Some(mut state) = profile {
         *state = PlayerProfileState::default();
+    }
+    if let Some(mut state) = status_effects {
+        *state = StatusEffectsState::default();
     }
     if let Some(mut state) = hotbar {
         *state = HotbarState::default();

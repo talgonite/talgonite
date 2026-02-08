@@ -48,6 +48,13 @@ export struct Spell {
     prompt: string,
 }
 
+export struct StatusEffect {
+    icon: image,
+    color: int,
+    bar-color: color,
+    duration-percent-remaining: float,
+}
+
 export enum SlotPanelType {
     none,
     item,
@@ -214,6 +221,7 @@ export global GameState {
     in-out property <[InventoryItem]> inventory: [];
     in-out property <[Skill]> skills: [];
     in-out property <[Spell]> spells: [];
+    in-out property <[StatusEffect]> status_effects: [];
     in-out property <[HotbarEntry]> hotbar: [];
     in-out property <bool> show-inventory: false;
     in-out property <bool> show-skills: false;
