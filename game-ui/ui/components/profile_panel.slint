@@ -98,6 +98,8 @@ component FolderTab inherits Rectangle {
 component StatRow inherits Rectangle {
     in property <string> label;
     in property <string> value;
+    in property <string> stat-key: "";
+    in property <bool> show-plus: false;
     height: 18px;
     HorizontalLayout {
         padding-left: 3px;
@@ -120,6 +122,33 @@ component StatRow inherits Rectangle {
             font-family: "JetBrains Mono";
             horizontal-alignment: right;
             vertical-alignment: center;
+            width: 13%;
+        }
+
+        if show-plus: stat-raise-icon:= Rectangle {
+            width: 20px;
+            height: 16px;
+            background: Theme.accent.with-alpha(stat-raise-touch.has-hover ? 0.3 : 0.15);
+            border-width: 1px;
+            border-radius: 3px;
+            border-color: Theme.border-overlay;
+
+            Text {
+                text: "+";
+                font-size: 15px;
+                font-weight: 700;
+                color: Theme.accent;
+                vertical-alignment: bottom;
+            }
+
+            stat-raise-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    if stat-key != "" {
+                        GameState.raise-stat(stat-key);
+                    }
+                }
+            }
         }
     }
 }
@@ -128,6 +157,7 @@ export component ProfilePanel inherits Rectangle {
     property <ProfileData> data: GameState.profile;
     property <string> active-tab: "profile";
     in property <float> preview-zoom: 2.0;
+    property <bool> can-raise-stats: data.unspent-stat-points > 0;
     width: 560px;
     height: 510px;
 
@@ -386,11 +416,11 @@ export component ProfilePanel inherits Rectangle {
                         HorizontalLayout {
                             spacing: 8px;
                             VerticalLayout {
-                                StatRow { label: "STR"; value: data.stat-str; }
-                                StatRow { label: "INT"; value: data.stat-int; }
-                                StatRow { label: "WIS"; value: data.stat-wis; }
-                                StatRow { label: "CON"; value: data.stat-con; }
-                                StatRow { label: "DEX"; value: data.stat-dex; }
+                                StatRow { label: "STR"; value: data.stat-str; stat-key: "str"; show-plus: can-raise-stats; }
+                                StatRow { label: "INT"; value: data.stat-int; stat-key: "int"; show-plus: can-raise-stats; }
+                                StatRow { label: "WIS"; value: data.stat-wis; stat-key: "wis"; show-plus: can-raise-stats; }
+                                StatRow { label: "CON"; value: data.stat-con; stat-key: "con"; show-plus: can-raise-stats; }
+                                StatRow { label: "DEX"; value: data.stat-dex; stat-key: "dex"; show-plus: can-raise-stats; }
                             }
 
                             Rectangle {

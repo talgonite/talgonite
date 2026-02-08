@@ -78,6 +78,16 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
         });
     }
 
+    // Raise stat
+    {
+        let tx = tx.clone();
+        game_state.on_raise_stat(move |stat| {
+            let _ = tx.send(UiToCore::RaiseStat {
+                stat: stat.to_string(),
+            });
+        });
+    }
+
     // Use action
     {
         let tx = tx.clone();

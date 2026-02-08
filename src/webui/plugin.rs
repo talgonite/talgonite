@@ -479,6 +479,21 @@ fn handle_ui_inbound_ingame(
             UiToCore::Unequip { slot } => {
                 inventory_events.write(InventoryEvent::Unequip { slot: *slot });
             }
+            UiToCore::RaiseStat { stat } => {
+                let stat = stat.to_ascii_lowercase();
+                let stat = match stat.as_str() {
+                    "str" => packets::client::Stat::Str,
+                    "dex" => packets::client::Stat::Dex,
+                    "int" => packets::client::Stat::Int,
+                    "wis" => packets::client::Stat::Wis,
+                    "con" => packets::client::Stat::Con,
+                    _ => {
+                        tracing::warn!("Unknown stat name: {}", stat);
+                        continue;
+                    }
+                };
+                outbox.send(&packets::client::RaiseStat { stat });
+            }
             UiToCore::ActivateAction { category, index } => match category {
                 SlotPanelType::Item => {
                     inventory_events.write(InventoryEvent::Use { slot: *index as u8 });
