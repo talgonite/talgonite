@@ -69,13 +69,17 @@ impl Settings {
         // Save profiles
         for cred in &self.saved_credentials {
             let hotbars = self.get_hotbars(cred.server_id, &cred.username);
+            let current_hotbar_panel = self.get_current_hotbar_panel(cred.server_id, &cred.username);
             let profile = CharacterProfile {
                 id: cred.id.clone(),
                 server_id: cred.server_id,
                 username: cred.username.clone(),
                 last_used: cred.last_used,
                 preview: cred.preview.clone(),
-                hotbars,
+                hotbars: HotbarData {
+                    bars: hotbars,
+                    current_panel: current_hotbar_panel,
+                },
             };
 
             let profile_path = crate::server_characters_dir(cred.server_id)

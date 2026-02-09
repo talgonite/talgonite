@@ -468,6 +468,13 @@ fn handle_ui_inbound_ingame(
             UiToCore::SetHotbarPanel { panel_num } => {
                 hotbar_panel_state.current_panel =
                     crate::ecs::hotbar::HotbarPanel::from_u8(*panel_num);
+
+                // Save the current hotbar panel selection to settings
+                settings.set_current_hotbar_panel(
+                    session.server_id,
+                    &session.username,
+                    *panel_num as i32,
+                );
             }
             UiToCore::RequestWorldList => {
                 outbox.send(&packets::client::WorldListRequest);
@@ -2110,7 +2117,12 @@ fn handle_login_results(
         let mut hotbar_state = crate::ecs::hotbar::HotbarState::new();
         hotbar_state.config = hotbars;
         commands.insert_resource(hotbar_state);
-        commands.insert_resource(crate::ecs::hotbar::HotbarPanelState::default());
+
+        // Load the saved hotbar panel selection
+        let saved_panel = settings.get_current_hotbar_panel(inner.server_id, &inner.username);
+        let mut hotbar_panel_state = crate::ecs::hotbar::HotbarPanelState::default();
+        hotbar_panel_state.current_panel = crate::ecs::hotbar::HotbarPanel::from_u8(saved_panel as u8);
+        commands.insert_resource(hotbar_panel_state);
 
         next_state.set(AppState::InGame);
         outbound.write(UiOutbound(CoreToUi::EnteredGame));
