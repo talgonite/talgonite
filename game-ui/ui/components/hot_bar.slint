@@ -11,6 +11,7 @@ import { CancelDrag, DragDropItem } from "drag_drop.slint";
 import { Theme } from "../theme.slint";
 import { HorizontalBox, VerticalBox } from "std-widgets.slint";
 import { Icon } from "./icon.slint";
+import { SettingsState } from "../settings_state.slint";
 
 component HotBarSlotView inherits Rectangle {
     in property <SlotPanelType> panel-type;
@@ -203,6 +204,40 @@ export component HotBar inherits Rectangle {
         }
         if GameState.current-hotbar-panel == 5: CustomHotBarSlots {
             offset: 24;
+        }
+    }
+}
+
+export component HotBar2 inherits Rectangle {
+    width: 596px;
+    height: 50px;
+
+    // Subtle fading background
+    Rectangle {
+        background: @linear-gradient(0deg, #00000025 0%, #00000012 10%, #00000040 20%, #00000040 80%, #00000025 90%, #00000000 100%);
+        border-radius: 6px;
+    }
+
+    CancelDrag { }
+
+    HorizontalBox {
+        padding: 6px;
+        spacing: 4px;
+
+        VerticalLayout {
+            spacing: 1px;
+            alignment: center;
+            Rectangle {
+                width: 16px;
+                height: 32px;
+                border-radius: 2px;
+                border-width: 1px;
+                border-color: #20202040;
+            }
+        }
+
+        CustomHotBarSlots {
+            offset: 12;
         }
     }
 }

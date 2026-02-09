@@ -19,10 +19,18 @@ pub struct GraphicsSettings {
     pub scale: f32,
     #[serde(default = "default_true")]
     pub high_quality_scaling: bool,
+    #[serde(default = "default_true")]
+    pub show_hotbar_1: bool,
+    #[serde(default = "default_false")]
+    pub show_hotbar_2: bool,
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_false() -> bool {
+    false
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -65,6 +73,8 @@ impl Default for Settings {
                 xray_size: XRaySize::Medium,
                 scale: 1.0,
                 high_quality_scaling: true,
+                show_hotbar_1: true,
+                show_hotbar_2: false,
             },
             gameplay: GameplaySettings {
                 current_server_id: Some(1),
@@ -101,6 +111,8 @@ impl Settings {
             sfx_volume: self.audio.sfx_volume,
             music_volume: self.audio.music_volume,
             scale: self.graphics.scale,
+            show_hotbar_1: self.graphics.show_hotbar_1,
+            show_hotbar_2: self.graphics.show_hotbar_2,
             key_bindings: (&self.key_bindings).into(),
         }
     }

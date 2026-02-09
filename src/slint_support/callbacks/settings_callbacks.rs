@@ -16,6 +16,7 @@ pub fn wire_settings_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
         settings_state.on_xray_size_changed(move |size| {
             let _ = tx.send(UiToCore::SettingsChange {
                 xray_size: size as u8,
+                show_hotbar_1: None,
             });
         });
     }
@@ -47,6 +48,22 @@ pub fn wire_settings_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
         let tx = tx.clone();
         settings_state.on_scale_changed(move |scale| {
             let _ = tx.send(UiToCore::ScaleChange { scale });
+        });
+    }
+
+    // Show hotbar 1 changed
+    {
+        let tx = tx.clone();
+        settings_state.on_show_hotbar_1_changed(move |show| {
+            let _ = tx.send(UiToCore::ShowHotbar1 { show });
+        });
+    }
+
+    // Show hotbar 2 changed
+    {
+        let tx = tx.clone();
+        settings_state.on_show_hotbar_2_changed(move |show| {
+            let _ = tx.send(UiToCore::ShowHotbar2 { show });
         });
     }
 

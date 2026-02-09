@@ -6,7 +6,8 @@ export global SettingsState {
     in-out property <float> music-volume: 1.0;  // 0.0 to 1.0
     in-out property <float> scale: 1.0;  // 1.0 to 5.0
 
-    // Key bindings (Primary and Secondary)
+    in-out property <bool> show-hotbar-1: true;  // Toggle to show/hide hotbar 1
+    in-out property <bool> show-hotbar-2: true;  // Toggle to show/hide hotbar 2
     in-out property <string> key-move-up: "ArrowUp";
     in-out property <string> key-move-up-2: "";
     in-out property <string> key-move-down: "ArrowDown";
@@ -53,6 +54,30 @@ export global SettingsState {
     in-out property <string> key-hotbar-slot-11-2: "";
     in-out property <string> key-hotbar-slot-12: "Equal";
     in-out property <string> key-hotbar-slot-12-2: "";
+    in-out property <string> key-hotbar2-slot-1: "Alt+Digit1";
+    in-out property <string> key-hotbar2-slot-1-2: "";
+    in-out property <string> key-hotbar2-slot-2: "Alt+Digit2";
+    in-out property <string> key-hotbar2-slot-2-2: "";
+    in-out property <string> key-hotbar2-slot-3: "Alt+Digit3";
+    in-out property <string> key-hotbar2-slot-3-2: "";
+    in-out property <string> key-hotbar2-slot-4: "Alt+Digit4";
+    in-out property <string> key-hotbar2-slot-4-2: "";
+    in-out property <string> key-hotbar2-slot-5: "Alt+Digit5";
+    in-out property <string> key-hotbar2-slot-5-2: "";
+    in-out property <string> key-hotbar2-slot-6: "Alt+Digit6";
+    in-out property <string> key-hotbar2-slot-6-2: "";
+    in-out property <string> key-hotbar2-slot-7: "Alt+Digit7";
+    in-out property <string> key-hotbar2-slot-7-2: "";
+    in-out property <string> key-hotbar2-slot-8: "Alt+Digit8";
+    in-out property <string> key-hotbar2-slot-8-2: "";
+    in-out property <string> key-hotbar2-slot-9: "Alt+Digit9";
+    in-out property <string> key-hotbar2-slot-9-2: "";
+    in-out property <string> key-hotbar2-slot-10: "Alt+Digit0";
+    in-out property <string> key-hotbar2-slot-10-2: "";
+    in-out property <string> key-hotbar2-slot-11: "Alt+Minus";
+    in-out property <string> key-hotbar2-slot-11-2: "";
+    in-out property <string> key-hotbar2-slot-12: "Alt+Equal";
+    in-out property <string> key-hotbar2-slot-12-2: "";
     in-out property <string> key-switch-to-inventory: "KeyA";
     in-out property <string> key-switch-to-inventory-2: "";
     in-out property <string> key-switch-to-skills: "KeyS";
@@ -74,6 +99,8 @@ export global SettingsState {
     callback sfx-volume-changed(float);
     callback music-volume-changed(float);
     callback scale-changed(float);
+    callback show-hotbar-1-changed(bool);
+    callback show-hotbar-2-changed(bool);
     callback start-rebind(string, int);
     callback rebind-key(string);
     callback unbind-key(string, int);
