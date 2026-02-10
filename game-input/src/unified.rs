@@ -115,6 +115,10 @@ impl UnifiedInputBindings {
                 InputSource::Gamepad(GamepadInputType::Button(GamepadButton::South)),
             ],
         );
+        bindings.insert(
+            GameAction::AutoAttackToggle,
+            vec![InputSource::Keyboard(KeyBinding::new(KeyCode::KeyT))],
+        );
 
         Self { bindings }
     }
@@ -146,6 +150,7 @@ impl UnifiedInputBindings {
         bind!(settings, Settings);
         bind!(refresh, Refresh);
         bind!(basic_attack, BasicAttack);
+        bind!(auto_attack_toggle, AutoAttackToggle);
         bind!(item_pickup_below, ItemPickupBelow);
         bind!(hotbar_slot_1, HotbarSlot1);
         bind!(hotbar_slot_2, HotbarSlot2);

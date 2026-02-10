@@ -608,6 +608,7 @@ pub fn apply_core_to_slint(
                 set_keys!(settings);
                 set_keys!(refresh);
                 set_keys!(basic_attack);
+                set_keys!(auto_attack_toggle);
                 set_keys!(hotbar_slot_1);
                 set_keys!(hotbar_slot_2);
                 set_keys!(hotbar_slot_3);
