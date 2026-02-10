@@ -145,6 +145,13 @@ pub fn input_handling_system(
         Some(&gamepad_query),
         Some(&gamepad_config),
     ) {
+        if let Some(strong) = window.as_ref().and_then(|w| w.0.upgrade()) {
+            let npc_dialog = slint::ComponentHandle::global::<crate::NpcDialogState>(&strong);
+            if npc_dialog.get_data().visible {
+                npc_dialog.invoke_close();
+                return;
+            }
+        }
         tracing::info!("Basic attack triggered");
         spell_casting.active_cast = None;
         outbox.send(&Spacebar);
