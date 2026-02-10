@@ -128,8 +128,8 @@ fn reset_game_state_for_main_menu(window: &crate::MainWindow) {
     let game_state = slint::ComponentHandle::global::<crate::GameState>(window);
 
     game_state.set_map_name(slint::SharedString::from(""));
-    game_state.set_player_x(0.0);
-    game_state.set_player_y(0.0);
+    game_state.set_player_x(0);
+    game_state.set_player_y(0);
     game_state.set_current_hp(0);
     game_state.set_max_hp(0);
     game_state.set_current_mp(0);
@@ -789,6 +789,7 @@ pub fn sync_world_labels_to_slint(
         (
             &crate::ecs::components::Player,
             &crate::ecs::components::EntityId,
+            &crate::ecs::components::Position,
         ),
         With<crate::ecs::components::LocalPlayer>,
     >,
@@ -819,9 +820,11 @@ pub fn sync_world_labels_to_slint(
     ));
 
     // Update player name and ID
-    if let Some((player, entity_id)) = local_player_query.iter().next() {
+    if let Some((player, entity_id, position)) = local_player_query.iter().next() {
         game_state.set_player_name(slint::SharedString::from(player.name.as_str()));
         game_state.set_player_id(entity_id.id as i32);
+        game_state.set_player_x(position.x as i32);
+        game_state.set_player_y(position.y as i32);
     }
 
     // Update camera state
