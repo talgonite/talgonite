@@ -468,13 +468,6 @@ fn handle_ui_inbound_ingame(
             UiToCore::SetHotbarPanel { panel_num } => {
                 hotbar_panel_state.current_panel =
                     crate::ecs::hotbar::HotbarPanel::from_u8(*panel_num);
-
-                // Save the current hotbar panel selection to settings
-                settings.set_current_hotbar_panel(
-                    session.server_id,
-                    &session.username,
-                    *panel_num as i32,
-                );
             }
             UiToCore::RequestWorldList => {
                 outbox.send(&packets::client::WorldListRequest);

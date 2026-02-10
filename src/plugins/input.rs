@@ -107,13 +107,7 @@ fn initialize_input_bindings(
     *unified = UnifiedInputBindings::from_settings(&settings.key_bindings);
 }
 
-#[derive(bevy::ecs::system::SystemParam)]
-pub(crate) struct SessionContext<'w> {
-    settings: ResMut<'w, crate::settings::Settings>,
-    session: Option<Res<'w, crate::CurrentSession>>,
-}
-
-pub(crate) fn input_handling_system(
+pub fn input_handling_system(
     time: Res<Time>,
     mut input_timer: ResMut<InputTimer>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
@@ -132,7 +126,6 @@ pub(crate) fn input_handling_system(
     mut inventory_events: MessageWriter<crate::events::InventoryEvent>,
     mut ability_events: MessageWriter<crate::events::AbilityEvent>,
     mut spell_casting: ResMut<SpellCastingState>,
-    mut session_ctx: SessionContext,
 ) {
     let bindings = unified_bindings;
 
@@ -241,14 +234,6 @@ pub(crate) fn input_handling_system(
             Some(&gamepad_config),
         ) {
             hotbar_panel_state.current_panel = *panel;
-            // Save the current hotbar panel selection to settings
-            if let Some(session) = session_ctx.session.as_ref() {
-                session_ctx.settings.set_current_hotbar_panel(
-                    session.server_id,
-                    &session.username,
-                    *panel as i32,
-                );
-            }
         }
     }
 

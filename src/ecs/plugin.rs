@@ -53,6 +53,7 @@ impl Plugin for GamePlugin {
                     systems::pathfinding_target_system
                         .after(crate::plugins::mouse_interaction::MouseInteractionSet),
                     systems::player_interruption_system,
+                    crate::ecs::hotbar::sync_hotbar_panel_to_settings,
                     systems::handle_public_messages,
                     systems::expire_speech_bubbles,
                     systems::expire_chant_labels,
