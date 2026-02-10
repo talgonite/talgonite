@@ -1612,6 +1612,7 @@ fn update_world_list_filtered(mut state: ResMut<WorldListState>, mut last_versio
             is_master: m.is_master,
             color: match m.color {
                 packets::server::WorldListColor::Guilded => [1.0, 0.75, 0.25, 1.0], // Gold-ish
+                packets::server::WorldListColor::Unknown => [1.0, 0.596, 0.0, 1.0], // Orange
                 packets::server::WorldListColor::WithinLevelRange => [0.6, 0.6, 1.0, 1.0], // Blue-ish
                 packets::server::WorldListColor::White => [1.0, 1.0, 1.0, 1.0],
                 packets::server::WorldListColor::NotSure => [0.5, 0.5, 0.5, 1.0], // Gray
