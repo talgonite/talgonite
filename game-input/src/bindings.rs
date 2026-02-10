@@ -131,6 +131,10 @@ impl InputBindings {
             GameAction::BasicAttack,
             vec![KeyBinding::new(KeyCode::Space)],
         );
+        bindings.insert(
+            GameAction::AutoAttackToggle,
+            vec![KeyBinding::new(KeyCode::KeyT)],
+        );
         Self { bindings }
     }
 
@@ -161,6 +165,7 @@ impl InputBindings {
         bind!(settings, Settings);
         bind!(refresh, Refresh);
         bind!(basic_attack, BasicAttack);
+        bind!(auto_attack_toggle, AutoAttackToggle);
         bind!(item_pickup_below, ItemPickupBelow);
 
         bind!(hotbar_slot_1, HotbarSlot1);

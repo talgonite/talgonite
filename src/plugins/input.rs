@@ -1,7 +1,6 @@
 use crate::{
     app_state::AppState,
     ecs::components::{Direction, LocalPlayer, MovementTween},
-    ecs::spell_casting::SpellCastingState,
     ecs::systems::GameSet,
     events::{InputSource, PlayerAction},
     input::{
@@ -13,7 +12,7 @@ use crate::{
 };
 use bevy::prelude::*;
 use game_types::SlotPanelType;
-use packets::client::{RefreshRequest, Spacebar};
+use packets::client::RefreshRequest;
 
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InputPumpSet;
@@ -125,7 +124,6 @@ pub fn input_handling_system(
     mut ui_inbound: MessageWriter<crate::webui::plugin::UiInbound>,
     mut inventory_events: MessageWriter<crate::events::InventoryEvent>,
     mut ability_events: MessageWriter<crate::events::AbilityEvent>,
-    mut spell_casting: ResMut<SpellCastingState>,
 ) {
     let bindings = unified_bindings;
 
@@ -145,9 +143,16 @@ pub fn input_handling_system(
         Some(&gamepad_query),
         Some(&gamepad_config),
     ) {
-        tracing::info!("Basic attack triggered");
-        spell_casting.active_cast = None;
-        outbox.send(&Spacebar);
+        player_actions.write(PlayerAction::BasicAttack);
+    }
+
+    if bindings.is_just_pressed(
+        GameAction::AutoAttackToggle,
+        &keyboard_input,
+        Some(&gamepad_query),
+        Some(&gamepad_config),
+    ) {
+        player_actions.write(PlayerAction::ToggleAutoAttack);
     }
 
     if bindings.is_just_pressed(

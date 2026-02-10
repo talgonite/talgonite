@@ -148,6 +148,21 @@ export component ControlsTab inherits VerticalBox {
             }
         }
 
+        KeyBindingRow {
+            action-label: "Auto Attack Toggle";
+            current-key: SettingsState.key-auto-attack-toggle;
+            current-key-2: SettingsState.key-auto-attack-toggle-2;
+            action-id: "auto_attack_toggle";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
         Rectangle {
             height: Theme.spacing-small;
         }
