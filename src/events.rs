@@ -90,6 +90,8 @@ pub enum PlayerAction {
         source: InputSource,
     },
     ItemPickupBelow,
+    BasicAttack,
+    ToggleAutoAttack,
 }
 
 impl PlayerAction {
@@ -98,6 +100,8 @@ impl PlayerAction {
             PlayerAction::Walk { source, .. } => *source == InputSource::Manual,
             PlayerAction::Turn { source, .. } => *source == InputSource::Manual,
             PlayerAction::ItemPickupBelow => true,
+            PlayerAction::BasicAttack => false,
+            PlayerAction::ToggleAutoAttack => false,
         }
     }
 }

@@ -4,6 +4,7 @@
 //! managed by [`GameSet`].
 
 mod camera;
+mod auto_attack;
 mod chat;
 mod effects;
 mod entities;
@@ -15,6 +16,7 @@ mod pathfinding;
 mod rendering;
 
 pub use camera::*;
+pub use auto_attack::*;
 pub use chat::*;
 pub use effects::*;
 pub use entities::*;

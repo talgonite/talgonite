@@ -20,6 +20,7 @@ impl Plugin for GamePlugin {
         systems::configure_game_sets(app);
 
         app.init_resource::<SpellCastingState>()
+            .init_resource::<systems::AutoAttackState>()
             .init_resource::<crate::resources::LobbyPortraits>()
             .init_resource::<crate::resources::ItemTileCounters>()
             .init_resource::<super::components::MapDoorQueue>()
@@ -53,6 +54,8 @@ impl Plugin for GamePlugin {
                     systems::pathfinding_target_system
                         .after(crate::plugins::mouse_interaction::MouseInteractionSet),
                     systems::player_interruption_system,
+                    systems::auto_attack_system
+                        .after(crate::plugins::input::input_handling_system),
                     systems::handle_public_messages,
                     systems::expire_speech_bubbles,
                     systems::expire_chant_labels,

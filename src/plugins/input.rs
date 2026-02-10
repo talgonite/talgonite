@@ -1,7 +1,6 @@
 use crate::{
     app_state::AppState,
     ecs::components::{Direction, LocalPlayer, MovementTween},
-    ecs::spell_casting::SpellCastingState,
     ecs::systems::GameSet,
     events::{InputSource, PlayerAction},
     input::{
@@ -13,7 +12,7 @@ use crate::{
 };
 use bevy::prelude::*;
 use game_types::SlotPanelType;
-use packets::client::{RefreshRequest, Spacebar};
+use packets::client::RefreshRequest;
 
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InputPumpSet;
@@ -23,7 +22,6 @@ pub struct InputPlugin;
 impl Plugin for InputPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<InputTimer>()
-            .init_resource::<AutoAttackState>()
             .init_resource::<GamepadConfig>()
             .init_resource::<GilrsResource>()
             .init_resource::<RebindingState>()
@@ -81,21 +79,6 @@ pub struct InputTimer {
     turn_grace: Option<Timer>, // suppress walking right after a facing change
 }
 
-#[derive(Resource)]
-pub struct AutoAttackState {
-    enabled: bool,
-    timer: Timer,
-}
-
-impl Default for AutoAttackState {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            timer: Timer::from_seconds(0.05, TimerMode::Once),
-        }
-    }
-}
-
 impl Default for InputTimer {
     fn default() -> Self {
         Self {
@@ -126,7 +109,6 @@ fn initialize_input_bindings(
 pub fn input_handling_system(
     time: Res<Time>,
     mut input_timer: ResMut<InputTimer>,
-    mut auto_attack: ResMut<AutoAttackState>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     unified_bindings: Res<UnifiedInputBindings>,
     gamepad_query: Query<&Gamepad>,
@@ -142,7 +124,6 @@ pub fn input_handling_system(
     mut ui_inbound: MessageWriter<crate::webui::plugin::UiInbound>,
     mut inventory_events: MessageWriter<crate::events::InventoryEvent>,
     mut ability_events: MessageWriter<crate::events::AbilityEvent>,
-    mut spell_casting: ResMut<SpellCastingState>,
 ) {
     let bindings = unified_bindings;
 
@@ -162,12 +143,7 @@ pub fn input_handling_system(
         Some(&gamepad_query),
         Some(&gamepad_config),
     ) {
-        if auto_attack.enabled {
-            auto_attack.enabled = false;
-        }
-        tracing::info!("Basic attack triggered");
-        spell_casting.active_cast = None;
-        outbox.send(&Spacebar);
+        player_actions.write(PlayerAction::BasicAttack);
     }
 
     if bindings.is_just_pressed(
@@ -176,12 +152,7 @@ pub fn input_handling_system(
         Some(&gamepad_query),
         Some(&gamepad_config),
     ) {
-        auto_attack.enabled = !auto_attack.enabled;
-        auto_attack.timer.reset();
-        if auto_attack.enabled {
-            spell_casting.active_cast = None;
-            outbox.send(&Spacebar);
-        }
+        player_actions.write(PlayerAction::ToggleAutoAttack);
     }
 
     if bindings.is_just_pressed(
@@ -191,15 +162,6 @@ pub fn input_handling_system(
         Some(&gamepad_config),
     ) {
         player_actions.write(PlayerAction::ItemPickupBelow);
-    }
-
-    if auto_attack.enabled {
-        auto_attack.timer.tick(time.delta());
-        if auto_attack.timer.just_finished() {
-            spell_casting.active_cast = None;
-            outbox.send(&Spacebar);
-            auto_attack.timer.reset();
-        }
     }
 
     // Toggle Panels

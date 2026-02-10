@@ -88,6 +88,9 @@ pub fn player_movement_system(
             PlayerAction::ItemPickupBelow => {
                 // Handled by its own system; ignore here to keep match exhaustive
             }
+            PlayerAction::BasicAttack | PlayerAction::ToggleAutoAttack => {
+                // Handled by auto attack system
+            }
         }
     }
 }
