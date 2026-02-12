@@ -28,6 +28,30 @@ fn default_true() -> bool {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct GameplaySettings {
     pub current_server_id: Option<u32>,
+    #[serde(default)]
+    pub npc_interaction_clicks: NpcInteractionClicks,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum NpcInteractionClicks {
+    SingleClick = 0,
+    DoubleClick = 1,
+}
+
+impl Default for NpcInteractionClicks {
+    fn default() -> Self {
+        Self::SingleClick
+    }
+}
+
+impl NpcInteractionClicks {
+    pub fn from_u8(mode: u8) -> Self {
+        match mode {
+            0 => Self::SingleClick,
+            _ => Self::DoubleClick,
+        }
+    }
 }
 
 #[derive(Resource, serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -68,6 +92,7 @@ impl Default for Settings {
             },
             gameplay: GameplaySettings {
                 current_server_id: Some(1),
+                npc_interaction_clicks: NpcInteractionClicks::SingleClick,
             },
             key_bindings: KeyBindings::default(),
             servers: vec![ServerEntry {
@@ -101,6 +126,7 @@ impl Settings {
             sfx_volume: self.audio.sfx_volume,
             music_volume: self.audio.music_volume,
             scale: self.graphics.scale,
+            npc_interaction_clicks: self.gameplay.npc_interaction_clicks as u8,
             key_bindings: (&self.key_bindings).into(),
         }
     }

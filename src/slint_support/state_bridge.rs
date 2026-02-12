@@ -580,6 +580,7 @@ pub fn apply_core_to_slint(
                 sfx_volume,
                 music_volume,
                 scale,
+                npc_interaction_clicks,
                 key_bindings,
             } => {
                 let settings_state =
@@ -597,6 +598,7 @@ pub fn apply_core_to_slint(
                 settings_state.set_sfx_volume(*sfx_volume);
                 settings_state.set_music_volume(*music_volume);
                 settings_state.set_scale(*scale);
+                settings_state.set_npc_interaction_clicks(*npc_interaction_clicks as i32);
 
                 set_keys!(move_up);
                 set_keys!(move_down);
