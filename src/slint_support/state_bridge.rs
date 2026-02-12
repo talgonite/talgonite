@@ -812,6 +812,8 @@ pub fn sync_world_labels_to_slint(
     game_state.set_max_hp(player_attrs.max_hp as i32);
     game_state.set_current_mp(player_attrs.current_mp as i32);
     game_state.set_max_mp(player_attrs.max_mp as i32);
+    game_state.set_current_weight(player_attrs.current_weight);
+    game_state.set_max_weight(player_attrs.max_weight);
 
     // Update server name
     game_state.set_server_name(slint::SharedString::from(
