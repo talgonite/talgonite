@@ -278,6 +278,34 @@ fn process_net_packets(
                         session_events.write(SessionEvent::SelfProfile(q));
                     }
                 }
+                &server::Codes::Effect => {
+                    let mut effects = Vec::new();
+                    if data.len() % 3 == 0 {
+                        for chunk in data.chunks_exact(3) {
+                            if let Ok(effect) = server::Effect::try_from_bytes(chunk) {
+                                effects.push(effect);
+                            } else {
+                                tracing::warn!(len = chunk.len(), "Failed to parse effect chunk");
+                            }
+                        }
+                    } else if data.len() % 2 == 0 {
+                        for chunk in data.chunks_exact(2) {
+                            if let Ok(effect) = server::Effect::try_from_bytes(chunk) {
+                                effects.push(effect);
+                            } else {
+                                tracing::warn!(len = chunk.len(), "Failed to parse effect chunk");
+                            }
+                        }
+                    } else if let Some(effect) = parse_packet::<server::Effect>(data) {
+                        effects.push(effect);
+                    } else {
+                        tracing::warn!(len = data.len(), "Effect packet size is invalid");
+                    }
+
+                    if !effects.is_empty() {
+                        session_events.write(SessionEvent::StatusEffects(effects));
+                    }
+                }
                 &server::Codes::OtherProfile => {
                     if let Some(q) = parse_packet::<server::OtherProfile>(data) {
                         session_events.write(SessionEvent::OtherProfile(q));

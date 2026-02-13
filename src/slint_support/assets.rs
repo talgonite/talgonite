@@ -167,6 +167,10 @@ impl SlintAssetLoader {
         )
     }
 
+    pub fn load_effect_icon(&self, game_files: &GameFiles, sprite_id: u16) -> Result<Image, String> {
+        self.load_spell_icon(game_files, sprite_id)
+    }
+
     pub fn load_world_map_image(
         &self,
         game_files: &GameFiles,

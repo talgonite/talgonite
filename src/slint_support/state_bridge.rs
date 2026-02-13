@@ -103,6 +103,17 @@ fn parse_color_hex(hex: &str) -> slint::Brush {
     slint::Color::from_rgb_u8(r, g, b).into()
 }
 
+fn status_effect_bar_style(color_id: u8) -> (slint::Color, f32) {
+    match color_id {
+        1 => (slint::Color::from_rgb_u8(0x5a, 0xc8, 0xfa), 0.25),
+        2 => (slint::Color::from_rgb_u8(0x34, 0xc7, 0x59), 0.4),
+        3 => (slint::Color::from_rgb_u8(0xff, 0xd5, 0x4a), 0.6),
+        4 => (slint::Color::from_rgb_u8(0xff, 0x9f, 0x0a), 0.75),
+        5 => (slint::Color::from_rgb_u8(0xff, 0x3b, 0x30), 0.9),
+        _ => (slint::Color::from_rgb_u8(0xff, 0xff, 0xff), 1.0),
+    }
+}
+
 #[derive(Resource, Clone)]
 pub struct SlintWindow(pub slint::Weak<crate::MainWindow>);
 
@@ -164,6 +175,7 @@ fn reset_game_state_for_main_menu(window: &crate::MainWindow) {
     game_state.set_inventory(empty_model());
     game_state.set_skills(empty_model());
     game_state.set_spells(empty_model());
+    game_state.set_status_effects(empty_model());
     game_state.set_hotbar(empty_model());
     game_state.set_show_inventory(false);
     game_state.set_show_skills(false);
@@ -194,6 +206,7 @@ pub fn apply_core_to_slint(
     hotbar_panel: Res<crate::ecs::hotbar::HotbarPanelState>,
     lobby_portraits: Res<crate::resources::LobbyPortraits>,
     world_list: Res<crate::webui::plugin::WorldListState>,
+    status_effects: Res<crate::webui::plugin::StatusEffectsState>,
 ) {
     let Some(strong) = win.0.upgrade() else {
         return;
@@ -301,6 +314,32 @@ pub fn apply_core_to_slint(
                 }
             }
             spi += 1;
+        }
+    }
+
+    if status_effects.is_changed() {
+        let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
+
+        if game_state.get_status_effects().row_count() != status_effects.effects.len() {
+            game_state.set_status_effects(slint::ModelRc::new(slint::VecModel::from(
+                vec![crate::StatusEffect::default(); status_effects.effects.len()],
+            )));
+        }
+
+        let effects_state = game_state.get_status_effects();
+        for (idx, effect) in status_effects.effects.iter().enumerate() {
+            let icon = asset_loader
+                .load_effect_icon(&game_files, effect.icon)
+                .unwrap_or_default();
+            let (bar_color, duration_percent_remaining) = status_effect_bar_style(effect.color);
+            let ui_effect = crate::StatusEffect {
+                icon,
+                color: effect.color as i32,
+                bar_color,
+                duration_percent_remaining,
+            };
+
+            effects_state.set_row_data(idx, ui_effect);
         }
     }
 

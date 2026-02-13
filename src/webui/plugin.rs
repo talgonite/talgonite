@@ -60,6 +60,7 @@ impl Plugin for UiBridgePlugin {
             .add_message::<UiOutbound>()
             .init_resource::<InventoryState>()
             .init_resource::<AbilityState>()
+            .init_resource::<StatusEffectsState>()
             .init_resource::<WorldListState>()
             .init_resource::<EquipmentState>()
             .init_resource::<PlayerProfileState>()
@@ -1208,12 +1209,41 @@ fn bridge_session_events(
     mut menu_ctx: ResMut<ActiveMenuContext>,
     inv_state: Res<InventoryState>,
     ability_state: Res<AbilityState>,
+    mut status_effects: ResMut<StatusEffectsState>,
     mut profile_state: ResMut<PlayerProfileState>,
     mut show_profile: MessageWriter<crate::slint_plugin::ShowSelfProfileEvent>,
     mut world_list_state: ResMut<WorldListState>,
 ) {
+    const MAX_STATUS_EFFECTS: usize = 20;
+
     for evt in session_events.read() {
         match evt {
+            SessionEvent::StatusEffects(effects) => {
+                for effect in effects.iter().take(MAX_STATUS_EFFECTS) {
+                    if effect.color == 0 {
+                        status_effects.effects.retain(|e| e.icon != effect.icon);
+                        continue;
+                    }
+
+                    if let Some(existing) = status_effects
+                        .effects
+                        .iter_mut()
+                        .find(|e| e.icon == effect.icon)
+                    {
+                        existing.color = effect.color;
+                        continue;
+                    }
+
+                    if status_effects.effects.len() >= MAX_STATUS_EFFECTS {
+                        status_effects.effects.remove(0);
+                    }
+
+                    status_effects.effects.push(StatusEffectUi {
+                        icon: effect.icon,
+                        color: effect.color,
+                    });
+                }
+            }
             SessionEvent::WorldList(pkt) => {
                 world_list_state.raw = Some(pkt.clone());
                 world_list_state.version = world_list_state.version.wrapping_add(1);
@@ -1659,6 +1689,17 @@ impl PlayerProfileState {
 pub struct AbilityState {
     pub skills: Vec<SkillUi>,
     pub spells: Vec<SpellUi>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatusEffectUi {
+    pub icon: u16,
+    pub color: u8,
+}
+
+#[derive(Resource, Default, Debug, Clone)]
+pub struct StatusEffectsState {
+    pub effects: Vec<StatusEffectUi>,
 }
 
 #[derive(Resource, Default, Debug, Clone)]
