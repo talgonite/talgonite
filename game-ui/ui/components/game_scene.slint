@@ -42,6 +42,27 @@ export component GameScene inherits Rectangle {
                 return accept;
             }
             if (event.text == "\u{001b}") { // Escape
+                if (NpcDialogState.data.visible) {
+                    NpcDialogState.close();
+                    return accept;
+                }
+                if (GameState.profile.visible) {
+                    GameState.profile.visible = false;
+                    return accept;
+                }
+                if (GameState.show-world-list) {
+                    GameState.show-world-list = false;
+                    return accept;
+                }
+                if (GameState.show-inventory) {
+                    GameState.show-inventory = false;
+                    return accept;
+                }
+                if (GameState.show-skills || GameState.show-spells) {
+                    GameState.show-skills = false;
+                    GameState.show-spells = false;
+                    return accept;
+                }
                 if (SettingsState.show-settings) {
                     SettingsState.show-settings = false;
                     SettingsState.show-game-menu = true;
