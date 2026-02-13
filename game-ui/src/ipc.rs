@@ -224,6 +224,7 @@ pub enum CoreToUi {
         sfx_volume: f32,
         music_volume: f32,
         scale: f32,
+        npc_interaction_clicks: u8,
         key_bindings: KeyBindingsUi,
     },
 }
