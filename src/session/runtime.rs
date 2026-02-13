@@ -245,6 +245,8 @@ fn process_net_packets(
                         if let Some(primary) = &attrs.primary {
                             player_attrs.max_hp = primary.maximum_hp;
                             player_attrs.max_mp = primary.maximum_mp;
+                            player_attrs.max_weight = primary.max_weight as i32;
+                            player_attrs.current_weight = primary.current_weight as i32;
                         }
                     }
                 }
