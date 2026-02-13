@@ -63,6 +63,7 @@ impl Plugin for UiBridgePlugin {
             .init_resource::<WorldListState>()
             .init_resource::<EquipmentState>()
             .init_resource::<PlayerProfileState>()
+            .init_resource::<GoldDropPending>()
             .init_resource::<crate::ecs::hotbar::HotbarState>()
             .init_resource::<crate::ecs::hotbar::HotbarPanelState>()
             .init_resource::<ActiveMenuContext>()
@@ -167,11 +168,13 @@ fn handle_ui_inbound_ingame(
     mut chat_events: MessageWriter<ChatEvent>,
     mut next_state: ResMut<NextState<AppState>>,
     outbox: Res<crate::network::PacketOutbox>,
+    player_attrs: Res<crate::resources::PlayerAttributes>,
     ui_state: UiStateResources,
     mut menu_ctx: ResMut<ActiveMenuContext>,
     bindings: InputBindingResources,
     hotbar_res: HotbarResources,
     interaction_res: InteractionResources,
+    mut gold_drop_pending: ResMut<GoldDropPending>,
 ) {
     let mut hotbar_state = hotbar_res.hotbar_state;
     let mut hotbar_panel_state = hotbar_res.hotbar_panel_state;
@@ -483,6 +486,7 @@ fn handle_ui_inbound_ingame(
                 SlotPanelType::Item => {
                     inventory_events.write(InventoryEvent::Use { slot: *index as u8 });
                 }
+                SlotPanelType::Gold => {}
                 SlotPanelType::Skill => {
                     ability_events.write(AbilityEvent::UseSkill { slot: *index as u8 });
                 }
@@ -658,8 +662,8 @@ fn handle_ui_inbound_ingame(
                     }
                     hits.sort_by(|a, b| b.4.partial_cmp(&a.4).unwrap_or(std::cmp::Ordering::Equal));
 
-                    // If dropping an item, ignore hit-testing against yourself
-                    if matches!(src_category, SlotPanelType::Item) {
+                    // If dropping an item or gold, ignore hit-testing against yourself
+                    if matches!(src_category, SlotPanelType::Item | SlotPanelType::Gold) {
                         hits.retain(|h| !h.3);
                     }
 
@@ -718,6 +722,35 @@ fn handle_ui_inbound_ingame(
                         }
                     }
 
+                    if matches!(src_category, SlotPanelType::Gold) {
+                        if player_attrs.gold == 0 {
+                            outbound.write(UiOutbound(CoreToUi::GoldDropPrompt {
+                                max_gold: 0,
+                                error: Some("You have no gold to drop.".to_string()),
+                            }));
+                        } else {
+                            let mut target_id = None;
+                            if let Some((_, entity_id, is_creature, _, _)) = hits.first() {
+                                if *is_creature {
+                                    target_id = entity_id.map(|eid| eid.id);
+                                }
+                            }
+
+                            gold_drop_pending.clear();
+                            gold_drop_pending.target_id = target_id;
+                            gold_drop_pending.tile = if target_id.is_none() {
+                                Some((tile_i.0.max(0) as u16, tile_i.1.max(0) as u16))
+                            } else {
+                                None
+                            };
+
+                            outbound.write(UiOutbound(CoreToUi::GoldDropPrompt {
+                                max_gold: player_attrs.gold,
+                                error: None,
+                            }));
+                        }
+                    }
+
                     if matches!(src_category, SlotPanelType::Hotbar) {
                         let bar = *src_index / 12;
                         let slot = *src_index % 12;
@@ -754,6 +787,63 @@ fn handle_ui_inbound_ingame(
                     );
                 }
             },
+            UiToCore::GoldDropSubmit { amount } => {
+                let amount_str = amount.trim();
+                let Some(parsed) = amount_str.parse::<u32>().ok() else {
+                    outbound.write(UiOutbound(CoreToUi::GoldDropPrompt {
+                        max_gold: player_attrs.gold,
+                        error: Some("Enter a valid number.".to_string()),
+                    }));
+                    continue;
+                };
+
+                if parsed == 0 || parsed > player_attrs.gold {
+                    outbound.write(UiOutbound(CoreToUi::GoldDropPrompt {
+                        max_gold: player_attrs.gold,
+                        error: Some(format!(
+                            "Enter an amount between 1 and {}.",
+                            player_attrs.gold
+                        )),
+                    }));
+                    continue;
+                }
+
+                let amount_i32 = match i32::try_from(parsed) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        outbound.write(UiOutbound(CoreToUi::GoldDropPrompt {
+                            max_gold: player_attrs.gold,
+                            error: Some("Amount is too large.".to_string()),
+                        }));
+                        continue;
+                    }
+                };
+
+                if let Some(target_id) = gold_drop_pending.target_id {
+                    outbox.send(&client::GoldDroppedOnCreature {
+                        amount: amount_i32,
+                        target_id,
+                    });
+                } else if let Some(tile) = gold_drop_pending.tile {
+                    outbox.send(&client::GoldDrop {
+                        amount: amount_i32,
+                        destination_point: tile,
+                    });
+                } else {
+                    outbound.write(UiOutbound(CoreToUi::GoldDropPrompt {
+                        max_gold: player_attrs.gold,
+                        error: Some("Drop target lost. Try again.".to_string()),
+                    }));
+                    continue;
+                }
+
+                gold_drop_pending.clear();
+                outbound.write(UiOutbound(CoreToUi::GoldDropClose));
+            }
+            UiToCore::GoldDropCancel => {
+                gold_drop_pending.clear();
+                outbound.write(UiOutbound(CoreToUi::GoldDropClose));
+            }
             _ => {}
         }
     }
@@ -1667,6 +1757,19 @@ pub struct WorldListState {
     pub filtered: Vec<WorldListMemberUi>,
     pub filter: WorldListFilter,
     pub version: u32,
+}
+
+#[derive(Resource, Default, Debug, Clone)]
+pub struct GoldDropPending {
+    pub tile: Option<(u16, u16)>,
+    pub target_id: Option<u32>,
+}
+
+impl GoldDropPending {
+    pub fn clear(&mut self) {
+        self.tile = None;
+        self.target_id = None;
+    }
 }
 
 fn update_skill_cooldowns(

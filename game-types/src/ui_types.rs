@@ -3,6 +3,7 @@ pub enum SlotPanelType {
     #[default]
     None,
     Item,
+    Gold,
     Skill,
     Spell,
     Hotbar,

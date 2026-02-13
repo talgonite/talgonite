@@ -246,6 +246,9 @@ fn process_net_packets(
                             player_attrs.max_hp = primary.maximum_hp;
                             player_attrs.max_mp = primary.maximum_mp;
                         }
+                        if let Some(exp_gold) = &attrs.exp_gold {
+                            player_attrs.gold = exp_gold.gold;
+                        }
                     }
                 }
                 &server::Codes::Equipment => {

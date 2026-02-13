@@ -51,6 +51,7 @@ export struct Spell {
 export enum SlotPanelType {
     none,
     item,
+    gold,
     skill,
     spell,
     hotbar,
@@ -184,11 +185,13 @@ export global GameState {
     in-out property <int> max_hp: 1200;
     in-out property <int> current_mp: 320;
     in-out property <int> max_mp: 500;
+    in-out property <int> player_gold: 0;
     in-out property <int> player_id: 12345;
     in-out property <string> server_name: "Darkages";
     in-out property <int> ping_ms: 45;
     in-out property <string> player_name: "Warrior";
     in-out property <image> player_portrait: @image-url("");
+    in-out property <image> gold_icon: @image-url("");
 
     // Camera state for world-to-screen coordinate conversion
     // camera_x/y are in isometric world coordinates
@@ -309,4 +312,12 @@ export global NpcDialogState {
             visible: false,
         };
     }
+}
+
+export global GoldDropState {
+    in-out property <bool> visible: false;
+    in-out property <int> max-gold: 0;
+    in-out property <string> error-text: "";
+    callback submit(string);
+    callback cancel();
 }
