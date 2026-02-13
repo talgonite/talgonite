@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use std::collections::HashMap;
 
 use crate::settings_types::CustomHotBars;
+use crate::{settings::Settings, CurrentSession};
 use crate::webui::ipc::Cooldown;
 
 #[derive(Resource, Default)]
@@ -38,6 +39,26 @@ impl HotbarState {
 #[derive(Resource, Default)]
 pub struct HotbarPanelState {
     pub current_panel: HotbarPanel,
+}
+
+pub fn sync_hotbar_panel_to_settings(
+    hotbar_panel: Res<HotbarPanelState>,
+    mut settings: ResMut<Settings>,
+    session: Option<Res<CurrentSession>>,
+) {
+    if !hotbar_panel.is_changed() {
+        return;
+    }
+
+    let Some(session) = session.as_ref() else {
+        return;
+    };
+
+    settings.set_current_hotbar_panel(
+        session.server_id,
+        &session.username,
+        hotbar_panel.current_panel as i32,
+    );
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
