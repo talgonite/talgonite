@@ -100,7 +100,7 @@ mod public_message;
 pub use public_message::{PublicMessage, PublicMessageType};
 
 mod raise_stat;
-pub use raise_stat::RaiseStat;
+pub use raise_stat::{RaiseStat, Stat};
 
 mod refresh_request;
 pub use refresh_request::RefreshRequest;

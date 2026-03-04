@@ -61,6 +61,9 @@ pub enum UiToCore {
     Unequip {
         slot: u8,
     },
+    RaiseStat {
+        stat: String,
+    },
     DragDropAction {
         src_category: SlotPanelType,
         src_index: usize,

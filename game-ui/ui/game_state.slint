@@ -147,6 +147,25 @@ export struct ProfileData {
     portrait: image,
     preview: image,
     profile-text: string,
+    level: int,
+    ability-level: int,
+    experience: int,
+    experience-to-next-level: int,
+    ability-experience: int,
+    ability-experience-to-next-level: int,
+    game-points: int,
+    stat-str: int,
+    stat-int: int,
+    stat-wis: int,
+    stat-con: int,
+    stat-dex: int,
+    unspent-stat-points: int,
+    attack-element: string,
+    defense-element: string,
+    magic-resistance: int,
+    ac: int,
+    dmg: int,
+    hit: int,
     is-afk: bool,
     group-requests-enabled: bool,
     legend-marks: [LegendMarkData],
@@ -242,6 +261,7 @@ export global GameState {
     callback send-chat(string);
     callback send-whisper(string, string);
     callback unequip(int);
+    callback raise-stat(string);
     callback refresh-world-list();
     callback set-world-list-filter(string, bool, string); // class, master_only, search
 
