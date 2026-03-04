@@ -310,7 +310,7 @@ fn handle_ui_inbound_ingame(
                 outbound.write(UiOutbound(settings.to_snapshot_message(None)));
                 outbound.write(UiOutbound(settings.to_sync_message()));
             }
-            UiToCore::SettingsChange { xray_size } => {
+            UiToCore::SettingsChange { xray_size, show_hotbar_1: _ } => {
                 settings.graphics.xray_size = crate::settings_types::XRaySize::from_u8(*xray_size);
             }
             UiToCore::VolumeChange { sfx, music } => {
@@ -324,6 +324,12 @@ fn handle_ui_inbound_ingame(
             UiToCore::ScaleChange { scale } => {
                 settings.graphics.scale = *scale;
                 zoom_state.set_zoom(*scale);
+            }
+            UiToCore::ShowHotbar1 { show } => {
+                settings.graphics.show_hotbar_1 = *show;
+            }
+            UiToCore::ShowHotbar2 { show } => {
+                settings.graphics.show_hotbar_2 = *show;
             }
             UiToCore::RebindKey {
                 action,
@@ -366,6 +372,18 @@ fn handle_ui_inbound_ingame(
                 check_conflict!(hotbar_slot_10);
                 check_conflict!(hotbar_slot_11);
                 check_conflict!(hotbar_slot_12);
+                check_conflict!(hotbar2_slot_1);
+                check_conflict!(hotbar2_slot_2);
+                check_conflict!(hotbar2_slot_3);
+                check_conflict!(hotbar2_slot_4);
+                check_conflict!(hotbar2_slot_5);
+                check_conflict!(hotbar2_slot_6);
+                check_conflict!(hotbar2_slot_7);
+                check_conflict!(hotbar2_slot_8);
+                check_conflict!(hotbar2_slot_9);
+                check_conflict!(hotbar2_slot_10);
+                check_conflict!(hotbar2_slot_11);
+                check_conflict!(hotbar2_slot_12);
                 check_conflict!(switch_to_inventory);
                 check_conflict!(switch_to_skills);
                 check_conflict!(switch_to_spells);
@@ -403,6 +421,18 @@ fn handle_ui_inbound_ingame(
                 set_field!(hotbar_slot_10);
                 set_field!(hotbar_slot_11);
                 set_field!(hotbar_slot_12);
+                set_field!(hotbar2_slot_1);
+                set_field!(hotbar2_slot_2);
+                set_field!(hotbar2_slot_3);
+                set_field!(hotbar2_slot_4);
+                set_field!(hotbar2_slot_5);
+                set_field!(hotbar2_slot_6);
+                set_field!(hotbar2_slot_7);
+                set_field!(hotbar2_slot_8);
+                set_field!(hotbar2_slot_9);
+                set_field!(hotbar2_slot_10);
+                set_field!(hotbar2_slot_11);
+                set_field!(hotbar2_slot_12);
                 set_field!(switch_to_inventory);
                 set_field!(switch_to_skills);
                 set_field!(switch_to_spells);
@@ -448,6 +478,18 @@ fn handle_ui_inbound_ingame(
                 clear_field!(hotbar_slot_10);
                 clear_field!(hotbar_slot_11);
                 clear_field!(hotbar_slot_12);
+                clear_field!(hotbar2_slot_1);
+                clear_field!(hotbar2_slot_2);
+                clear_field!(hotbar2_slot_3);
+                clear_field!(hotbar2_slot_4);
+                clear_field!(hotbar2_slot_5);
+                clear_field!(hotbar2_slot_6);
+                clear_field!(hotbar2_slot_7);
+                clear_field!(hotbar2_slot_8);
+                clear_field!(hotbar2_slot_9);
+                clear_field!(hotbar2_slot_10);
+                clear_field!(hotbar2_slot_11);
+                clear_field!(hotbar2_slot_12);
                 clear_field!(switch_to_inventory);
                 clear_field!(switch_to_skills);
                 clear_field!(switch_to_spells);
@@ -955,7 +997,7 @@ fn handle_ui_inbound_login(
                 }
                 outbound.write(UiOutbound(settings.to_snapshot_message(None)));
             }
-            UiToCore::SettingsChange { xray_size } => {
+            UiToCore::SettingsChange { xray_size, show_hotbar_1: _ } => {
                 settings.graphics.xray_size = crate::settings_types::XRaySize::from_u8(*xray_size);
             }
             UiToCore::VolumeChange { sfx, music } => {
@@ -968,6 +1010,12 @@ fn handle_ui_inbound_login(
             }
             UiToCore::ScaleChange { scale } => {
                 settings.graphics.scale = *scale;
+            }
+            UiToCore::ShowHotbar1 { show } => {
+                settings.graphics.show_hotbar_1 = *show;
+            }
+            UiToCore::ShowHotbar2 { show } => {
+                settings.graphics.show_hotbar_2 = *show;
             }
             UiToCore::RebindKey {
                 action,
@@ -1010,6 +1058,18 @@ fn handle_ui_inbound_login(
                 check_conflict!(hotbar_slot_10);
                 check_conflict!(hotbar_slot_11);
                 check_conflict!(hotbar_slot_12);
+                check_conflict!(hotbar2_slot_1);
+                check_conflict!(hotbar2_slot_2);
+                check_conflict!(hotbar2_slot_3);
+                check_conflict!(hotbar2_slot_4);
+                check_conflict!(hotbar2_slot_5);
+                check_conflict!(hotbar2_slot_6);
+                check_conflict!(hotbar2_slot_7);
+                check_conflict!(hotbar2_slot_8);
+                check_conflict!(hotbar2_slot_9);
+                check_conflict!(hotbar2_slot_10);
+                check_conflict!(hotbar2_slot_11);
+                check_conflict!(hotbar2_slot_12);
                 check_conflict!(switch_to_inventory);
                 check_conflict!(switch_to_skills);
                 check_conflict!(switch_to_spells);
@@ -1047,6 +1107,18 @@ fn handle_ui_inbound_login(
                 set_field!(hotbar_slot_10);
                 set_field!(hotbar_slot_11);
                 set_field!(hotbar_slot_12);
+                set_field!(hotbar2_slot_1);
+                set_field!(hotbar2_slot_2);
+                set_field!(hotbar2_slot_3);
+                set_field!(hotbar2_slot_4);
+                set_field!(hotbar2_slot_5);
+                set_field!(hotbar2_slot_6);
+                set_field!(hotbar2_slot_7);
+                set_field!(hotbar2_slot_8);
+                set_field!(hotbar2_slot_9);
+                set_field!(hotbar2_slot_10);
+                set_field!(hotbar2_slot_11);
+                set_field!(hotbar2_slot_12);
                 set_field!(switch_to_inventory);
                 set_field!(switch_to_skills);
                 set_field!(switch_to_spells);
@@ -1092,6 +1164,18 @@ fn handle_ui_inbound_login(
                 clear_field!(hotbar_slot_10);
                 clear_field!(hotbar_slot_11);
                 clear_field!(hotbar_slot_12);
+                clear_field!(hotbar2_slot_1);
+                clear_field!(hotbar2_slot_2);
+                clear_field!(hotbar2_slot_3);
+                clear_field!(hotbar2_slot_4);
+                clear_field!(hotbar2_slot_5);
+                clear_field!(hotbar2_slot_6);
+                clear_field!(hotbar2_slot_7);
+                clear_field!(hotbar2_slot_8);
+                clear_field!(hotbar2_slot_9);
+                clear_field!(hotbar2_slot_10);
+                clear_field!(hotbar2_slot_11);
+                clear_field!(hotbar2_slot_12);
                 clear_field!(switch_to_inventory);
                 clear_field!(switch_to_skills);
                 clear_field!(switch_to_spells);

@@ -159,6 +159,18 @@ impl UnifiedInputBindings {
         bind!(hotbar_slot_10, HotbarSlot10);
         bind!(hotbar_slot_11, HotbarSlot11);
         bind!(hotbar_slot_12, HotbarSlot12);
+        bind!(hotbar2_slot_1, Hotbar2Slot1);
+        bind!(hotbar2_slot_2, Hotbar2Slot2);
+        bind!(hotbar2_slot_3, Hotbar2Slot3);
+        bind!(hotbar2_slot_4, Hotbar2Slot4);
+        bind!(hotbar2_slot_5, Hotbar2Slot5);
+        bind!(hotbar2_slot_6, Hotbar2Slot6);
+        bind!(hotbar2_slot_7, Hotbar2Slot7);
+        bind!(hotbar2_slot_8, Hotbar2Slot8);
+        bind!(hotbar2_slot_9, Hotbar2Slot9);
+        bind!(hotbar2_slot_10, Hotbar2Slot10);
+        bind!(hotbar2_slot_11, Hotbar2Slot11);
+        bind!(hotbar2_slot_12, Hotbar2Slot12);
         bind!(switch_to_inventory, SwitchToInventory);
         bind!(switch_to_skills, SwitchToSkills);
         bind!(switch_to_spells, SwitchToSpells);
