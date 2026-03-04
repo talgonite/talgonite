@@ -18,6 +18,8 @@ import { ChatLog } from "./chat_log.slint";
 import { PopupPanel } from "./popup_panel.slint";
 import { ProfilePanel } from "./profile_panel.slint";
 import { WorldListPanel } from "./world_list.slint";
+import { GroupPanel } from "./group_panel.slint";
+import { GroupInvitePopup } from "./group_invite_popup.slint";
 import { PopupState, NpcDialogState } from "../game_state.slint";
 import {
     HorizontalBox,
@@ -117,6 +119,10 @@ export component GameScene inherits Rectangle {
         x: parent.width - 470px;
         y: 60px;
     }
+    if (GameState.show-group): GroupPanel {
+        x: parent.width - 350px;
+        y: 60px;
+    }
     if (GameState.show-skills || GameState.show-spells): ActionsPanel {
         x: parent.width - 490px;
         y: 60px;
@@ -146,6 +152,12 @@ export component GameScene inherits Rectangle {
     if (GameState.profile.visible): ProfilePanel {
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
+    }
+
+    // Group invite popup (bottom-center, above hotbar)
+    if (GameState.group-invite.visible): GroupInvitePopup {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - self.height - 120px;
     }
 
     // World map overlay (on top of normal UI)

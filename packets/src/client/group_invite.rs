@@ -1,3 +1,8 @@
+//! Client group packets (opcode 46).
+//!
+//! Subtypes: 1 = CreateGroupBox, 2 = Request (invite or kick), 3 = Forced (accept invite: send inviter name).
+//! Leave group uses ToggleGroup (opcode 47 = 0x2F).
+
 use crate::ToBytes;
 
 use super::Codes;
@@ -6,6 +11,7 @@ use encoding::{EncoderTrap, Encoding};
 
 #[derive(Debug)]
 pub enum GroupInvite {
+    /// Subtype 1: create a group box (LFG-style).
     CreateGroupBox {
         target_name: String,
         name: String,
@@ -18,12 +24,10 @@ pub enum GroupInvite {
         max_priests: u8,
         max_monks: u8,
     },
-    Request {
-        name: String,
-    },
-    Forced {
-        name: String,
-    },
+    /// Subtype 2: invite (name = target) or kick (name = member to remove). Same format, context-dependent.
+    Request { name: String },
+    /// Subtype 3: accept group invite (name = inviter). Server also sends 03 when you receive an invite.
+    Forced { name: String },
 }
 
 impl ToBytes for GroupInvite {

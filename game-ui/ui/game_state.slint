@@ -1,3 +1,15 @@
+export struct GroupMember {
+    name: string,
+    is-leader: bool,
+}
+
+export struct GroupInviteNotification {
+    visible: bool,
+    source-name: string,
+    group-name: string,
+    group-note: string,
+}
+
 export struct WorldMapNode {
     text: string,
     map_id: int,
@@ -237,6 +249,11 @@ export global GameState {
         group-requests-enabled: true,
     };
     in-out property <int> current-hotbar-panel: 0;
+    in-out property <bool> show-group: false;
+    in-out property <bool> is-groupable: false;
+    in-out property <bool> is-group-leader: false;
+    in-out property <[GroupMember]> group-members: [];
+    in-out property <GroupInviteNotification> group-invite: { visible: false, source-name: "", group-name: "", group-note: "" };
     callback world-map-click(int, int, int, int);
     callback set-hotbar-panel(int);
     callback send-chat(string);
@@ -245,8 +262,14 @@ export global GameState {
     callback refresh-world-list();
     callback set-world-list-filter(string, bool, string); // class, master_only, search
 
-    // Use action on slot: panel type, slot index
     callback use-action(SlotPanelType, int);
+    // Group: invite/kick (Request 02), accept (Forced 03 + inviter name), leave (ToggleGroup 0x2F), refresh
+    callback toggle-groupable();
+    callback send-group-invite(string);
+    callback respond-group-invite(bool, string);
+    callback kick-group-member(string);
+    callback leave-group();
+    callback request-self-profile();
 }
 
 export global PopupState {
