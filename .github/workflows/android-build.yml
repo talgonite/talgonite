@@ -31,7 +31,7 @@ jobs:
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r30b
+          ndk-version: r25b
 
       - name: Install Linux dependencies
         run: |
