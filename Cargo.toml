@@ -165,3 +165,6 @@ name = "android.permission.INTERNET"
 min_sdk_version = 33
 target_sdk_version = 35
 max_sdk_version = 36
+
+[package.metadata.android.signing.release]
+debug = true
