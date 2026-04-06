@@ -25,8 +25,8 @@ jobs:
           rustup target add aarch64-linux-android
           cargo install cargo-apk2
 
-      - name: Install Android NDK
-        uses: nndat/setup-ndk@v1
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
         with:
           ndk-version: r25b
 
