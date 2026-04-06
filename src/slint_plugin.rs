@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use crate::app_state::AppState;
 use crate::slint_support::state_bridge::{
     SlintUiChannels, apply_core_to_slint, drain_slint_inbound, sync_installer_to_slint,
-    sync_map_name_to_slint, sync_world_labels_to_slint,
+    sync_map_name_to_slint, sync_settings_to_slint, sync_world_labels_to_slint,
 };
 use crate::slint_support::{handle_show_self_profile, sync_profile_to_slint};
 
@@ -40,6 +40,8 @@ impl Plugin for SlintBridgePlugin {
                     apply_core_to_slint
                         .run_if(resource_exists::<crate::slint_support::state_bridge::SlintWindow>)
                         .run_if(in_ui_state),
+                    sync_settings_to_slint
+                        .run_if(resource_exists::<crate::slint_support::state_bridge::SlintWindow>),
                     crate::slint_support::state_bridge::sync_portrait_to_slint
                         .run_if(resource_exists::<crate::slint_support::state_bridge::SlintWindow>)
                         .run_if(in_state(AppState::InGame)),
@@ -67,10 +69,13 @@ impl Plugin for SlintBridgePlugin {
                         .run_if(resource_exists::<crate::slint_support::state_bridge::SlintWindow>)
                         .run_if(in_state(AppState::Installing)),
                 ),
-            );
+            )
+            .add_systems(OnEnter(AppState::Installing), crate::slint_support::state_bridge::show_installer_ui)
+            .add_systems(OnExit(AppState::Installing), crate::slint_support::state_bridge::hide_installer_ui);
     }
 }
 
-fn in_ui_state(state: Res<State<AppState>>) -> bool {
-    matches!(*state.get(), AppState::MainMenu | AppState::InGame)
+fn in_ui_state(state: Res<State<AppState>>, game_files: Option<Res<crate::game_files::GameFiles>>) -> bool {
+    let base_state = matches!(*state.get(), AppState::MainMenu | AppState::InGame);
+    base_state && game_files.is_some()
 }

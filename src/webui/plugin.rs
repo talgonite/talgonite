@@ -764,6 +764,7 @@ fn handle_ui_inbound_login(
     mut outbound: MessageWriter<UiOutbound>,
     mut settings: ResMut<SettingsFile>,
     mut commands: Commands,
+    storage_config: Res<crate::resources::StorageConfig>,
     bindings: InputBindingResources,
 ) {
     let mut input_bindings = bindings.input_bindings;
@@ -922,7 +923,7 @@ fn handle_ui_inbound_login(
             }
             UiToCore::LoginRemoveSaved { id } => {
                 let _ = keyring::delete_password(id);
-                settings.remove_credential(id);
+                settings.remove_credential(id, &storage_config);
                 outbound.write(UiOutbound(settings.to_snapshot_message(None)));
             }
             UiToCore::ServersChangeCurrent { id } => {

@@ -18,9 +18,12 @@ flate2 = { version = "1", features = ["zlib-rs"], default-features = false }
 formats = { path = "../formats" }
 memchr = "2.7"
 rangemap = { version = "1.7", features = ["serde1"] }
-reqwest = { version = "0.12", features = ["blocking"] }
+reqwest = { version = "0.12", features = [
+    "blocking",
+    "rustls-tls",
+], default-features = false }
 vk2dfd = "0.1.0"
 libarx = { version = "0.4", features = ["zstd"] }
 jubako = "*"
 tracing.workspace = true
-indicatif = "0.17"
+indicatif = "0.18"

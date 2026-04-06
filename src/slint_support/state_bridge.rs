@@ -914,6 +914,42 @@ pub fn sync_map_name_to_slint(
     }
 }
 
+pub fn sync_settings_to_slint(
+    win: Res<SlintWindow>,
+    settings: Res<crate::settings_types::Settings>,
+) {
+    if !settings.is_changed() {
+        return;
+    }
+
+    let Some(strong) = win.0.upgrade() else {
+        return;
+    };
+
+    let settings_state = slint::ComponentHandle::global::<crate::SettingsState>(&strong);
+
+    // Sync settings to slint
+    settings_state.set_music_volume(settings.audio.music_volume);
+    settings_state.set_sfx_volume(settings.audio.sfx_volume);
+    settings_state.set_scale(settings.graphics.scale);
+}
+
+pub fn show_installer_ui(win: Res<SlintWindow>) {
+    let Some(strong) = win.0.upgrade() else {
+        return;
+    };
+    let installer_state = slint::ComponentHandle::global::<crate::InstallerState>(&strong);
+    installer_state.set_is_installing(true);
+}
+
+pub fn hide_installer_ui(win: Res<SlintWindow>) {
+    let Some(strong) = win.0.upgrade() else {
+        return;
+    };
+    let installer_state = slint::ComponentHandle::global::<crate::InstallerState>(&strong);
+    installer_state.set_is_installing(false);
+}
+
 pub fn sync_installer_to_slint(
     mut events: MessageReader<crate::plugins::installer::InstallerProgressEvent>,
     win: Res<SlintWindow>,
@@ -927,14 +963,6 @@ pub fn sync_installer_to_slint(
         installer_state.set_progress(evt.percent);
         if let Some(msg) = &evt.message {
             installer_state.set_message(slint::SharedString::from(msg.as_str()));
-        }
-
-        // Auto-show/hide based on progress
-        if evt.percent < 1.0 {
-            installer_state.set_is_installing(true);
-        } else {
-            // Give a little time to see the 100% or just hide it
-            installer_state.set_is_installing(false);
         }
     }
 }

@@ -6,7 +6,6 @@ use installer::InstallProgress;
 use tracing::debug;
 
 use crate::app_state::AppState;
-use crate::storage_dir;
 
 #[derive(Message, Debug, Clone)]
 pub struct InstallerProgressEvent {
@@ -58,6 +57,7 @@ struct MaybeStartedInstaller(bool);
 fn start_installer_once(
     mut commands: Commands,
     mut maybe_started: ResMut<MaybeStartedInstaller>,
+    storage_config: Res<crate::resources::StorageConfig>,
     config: Option<Res<InstallerConfig>>,
 ) {
     if maybe_started.0 {
@@ -68,12 +68,7 @@ fn start_installer_once(
     let arx_path = config
         .as_ref()
         .map(|c| c.arx_path.clone())
-        .unwrap_or_else(|| {
-            let mut path = storage_dir();
-            let _ = std::fs::create_dir_all(&path);
-            path.push("data.arx");
-            path
-        });
+        .unwrap_or_else(|| storage_config.data_arx_path());
 
     let (tx, rx): (
         Sender<InstallerProgressEvent>,
@@ -91,6 +86,7 @@ fn start_installer_once(
                 proxy.report(1.0, "Install complete".to_string());
             }
             Err(e) => {
+                tracing::error!("Installer error: {}", e);
                 proxy.report(1.0, format!("Install finished with error: {}", e));
             }
         }

@@ -11,6 +11,57 @@ pub struct PlayerAttributes {
     pub max_mp: u32,
 }
 
+#[derive(Resource, Clone, Debug)]
+pub struct StorageConfig {
+    pub root: std::path::PathBuf,
+}
+
+impl StorageConfig {
+    pub fn new(root: std::path::PathBuf) -> Self {
+        Self { root }
+    }
+
+    pub fn data_arx_path(&self) -> std::path::PathBuf {
+        self.root.join("data.arx")
+    }
+
+    pub fn settings_path(&self) -> std::path::PathBuf {
+        self.root.join("settings.toml")
+    }
+
+    pub fn server_dir(&self, server_id: u32) -> std::path::PathBuf {
+        let path = self.root.join("servers").join(server_id.to_string());
+        let _ = std::fs::create_dir_all(&path);
+        path
+    }
+
+    pub fn server_characters_dir(&self, server_id: u32) -> std::path::PathBuf {
+        let path = self.server_dir(server_id).join("characters");
+        let _ = std::fs::create_dir_all(&path);
+        path
+    }
+
+    pub fn server_maps_dir(&self, server_id: u32) -> std::path::PathBuf {
+        let path = self.server_dir(server_id).join("maps");
+        let _ = std::fs::create_dir_all(&path);
+        path
+    }
+
+    pub fn server_metafile_dir(&self, server_id: u32) -> std::path::PathBuf {
+        let path = self.server_dir(server_id).join("metafile");
+        let _ = std::fs::create_dir_all(&path);
+        path
+    }
+
+    pub fn server_character_settings_path(&self, server_id: u32, username: &str) -> std::path::PathBuf {
+        self.server_characters_dir(server_id).join(format!("{}.toml", username))
+    }
+
+    pub fn server_map_path(&self, server_id: u32, map_id: u16) -> std::path::PathBuf {
+        self.server_maps_dir(server_id).join(format!("lod{:03}.map", map_id))
+    }
+}
+
 #[derive(Resource)]
 pub struct RendererState {
     pub device: wgpu::Device,

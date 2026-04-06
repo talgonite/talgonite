@@ -1,12 +1,10 @@
 pub use crate::settings_types::*;
-use crate::storage_dir;
 use bevy::prelude::*;
 use std::fs;
 use tracing::{error, info};
 
 impl Settings {
-    pub fn load() -> Self {
-        let root = storage_dir();
+    pub fn load_from_root(root: &std::path::Path) -> Self {
         let path = root.join("settings.toml");
         let mut settings = if path.exists() {
             match fs::read_to_string(&path) {
@@ -28,7 +26,10 @@ impl Settings {
         } else {
             info!("Creating default settings at {:?}", path);
             let default_settings = Settings::default();
-            default_settings.save();
+            // Create a temporary config for the initial save if necessary, 
+            // but we can just use the path version for internal load.
+            let default_content = toml::to_string_pretty(&default_settings).unwrap();
+            let _ = fs::write(&path, default_content);
             default_settings
         };
 
@@ -50,9 +51,13 @@ impl Settings {
         settings
     }
 
-    pub fn save(&self) {
-        let root = storage_dir();
-        let path = root.join("settings.toml");
+    pub fn save_to_root(&self, config: &crate::resources::StorageConfig) {
+        let root = &config.root;
+        if let Err(e) = fs::create_dir_all(root) {
+            error!("Failed to create storage directory {:?}: {}", root, e);
+            return;
+        }
+        let path = config.settings_path();
 
         // Save global settings
         match toml::to_string_pretty(self) {
@@ -82,7 +87,7 @@ impl Settings {
                 },
             };
 
-            let profile_path = crate::server_characters_dir(cred.server_id)
+            let profile_path = config.server_characters_dir(cred.server_id)
                 .join(format!("{}.toml", cred.username));
 
             match toml::to_string_pretty(&profile) {
@@ -96,10 +101,10 @@ impl Settings {
         }
     }
 
-    pub fn remove_credential(&mut self, id: &str) {
+    pub fn remove_credential(&mut self, id: &str, config: &crate::resources::StorageConfig) {
         if let Some(idx) = self.saved_credentials.iter().position(|c| c.id == id) {
             let cred = self.saved_credentials.remove(idx);
-            let profile_path = crate::server_characters_dir(cred.server_id)
+            let profile_path = config.server_characters_dir(cred.server_id)
                 .join(format!("{}.toml", cred.username));
             if profile_path.exists() {
                 let _ = fs::remove_file(profile_path);
@@ -140,7 +145,12 @@ struct SettingsSaveTimer(Timer);
 
 impl Plugin for SettingsPlugin {
     fn build(&self, app: &mut App) {
-        let settings = Settings::load();
+        let storage_config = app
+            .world()
+            .get_resource::<crate::resources::StorageConfig>()
+            .expect("StorageConfig resource missing during SettingsPlugin::build");
+
+        let settings = Settings::load_from_root(&storage_config.root);
         app.insert_resource(settings);
         app.insert_resource(SettingsSaveTimer(Timer::from_seconds(1.0, TimerMode::Once)));
         app.add_systems(Update, save_settings_on_change);
@@ -149,6 +159,7 @@ impl Plugin for SettingsPlugin {
 
 fn save_settings_on_change(
     settings: Res<Settings>,
+    storage_config: Res<crate::resources::StorageConfig>,
     mut timer: ResMut<SettingsSaveTimer>,
     time: Res<Time>,
 ) {
@@ -159,7 +170,7 @@ fn save_settings_on_change(
     timer.0.tick(time.delta());
 
     if timer.0.just_finished() {
-        settings.save();
+        settings.save_to_root(&storage_config);
     }
 }
 

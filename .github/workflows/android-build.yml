@@ -1,0 +1,64 @@
+name: Android Build
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+  pull_request: # Add this temporarily to test on PRs
+  push:
+    branches:
+      - main
+    tags:
+      - "**[0-9]+.[0-9]+.[0-9]+*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust
+        run: |
+          rustup target add aarch64-linux-android
+          cargo install cargo-apk2
+
+      - name: Install Android NDK
+        uses: nndung129/setup-ndk@v1
+        with:
+          ndk-version: r25b
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libudev-dev \
+            libdbus-1-dev \
+            pkg-config
+
+      - name: Build APK
+        run: |
+          cargo apk2 build --release --lib --target aarch64-linux-android
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tagonite-android-apk
+          path: target/release/apk/*.apk
+
+      - name: Upload APK to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # Find the built apk and upload it to the existing release
+          APK_PATH=$(find target/release/apk -name "*.apk" | head -n 1)
+          if [ -n "$APK_PATH" ]; then
+            gh release upload "$TAG" "$APK_PATH" --clobber
+          else
+            echo "No APK found to upload"
+            exit 1
+          fi
