@@ -127,6 +127,8 @@ jobs:
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
             echo "$HOME/.cargo/bin" >> $GITHUB_PATH
           fi
+      - name: "Rust Cache"
+        uses: "Swatinem/rust-cache@v2"
       - name: "Install Linux dependencies"
         if: "runner.os == 'Linux'"
         run: |
