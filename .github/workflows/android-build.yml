@@ -26,7 +26,7 @@ jobs:
           cargo install cargo-apk2
 
       - name: Install Android NDK
-        uses: nndung129/setup-ndk@v1
+        uses: nndat/setup-ndk@v1
         with:
           ndk-version: r25b
 
