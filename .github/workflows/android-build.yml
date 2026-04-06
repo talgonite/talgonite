@@ -25,10 +25,13 @@ jobs:
           rustup target add aarch64-linux-android
           cargo install cargo-apk2
 
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r25b
+          ndk-version: r30b
 
       - name: Install Linux dependencies
         run: |

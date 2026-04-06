@@ -1,3 +1,5 @@
+- name: Rust Cache
+  uses: Swatinem/rust-cache@v2
 - name: Install Linux dependencies
   if: runner.os == 'Linux'
   run: |
