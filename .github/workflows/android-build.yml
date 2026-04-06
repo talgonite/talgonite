@@ -43,6 +43,7 @@ jobs:
 
       - name: Build APK
         run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
           cargo apk2 build --release --lib --target aarch64-linux-android
 
       - name: Upload APK artifact

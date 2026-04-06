@@ -167,4 +167,5 @@ target_sdk_version = 35
 max_sdk_version = 36
 
 [package.metadata.android.signing.release]
-debug = true
+path = "release.keystore"
+keystore_password = "android"
