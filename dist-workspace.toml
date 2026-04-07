@@ -15,5 +15,5 @@ installers = ["msi"]
 targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 # Custom build setup for Linux dependencies
 github-build-setup = "../build-setup.yml"
-# Global artifacts jobs to run in CI
-global-artifacts-jobs = ["./android-build"]
+# Local artifacts jobs to run in CI
+local-artifacts-jobs = ["./android-build"]
