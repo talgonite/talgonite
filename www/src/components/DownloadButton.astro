@@ -41,6 +41,13 @@ const { version, downloads } = versionData;
         <span>Linux</span>
         <span class="file-ext">.tar.xz</span>
       </a>
+      <a href={downloads.android.url} class="dropdown-item" data-platform="android" role="menuitem">
+        <svg class="platform-icon" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M17.523 15.3414C17.523 15.1147 17.3387 14.9304 17.112 14.9304C16.8853 14.9304 16.701 15.1147 16.701 15.3414V18.1565H7.29904V15.3414C7.29904 15.1147 7.11471 14.9304 6.88795 14.9304C6.66128 14.9304 6.47695 15.1147 6.47695 15.3414V18.5678C6.47695 18.7945 6.66128 18.9788 6.88795 18.9788H17.112C17.3387 18.9788 17.523 18.7945 17.523 18.5678V15.3414Z"/><path d="M15.0084 10.7416L12.4111 13.3389V4.6591C12.4111 4.43243 12.2268 4.2481 12.0001 4.2481C11.7734 4.2481 11.5891 4.43243 11.5891 4.6591V13.3389L8.99175 10.7416C8.83101 10.5808 8.56911 10.5808 8.40837 10.7416C8.24754 10.9023 8.24754 11.1641 8.40837 11.3249L11.7084 14.6249C11.7854 14.7019 11.89 14.7437 12.0001 14.7437C12.1101 14.7437 12.2148 14.7019 12.2917 14.6249L15.5917 11.3249C15.7525 11.1642 15.7525 10.9023 15.5917 10.7416C15.431 10.5808 15.1691 10.5808 15.0084 10.7416Z"/><path d="M16 5L15 2H13L14 5H16Z"/><path d="M8 5L9 2H11L10 5H8Z"/><path d="M5 13C5 9.13401 8.13401 6 12 6C15.866 6 19 9.13401 19 13H5Z"/>
+        </svg>
+        <span>Android</span>
+        <span class="file-ext">.apk</span>
+      </a>
       <div class="dropdown-divider"></div>
       <a href="https://github.com/talgonite/talgonite/releases" class="dropdown-item dropdown-item-secondary" role="menuitem">
         <svg class="platform-icon" viewBox="0 0 24 24" fill="currentColor">
@@ -58,14 +65,18 @@ const { version, downloads } = versionData;
   var downloads = {
     windows: { label: 'Download for Windows' },
     macos: { label: 'Download for macOS' },
-    linux: { label: 'Download for Linux' }
+    linux: { label: 'Download for Linux' },
+    android: { label: 'Download for Android' }
   };
 
   function detectPlatform() {
     var ua = navigator.userAgent.toLowerCase();
     if (ua.indexOf('win') !== -1) return 'windows';
     if (ua.indexOf('mac') !== -1) return 'macos';
-    if (ua.indexOf('linux') !== -1) return 'linux';
+    if (ua.indexOf('linux') !== -1) {
+      if (ua.indexOf('android') !== -1) return 'android';
+      return 'linux';
+    }
     return 'windows';
   }
 
