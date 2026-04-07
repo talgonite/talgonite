@@ -145,6 +145,7 @@ tracing-android = "0.2"
 use_aapt2 = true
 package = "com.talgonite.client"
 label = "Talgonite"
+apk_name = "talgonite"
 strip = "strip"
 build_targets = ["x86_64-linux-android"]
 
