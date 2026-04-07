@@ -119,6 +119,21 @@ pub enum UiToCore {
     SetWorldListFilter {
         filter: WorldListFilter,
     },
+    ToggleGroupable,
+    SendGroupInvite {
+        name: String,
+    },
+    RespondGroupInvite {
+        accept: bool,
+        source_name: String,
+    },
+    KickGroupMember {
+        name: String,
+    },
+    /// Local player leaves the group (do not use for kicking others).
+    LeaveGroup,
+    /// Request fresh self profile (e.g. when opening group panel so group list is up to date).
+    RequestSelfProfile,
 }
 
 /// A menu entry that can be a text option or an item with sprite

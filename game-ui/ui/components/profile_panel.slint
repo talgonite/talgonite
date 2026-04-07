@@ -458,6 +458,7 @@ export component ProfilePanel inherits Rectangle {
                         border-radius: 6px;
                         border-width: 1px;
                         border-color: data.group-requests-enabled ? #60a5fa : #6b7280;
+                        animate background { duration: 80ms; }
                         Text {
                             text: data.group-requests-enabled ? "Request Group" : "Requests Disabled";
                             font-size: 12px;
@@ -469,6 +470,39 @@ export component ProfilePanel inherits Rectangle {
 
                         group-touch := TouchArea {
                             mouse-cursor: data.group-requests-enabled ? pointer : not-allowed;
+                            clicked => {
+                                if data.group-requests-enabled {
+                                    GameState.send-group-invite(data.name);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if GameState.profile.is-self: HorizontalLayout {
+                    alignment: start;
+                    Rectangle {
+                        width: 180px;
+                        height: 30px;
+                        background: GameState.is-groupable
+                            ? (self-group-touch.has-hover ? #16a34a : #15803d)
+                            : (self-group-touch.has-hover ? #4b5563 : #374151);
+                        border-radius: 6px;
+                        border-width: 1px;
+                        border-color: GameState.is-groupable ? #22c55e : #6b7280;
+                        animate background { duration: 80ms; }
+                        Text {
+                            text: GameState.is-groupable ? "✓ Accepting Invites" : "✗ Not Accepting Invites";
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: GameState.is-groupable ? #ffffff : #9ca3af;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        self-group-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { GameState.toggle-groupable(); }
                         }
                     }
                 }

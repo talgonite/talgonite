@@ -1,0 +1,84 @@
+import { GameState } from "../game_state.slint";
+
+export component GroupInvitePopup inherits Rectangle {
+    width: 320px;
+    height: 150px;
+    background: #1a2535;
+    border-radius: 8px;
+    border-width: 2px;
+    border-color: #3b82f6;
+    drop-shadow-blur: 20px;
+    drop-shadow-color: #00000090;
+
+    VerticalLayout {
+        padding: 14px;
+        spacing: 10px;
+
+        Text {
+            text: "Group Invite";
+            font-size: 13px;
+            font-weight: 700;
+            color: #60a5fa;
+        }
+
+        Text {
+            text: GameState.group-invite.source-name + " invites you to join their group.";
+            font-size: 12px;
+            color: #d1d5db;
+            wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+
+            accept-btn := Rectangle {
+                width: 110px;
+                height: 30px;
+                background: accept-touch.has-hover ? #16a34a : #15803d;
+                border-radius: 5px;
+                border-width: 1px;
+                border-color: #22c55e.with-alpha(0.6);
+                animate background { duration: 80ms; }
+                Text {
+                    text: "Accept";
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #ffffff;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                accept-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        GameState.respond-group-invite(true, GameState.group-invite.source-name);
+                    }
+                }
+            }
+
+            decline-btn := Rectangle {
+                width: 110px;
+                height: 30px;
+                background: decline-touch.has-hover ? #ef4444 : #b91c1c;
+                border-radius: 5px;
+                border-width: 1px;
+                border-color: #ef4444.with-alpha(0.6);
+                animate background { duration: 80ms; }
+                Text {
+                    text: "Decline";
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #ffffff;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                decline-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        GameState.respond-group-invite(false, GameState.group-invite.source-name);
+                    }
+                }
+            }
+        }
+    }
+}

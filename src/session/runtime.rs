@@ -345,6 +345,11 @@ fn process_net_packets(
                         handle_metadata(&outbox, &mut metafile_store, q);
                     }
                 }
+                &server::Codes::DisplayGroupInvite => {
+                    if let Some(q) = parse_packet::<server::DisplayGroupInvite>(data) {
+                        session_events.write(SessionEvent::GroupInvite(q));
+                    }
+                }
                 e => {
                     tracing::warn!(?e, "Unhandled game event");
                 }

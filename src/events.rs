@@ -113,6 +113,7 @@ pub enum SessionEvent {
     SelfProfile(server::SelfProfile),
     OtherProfile(server::OtherProfile),
     WorldList(server::WorldList),
+    GroupInvite(server::DisplayGroupInvite),
 }
 
 #[derive(Debug, Clone, Message)]

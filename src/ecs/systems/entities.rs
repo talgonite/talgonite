@@ -69,7 +69,8 @@ pub fn spawn_entities_system(
             | SessionEvent::DisplayDialog(_)
             | SessionEvent::SelfProfile(_)
             | SessionEvent::OtherProfile(_)
-            | SessionEvent::WorldList(_) => {}
+            | SessionEvent::WorldList(_)
+            | SessionEvent::GroupInvite(_) => {}
         }
     }
 

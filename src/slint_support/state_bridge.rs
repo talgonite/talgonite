@@ -180,6 +180,13 @@ fn reset_game_state_for_main_menu(window: &crate::MainWindow) {
     game_state.set_profile(profile);
 
     game_state.set_current_hotbar_panel(0);
+
+    // Reset group state
+    game_state.set_show_group(false);
+    game_state.set_is_groupable(false);
+    game_state.set_is_group_leader(false);
+    game_state.set_group_members(empty_model());
+    game_state.set_group_invite(crate::GroupInviteNotification::default());
 }
 
 pub fn apply_core_to_slint(
@@ -911,6 +918,73 @@ pub fn sync_map_name_to_slint(
     if let Some(map) = map_query.iter().next() {
         let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
         game_state.set_map_name(slint::SharedString::from(map.name.as_str()));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Group state → Slint
+// ---------------------------------------------------------------------------
+
+/// Sync GroupState to Slint: local player first (position 1 = Leave), and whether we are the server-designated leader (can Kick).
+pub fn sync_group_to_slint(
+    group_state: Res<crate::webui::plugin::GroupState>,
+    local_player_query: Query<&crate::ecs::components::Player, With<crate::ecs::components::LocalPlayer>>,
+    win: Res<SlintWindow>,
+) {
+    if !group_state.is_changed() {
+        return;
+    }
+    let Some(strong) = win.0.upgrade() else {
+        return;
+    };
+    let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
+
+    game_state.set_is_groupable(group_state.is_groupable);
+
+    let local_name = local_player_query.iter().next().map(|p| p.name.as_str());
+    let mut ordered: Vec<(String, bool)> = group_state.members.clone();
+    if let Some(local) = local_name {
+        if let Some(idx) = ordered.iter().position(|(name, _)| name == local) {
+            let entry = ordered.remove(idx);
+            ordered.insert(0, entry);
+        }
+    }
+
+    let is_group_leader = local_name
+        .and_then(|local| {
+            group_state
+                .members
+                .iter()
+                .find(|(_, is_leader)| *is_leader)
+                .filter(|(name, _)| name == local)
+                .map(|_| ())
+        })
+        .is_some();
+    game_state.set_is_group_leader(is_group_leader);
+
+    let members: Vec<crate::GroupMember> = ordered
+        .iter()
+        .enumerate()
+        .map(|(i, (name, _))| crate::GroupMember {
+            name: slint::SharedString::from(name.as_str()),
+            is_leader: i == 0,
+        })
+        .collect();
+    game_state.set_group_members(slint::ModelRc::new(slint::VecModel::from(members)));
+
+    if let Some(invite) = &group_state.pending_invite {
+        game_state.set_group_invite(crate::GroupInviteNotification {
+            visible: true,
+            source_name: slint::SharedString::from(invite.source_name.as_str()),
+            group_name: slint::SharedString::from(invite.group_name.as_str()),
+            group_note: slint::SharedString::from(invite.group_note.as_str()),
+        });
+    } else {
+        let mut gi = game_state.get_group_invite();
+        if gi.visible {
+            gi.visible = false;
+            game_state.set_group_invite(gi);
+        }
     }
 }
 

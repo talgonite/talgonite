@@ -175,6 +175,53 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
         });
     }
 
+    // Toggle groupable
+    {
+        let tx = tx.clone();
+        game_state.on_toggle_groupable(move || {
+            let _ = tx.send(UiToCore::ToggleGroupable);
+        });
+    }
+
+    // === Group callbacks ===
+    {
+        let tx = tx.clone();
+        game_state.on_send_group_invite(move |name: slint::SharedString| {
+            let _ = tx.send(UiToCore::SendGroupInvite {
+                name: name.to_string(),
+            });
+        });
+    }
+    {
+        let tx = tx.clone();
+        game_state.on_respond_group_invite(move |accept, source_name: slint::SharedString| {
+            let _ = tx.send(UiToCore::RespondGroupInvite {
+                accept,
+                source_name: source_name.to_string(),
+            });
+        });
+    }
+    {
+        let tx = tx.clone();
+        game_state.on_kick_group_member(move |name: slint::SharedString| {
+            let _ = tx.send(UiToCore::KickGroupMember {
+                name: name.to_string(),
+            });
+        });
+    }
+    {
+        let tx = tx.clone();
+        game_state.on_leave_group(move || {
+            let _ = tx.send(UiToCore::LeaveGroup);
+        });
+    }
+    {
+        let tx = tx.clone();
+        game_state.on_request_self_profile(move || {
+            let _ = tx.send(UiToCore::RequestSelfProfile);
+        });
+    }
+
     // Drag-drop action
     let dragdrop_state = slint_app.global::<DragDropState>();
     {

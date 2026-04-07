@@ -1,0 +1,140 @@
+// Group panel: accept-invites toggle, member list (local player first = Leave, others = Kick).
+import { GameState } from "../game_state.slint";
+import { Theme } from "../theme.slint";
+import { BasePanel } from "base_panel.slint";
+import { ScrollView, VerticalBox } from "std-widgets.slint";
+
+export component GroupPanel inherits BasePanel {
+    title: "Group";
+    width: 280px;
+    height: 380px;
+    close => {
+        GameState.show-group = false;
+    }
+
+    VerticalBox {
+        padding: Theme.spacing-medium;
+        spacing: Theme.spacing-small;
+
+        // Toggle groupable button
+        groupable-btn := Rectangle {
+            height: 32px;
+            background: GameState.is-groupable
+                ? (groupable-touch.has-hover ? #1d4ed8 : #2563eb)
+                : (groupable-touch.has-hover ? #4b5563 : #374151);
+            border-radius: 6px;
+            border-width: 1px;
+            border-color: GameState.is-groupable ? #60a5fa : #4b5563;
+            animate background { duration: 80ms; }
+            Text {
+                text: GameState.is-groupable ? "Accepting Invites" : "Not Accepting Invites";
+                font-size: 11px;
+                font-weight: 600;
+                color: GameState.is-groupable ? #ffffff : #9ca3af;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            groupable-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { GameState.toggle-groupable(); }
+            }
+        }
+
+        Rectangle { height: 1px; background: #ffffff10; }
+
+        // Count line (e.g. "2 Group members"); backend filters out "Group members" / "Total N" from list.
+        if GameState.group-members.length > 0: Text {
+            text: GameState.group-members.length + " Group members";
+            font-size: 12px;
+            color: #9ca3af;
+        }
+
+        // Member list area
+        Rectangle {
+            background: Theme.surface-muted;
+            border-radius: Theme.radius-small;
+
+            if GameState.group-members.length == 0: VerticalBox {
+                alignment: center;
+                spacing: 6px;
+                Text {
+                    text: "Not in a group";
+                    font-size: 13px;
+                    color: #6b7280;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "Request from another player's profile.";
+                    font-size: 11px;
+                    color: #4b5563;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+            }
+
+            if GameState.group-members.length > 0: ScrollView {
+                VerticalBox {
+                    padding: Theme.spacing-small;
+                    spacing: 4px;
+                    alignment: start;
+                    for member in GameState.group-members: Rectangle {
+                        height: 38px;
+                        background: member.is-leader ? #1e3a5f : #1e293b;
+                        border-radius: 4px;
+                        border-width: 1px;
+                        border-color: member.is-leader ? #3b82f680 : #ffffff08;
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 8px;
+                            spacing: 8px;
+                            alignment: start;
+                            Rectangle {
+                                width: 8px;
+                                height: 8px;
+                                y: (parent.height - self.height) / 2;
+                                background: member.is-leader ? #3b82f6 : #22c55e;
+                                border-radius: 4px;
+                            }
+                            Text {
+                                text: member.name + (member.is-leader ? " ★" : "");
+                                font-size: 12px;
+                                color: member.is-leader ? #93c5fd : #d1d5db;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            Rectangle { }
+                            // Position 1 (is-leader) = self: always show Leave. Others: show Kick only when we are group leader.
+                            if (member.is-leader || GameState.is-group-leader): action-btn := Rectangle {
+                                width: member.is-leader ? 50px : 44px;
+                                height: 22px;
+                                y: (parent.height - self.height) / 2;
+                                background: action-touch.has-hover ? #ef4444 : #99000050;
+                                border-radius: 3px;
+                                border-width: 1px;
+                                border-color: #ef444480;
+                                animate background { duration: 80ms; }
+                                Text {
+                                    text: member.is-leader ? "Leave" : "Kick";
+                                    font-size: 10px;
+                                    color: #fca5a5;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                                action-touch := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => {
+                                        if (member.is-leader) {
+                                            GameState.leave-group();
+                                        } else {
+                                            GameState.kick-group-member(member.name);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

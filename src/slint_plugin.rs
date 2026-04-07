@@ -7,8 +7,9 @@ use bevy::prelude::*;
 
 use crate::app_state::AppState;
 use crate::slint_support::state_bridge::{
-    SlintUiChannels, apply_core_to_slint, drain_slint_inbound, sync_installer_to_slint,
-    sync_map_name_to_slint, sync_settings_to_slint, sync_world_labels_to_slint,
+    SlintUiChannels, apply_core_to_slint, drain_slint_inbound, sync_group_to_slint,
+    sync_installer_to_slint, sync_map_name_to_slint, sync_settings_to_slint,
+    sync_world_labels_to_slint,
 };
 use crate::slint_support::{handle_show_self_profile, sync_profile_to_slint};
 
@@ -52,6 +53,9 @@ impl Plugin for SlintBridgePlugin {
                         .run_if(resource_exists::<crate::slint_support::state_bridge::SlintWindow>)
                         .run_if(in_state(AppState::InGame)),
                     sync_profile_to_slint
+                        .run_if(resource_exists::<crate::slint_support::state_bridge::SlintWindow>)
+                        .run_if(in_state(AppState::InGame)),
+                    sync_group_to_slint
                         .run_if(resource_exists::<crate::slint_support::state_bridge::SlintWindow>)
                         .run_if(in_state(AppState::InGame)),
                 ),
