@@ -448,14 +448,17 @@ pub fn player_reconciliation_system(
         (
             Entity,
             &mut Position,
+            &mut Direction,
             &mut UnconfirmedWalks,
             Option<&mut MovementTween>,
+            &EntityId,
         ),
         With<LocalPlayer>,
     >,
     mut commands: Commands,
 ) {
-    let Ok((entity, mut position, mut unconfirmed, mut active_tween)) = player_query.single_mut()
+    let Ok((entity, mut position, mut direction, mut unconfirmed, mut active_tween, entity_id)) =
+        player_query.single_mut()
     else {
         return;
     };
@@ -476,6 +479,15 @@ pub fn player_reconciliation_system(
                 unconfirmed.pending.clear();
                 unconfirmed.recent_deltas.clear();
                 commands.entity(entity).remove::<MovementTween>();
+            }
+            EntityEvent::Turn(turn) => {
+                // Handle direction updates for the local player (e.g., from Ambush teleport)
+                if turn.source_id == entity_id.id {
+                    let new_dir = Direction::from(turn.direction);
+                    if *direction != new_dir {
+                        *direction = new_dir;
+                    }
+                }
             }
             EntityEvent::PlayerWalkResponse(response) => {
                 let confirmed_step = unconfirmed.pending.pop_front();
