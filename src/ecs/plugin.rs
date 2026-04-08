@@ -50,9 +50,16 @@ impl Plugin for GamePlugin {
                     spell_casting::handle_spell_targeting
                         .after(crate::plugins::mouse_interaction::MouseInteractionSet),
                     spell_casting::update_targeting_hover,
+                    systems::resolve_interaction_intents_system
+                        .after(spell_casting::handle_spell_targeting)
+                        .after(crate::plugins::mouse_interaction::MouseInteractionSet),
                     systems::pathfinding_target_system
                         .after(crate::plugins::mouse_interaction::MouseInteractionSet),
-                    systems::player_interruption_system,
+                    systems::player_interruption_system
+                        .after(systems::resolve_interaction_intents_system),
+                    systems::consume_interaction_intents_system
+                        .after(systems::resolve_interaction_intents_system)
+                        .after(systems::player_interruption_system),
                     crate::ecs::hotbar::sync_hotbar_panel_to_settings,
                     systems::handle_public_messages,
                     systems::expire_speech_bubbles,

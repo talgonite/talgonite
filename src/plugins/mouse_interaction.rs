@@ -54,6 +54,7 @@ struct SceneHitResult {
     matching_walls: Vec<(i32, i32, bool)>,
     ground_x: i32,
     ground_y: i32,
+    ground_is_walkable: bool,
 }
 
 fn mouse_interaction_system(
@@ -62,6 +63,7 @@ fn mouse_interaction_system(
     camera: Res<Camera>,
     window_surface: Option<NonSend<WindowSurface>>,
     zoom_state: Option<Res<ZoomState>>,
+    collision_table: Option<Res<crate::ecs::collision::WallCollisionTable>>,
     mut interaction_state: ResMut<InteractionState>,
     mut hovered_entity: ResMut<HoveredEntity>,
     entity_query: Query<(
@@ -82,6 +84,7 @@ fn mouse_interaction_system(
         &camera,
         window_surface.as_deref(),
         zoom_state.as_deref(),
+        collision_table.as_deref(),
         &entity_query,
         map_collision.as_deref(),
         (cursor.x, cursor.y),
@@ -129,6 +132,7 @@ fn handle_resolved_pointer_clicks(
     camera: Res<Camera>,
     window_surface: Option<NonSend<WindowSurface>>,
     zoom_state: Option<Res<ZoomState>>,
+    collision_table: Option<Res<crate::ecs::collision::WallCollisionTable>>,
     entity_query: Query<(
         Entity,
         &Position,
@@ -147,6 +151,7 @@ fn handle_resolved_pointer_clicks(
             &camera,
             window_surface.as_deref(),
             zoom_state.as_deref(),
+            collision_table.as_deref(),
             &entity_query,
             map_collision.as_deref(),
             event.position,
@@ -301,6 +306,7 @@ fn hit_test_scene(
     camera: &Camera,
     window_surface: Option<&WindowSurface>,
     zoom_state: Option<&ZoomState>,
+    collision_table: Option<&crate::ecs::collision::WallCollisionTable>,
     entity_query: &Query<(
         Entity,
         &Position,
@@ -371,6 +377,12 @@ fn hit_test_scene(
         matching_walls,
         ground_x: tile.x.floor() as i32,
         ground_y: tile.y.floor() as i32,
+        ground_is_walkable: crate::ecs::collision::can_walk_to(
+            tile.x.floor().max(0.0) as u8,
+            tile.y.floor().max(0.0) as u8,
+            collision_table,
+            map_collision,
+        ),
     })
 }
 
@@ -395,6 +407,16 @@ fn emit_scene_click(
         }
 
         if !hit_result.matching_walls.is_empty() {
+            if source == ClickSource::AndroidShortPress && hit_result.ground_is_walkable {
+                tile_click_events.write(TileClickEvent {
+                    tile_x: hit_result.ground_x,
+                    tile_y: hit_result.ground_y,
+                    button,
+                    source,
+                });
+                return;
+            }
+
             for (tile_x, tile_y, is_right) in &hit_result.matching_walls {
                 wall_click_events.write(WallClickEvent {
                     tile_x: *tile_x,
