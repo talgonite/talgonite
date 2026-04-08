@@ -3,7 +3,7 @@ use crate::{
     ecs::components::{Direction, LocalPlayer, MovementTween},
     ecs::spell_casting::SpellCastingState,
     ecs::systems::GameSet,
-    events::{InputSource, PlayerAction},
+    events::{ClickSource, InputSource, PlayerAction, ResolvedPointerClickEvent},
     input::{
         GameAction, GamepadConfig, GilrsResource, InputBindings, RebindingState,
         UnifiedInputBindings, gamepad_rebinding_system, sync_rebinding_state_from_slint,
@@ -14,6 +14,7 @@ use crate::{
 use bevy::prelude::*;
 use game_types::SlotPanelType;
 use packets::client::{RefreshRequest, Spacebar};
+use std::time::Duration;
 
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InputPumpSet;
@@ -23,12 +24,14 @@ pub struct InputPlugin;
 impl Plugin for InputPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<InputTimer>()
+            .init_resource::<AndroidTouchInputState>()
             .init_resource::<GamepadConfig>()
             .init_resource::<GilrsResource>()
             .init_resource::<RebindingState>()
             .init_resource::<UnifiedInputBindings>()
             .add_message::<bevy::input::mouse::MouseWheel>()
             .add_message::<bevy::input::gamepad::RawGamepadEvent>()
+            .add_message::<crate::slint_support::input_bridge::SlintPointerEvent>()
             .add_systems(Startup, initialize_input_bindings)
             .add_systems(PreUpdate, crate::input::gamepad::gilrs_event_polling_system)
             .add_systems(
@@ -36,6 +39,7 @@ impl Plugin for InputPlugin {
                 (
                     crate::slint_support::input_bridge::pump_slint_key_events_system,
                     crate::slint_support::input_bridge::pump_slint_pointer_events_system,
+                    resolve_android_touch_events_system,
                     crate::slint_support::input_bridge::pump_slint_scroll_events_system,
                     pump_double_clicks_system,
                 )
@@ -73,6 +77,131 @@ pub fn pump_double_clicks_system(
     }
 }
 
+const ANDROID_LONG_PRESS_THRESHOLD: Duration = Duration::from_millis(500);
+const ANDROID_LONG_PRESS_SLOP: f32 = 12.0;
+
+#[derive(Resource, Default)]
+struct AndroidTouchInputState {
+    active_press: Option<AndroidTouchPress>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct AndroidTouchPress {
+    start: Duration,
+    start_position: (f32, f32),
+    last_position: (f32, f32),
+    moved_too_far: bool,
+    long_press_fired: bool,
+}
+
+impl AndroidTouchInputState {
+    fn pointer_moved_too_far(start: (f32, f32), current: (f32, f32)) -> bool {
+        let dx = current.0 - start.0;
+        let dy = current.1 - start.1;
+        (dx * dx) + (dy * dy) > ANDROID_LONG_PRESS_SLOP * ANDROID_LONG_PRESS_SLOP
+    }
+
+    fn begin_press(&mut self, now: Duration, position: (f32, f32)) {
+        self.active_press = Some(AndroidTouchPress {
+            start: now,
+            start_position: position,
+            last_position: position,
+            moved_too_far: false,
+            long_press_fired: false,
+        });
+    }
+
+    fn update_press(&mut self, position: (f32, f32)) {
+        let Some(press) = self.active_press.as_mut() else {
+            return;
+        };
+
+        press.last_position = position;
+        press.moved_too_far |= Self::pointer_moved_too_far(press.start_position, position);
+    }
+
+    fn maybe_fire_long_press(
+        &mut self,
+        now: Duration,
+    ) -> Option<ResolvedPointerClickEvent> {
+        let press = self.active_press.as_mut()?;
+
+        if press.long_press_fired || press.moved_too_far {
+            return None;
+        }
+
+        if now.saturating_sub(press.start) < ANDROID_LONG_PRESS_THRESHOLD {
+            return None;
+        }
+
+        press.long_press_fired = true;
+        Some(ResolvedPointerClickEvent {
+            position: press.last_position,
+            button: MouseButton::Right,
+            source: ClickSource::AndroidLongPress,
+        })
+    }
+
+    fn release_press(&mut self, position: (f32, f32)) -> Option<ResolvedPointerClickEvent> {
+        self.update_press(position);
+
+        let press = self.active_press.take()?;
+        if press.long_press_fired || press.moved_too_far {
+            return None;
+        }
+
+        Some(ResolvedPointerClickEvent {
+            position,
+            button: MouseButton::Left,
+            source: ClickSource::AndroidShortPress,
+        })
+    }
+
+    fn cancel_press(&mut self) {
+        self.active_press = None;
+    }
+}
+
+fn resolve_android_touch_events_system(
+    time: Res<Time>,
+    mut pointer_events: MessageReader<crate::slint_support::input_bridge::SlintPointerEvent>,
+    mut touch_state: ResMut<AndroidTouchInputState>,
+    mut resolved_clicks: MessageWriter<ResolvedPointerClickEvent>,
+) {
+    if !cfg!(target_os = "android") {
+        return;
+    }
+
+    let now = time.elapsed();
+
+    if let Some(event) = touch_state.maybe_fire_long_press(now) {
+        resolved_clicks.write(event);
+    }
+
+    for event in pointer_events.read() {
+        match event.0.kind {
+            i_slint_core::items::PointerEventKind::Down => {
+                touch_state.begin_press(now, event.0.position);
+            }
+            i_slint_core::items::PointerEventKind::Move => {
+                touch_state.update_press(event.0.position);
+                if let Some(event) = touch_state.maybe_fire_long_press(now) {
+                    resolved_clicks.write(event);
+                }
+            }
+            i_slint_core::items::PointerEventKind::Up => {
+                if let Some(event) = touch_state.release_press(event.0.position) {
+                    resolved_clicks.write(event);
+                }
+            }
+            i_slint_core::items::PointerEventKind::Cancel => {
+                touch_state.cancel_press();
+            }
+            _ => {}
+        }
+    }
+}
+
 #[derive(Resource)]
 pub struct InputTimer {
     walk_cd: Timer,            // gates actual movement (walk)
@@ -93,6 +222,71 @@ impl Default for InputTimer {
 impl InputTimer {
     pub fn walk_cd_finished(&self) -> bool {
         self.walk_cd.is_finished()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::slint_support::input_bridge::QueuedPointerEvent;
+    use i_slint_core::items::{PointerEventButton, PointerEventKind};
+
+    fn pointer_event(kind: PointerEventKind, position: (f32, f32)) -> QueuedPointerEvent {
+        QueuedPointerEvent {
+            kind,
+            button: PointerEventButton::Left,
+            position,
+        }
+    }
+
+    #[test]
+    fn short_press_resolves_to_left_click() {
+        let mut state = AndroidTouchInputState::default();
+        state.begin_press(Duration::ZERO, (10.0, 20.0));
+
+        let resolved = state.release_press((10.0, 20.0)).unwrap();
+        assert_eq!(resolved.button, MouseButton::Left);
+        assert_eq!(resolved.source, ClickSource::AndroidShortPress);
+    }
+
+    #[test]
+    fn long_press_resolves_once_to_right_click() {
+        let mut state = AndroidTouchInputState::default();
+        let event = pointer_event(PointerEventKind::Down, (10.0, 20.0));
+        state.begin_press(Duration::ZERO, event.position);
+
+        let resolved = state
+            .maybe_fire_long_press(ANDROID_LONG_PRESS_THRESHOLD)
+            .unwrap();
+        assert_eq!(resolved.button, MouseButton::Right);
+        assert_eq!(resolved.source, ClickSource::AndroidLongPress);
+
+        assert!(state
+            .maybe_fire_long_press(ANDROID_LONG_PRESS_THRESHOLD + Duration::from_millis(1))
+            .is_none());
+    }
+
+    #[test]
+    fn movement_cancels_long_press() {
+        let mut state = AndroidTouchInputState::default();
+        state.begin_press(Duration::ZERO, (10.0, 20.0));
+        state.update_press((40.0, 60.0));
+
+        assert!(state
+            .maybe_fire_long_press(ANDROID_LONG_PRESS_THRESHOLD + Duration::from_millis(1))
+            .is_none());
+        assert!(state.release_press((40.0, 60.0)).is_none());
+    }
+
+    #[test]
+    fn release_after_long_press_does_not_emit_short_press() {
+        let mut state = AndroidTouchInputState::default();
+        state.begin_press(Duration::ZERO, (10.0, 20.0));
+        assert!(state
+            .maybe_fire_long_press(ANDROID_LONG_PRESS_THRESHOLD + Duration::from_millis(1))
+            .is_some());
+
+        assert!(state.release_press((10.0, 20.0)).is_none());
     }
 }
 

@@ -61,6 +61,9 @@ pub struct QueuedPointerEvent {
     pub position: (f32, f32),
 }
 
+#[derive(Clone, Copy, Debug, Message)]
+pub struct SlintPointerEvent(pub QueuedPointerEvent);
+
 #[derive(Clone, Copy, Debug)]
 pub struct QueuedScrollEvent {
     pub position: (f32, f32),
@@ -128,6 +131,7 @@ pub fn pump_slint_pointer_events_system(
     queue: Res<SlintPointerEventQueue>,
     mut input: ResMut<ButtonInput<MouseButton>>,
     mut cursor: ResMut<CursorPosition>,
+    mut raw_events: MessageWriter<SlintPointerEvent>,
 ) {
     let events: Vec<QueuedPointerEvent> = {
         let Ok(mut guard) = queue.0.lock() else {
@@ -140,6 +144,10 @@ pub fn pump_slint_pointer_events_system(
         cursor.x = event.position.0;
         cursor.y = event.position.1;
 
+        raw_events.write(SlintPointerEvent(event));
+
+        #[cfg(not(target_os = "android"))]
+        {
         let button = match event.button {
             PointerEventButton::Left => Some(MouseButton::Left),
             PointerEventButton::Right => Some(MouseButton::Right),
@@ -157,6 +165,7 @@ pub fn pump_slint_pointer_events_system(
                 }
                 _ => {}
             }
+        }
         }
     }
 }

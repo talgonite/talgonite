@@ -131,11 +131,27 @@ pub struct EntityHoverEvent {
     pub entity: Entity,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ClickSource {
+    #[default]
+    DesktopMouse,
+    AndroidShortPress,
+    AndroidLongPress,
+}
+
+#[derive(Debug, Clone, Copy, Message)]
+pub struct ResolvedPointerClickEvent {
+    pub position: (f32, f32),
+    pub button: MouseButton,
+    pub source: ClickSource,
+}
+
 /// Emitted when an entity is clicked
 #[derive(Debug, Clone, Message)]
 pub struct EntityClickEvent {
     pub entity: Entity,
     pub button: MouseButton,
+    pub source: ClickSource,
     pub is_double_click: bool,
 }
 
@@ -145,6 +161,7 @@ pub struct TileClickEvent {
     pub tile_x: i32,
     pub tile_y: i32,
     pub button: MouseButton,
+    pub source: ClickSource,
 }
 
 /// Emitted when a wall is clicked
@@ -154,4 +171,5 @@ pub struct WallClickEvent {
     pub tile_y: i32,
     pub is_right: bool,
     pub button: MouseButton,
+    pub source: ClickSource,
 }
