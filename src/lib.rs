@@ -4,8 +4,8 @@ pub use game_ui::slint_types::{
     ChatMessage, Cooldown, DragDropState, EquipmentSlotData, GameState, GroupInviteNotification,
     GroupMember, HotbarEntry, InputBridge, InstallerState, InventoryItem, LegendMarkData,
     LobbyState, LoginBridge, LoginState, MainWindow, MenuEntry, NpcDialogData, NpcDialogState,
-    ProfileData, SavedLoginItem, ServerItem, SettingsState, Skill, SlotPanelType, Spell,
-    WorldLabel, WorldListMemberUi, WorldMapNode,
+    PlatformState, ProfileData, SavedLoginItem, ServerItem, SettingsState, Skill, SlotPanelType,
+    Spell, WorldLabel, WorldListMemberUi, WorldMapNode,
 };
 
 #[cfg(target_os = "android")]
@@ -82,10 +82,7 @@ impl Plugin for CorePlugin {
         .insert_resource(map_store::MapStore::new())
         .insert_resource(metafile_store::MetafileStore::new())
         .init_state::<app_state::AppState>()
-        .add_systems(
-            Update,
-            app_state::setup_game_files,
-        )
+        .add_systems(Update, app_state::setup_game_files)
         .add_systems(
             OnEnter(app_state::AppState::Installing),
             app_state::cleanup_game_files,
@@ -99,7 +96,6 @@ impl Plugin for CorePlugin {
         );
     }
 }
-
 
 pub fn main_with_storage(storage_root: std::path::PathBuf) {
     init();
@@ -124,7 +120,7 @@ pub fn main_with_storage(storage_root: std::path::PathBuf) {
     let slint_app = slint_plugin::attach_slint_ui(app);
 
     let result = slint_app.run();
-    
+
     // Explicitly drop slint_app to trigger cleanup of Bevy App before main exits.
     // This prevents "threads should not terminate unexpectedly" panics on shutdown
     // by ensuring TaskPool threads are joined before the process termination begins.
@@ -140,9 +136,9 @@ fn init() {
         AttachConsole(ATTACH_PARENT_PROCESS);
     }
 
+    use tracing_subscriber::EnvFilter;
     #[cfg(target_os = "android")]
     use tracing_subscriber::layer::SubscriberExt;
-    use tracing_subscriber::EnvFilter;
 
     let filter = EnvFilter::new("info")
         .add_directive("wgpu_core=warn".parse().unwrap())
@@ -178,11 +174,9 @@ fn android_main(app: slint::android::AndroidApp) {
     use slint::android::android_activity::{MainEvent, PollEvent};
     slint::android::init_with_event_listener(app, |event| {
         match event {
-            PollEvent::Main(MainEvent::SaveState { saver, .. }) => {
-            }
-            PollEvent::Main(MainEvent::Resume { loader, .. }) => {
-            }
-            
+            PollEvent::Main(MainEvent::SaveState { saver, .. }) => {}
+            PollEvent::Main(MainEvent::Resume { loader, .. }) => {}
+
             _ => {}
         };
     })

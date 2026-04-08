@@ -124,6 +124,26 @@ fn empty_model<T: Clone + 'static>() -> slint::ModelRc<T> {
     slint::ModelRc::new(slint::VecModel::from(Vec::<T>::new()))
 }
 
+fn responsive_mode_for(render_size: (u32, u32)) -> &'static str {
+    let (width, height) = render_size;
+
+    if width <= 1024 || height <= 640 {
+        "compact"
+    } else if width >= 1600 && height >= 900 {
+        "wide"
+    } else {
+        "normal"
+    }
+}
+
+fn sync_responsive_state(game_state: &crate::GameState, render_size: (u32, u32)) {
+    let mode = responsive_mode_for(render_size);
+
+    game_state.set_responsive_mode(slint::SharedString::from(mode));
+    game_state.set_responsive_compact(mode == "compact");
+    game_state.set_responsive_wide(mode == "wide");
+}
+
 fn reset_game_state_for_main_menu(window: &crate::MainWindow) {
     let game_state = slint::ComponentHandle::global::<crate::GameState>(window);
 
@@ -146,6 +166,7 @@ fn reset_game_state_for_main_menu(window: &crate::MainWindow) {
     game_state.set_viewport_width(0.0);
     game_state.set_viewport_height(0.0);
     game_state.set_display_scale(1.0);
+    sync_responsive_state(&game_state, (0, 0));
 
     game_state.set_world_labels(empty_model());
     game_state.set_chat_messages(empty_model());
@@ -840,6 +861,7 @@ pub fn sync_world_labels_to_slint(
     game_state.set_viewport_height(zoom_state.render_size.1 as f32);
 
     game_state.set_display_scale(zoom_state.display_scale());
+    sync_responsive_state(&game_state, zoom_state.render_size);
 
     // Collect all label types from all entities
     let mut slint_labels: Vec<crate::WorldLabel> = Vec::new();
