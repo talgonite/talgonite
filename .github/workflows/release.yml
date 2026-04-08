@@ -133,6 +133,11 @@ jobs:
           fi
       - name: "Rust Cache"
         uses: "Swatinem/rust-cache@v2"
+      - name: "Configure Windows Skia build"
+        if: "runner.os == 'Windows'"
+        run: |
+          echo "SKIA_USE_SYSTEM_LIBRARIES=1" >> "$GITHUB_ENV"
+        shell: "bash"
       - name: "Install Linux dependencies"
         if: "runner.os == 'Linux'"
         run: |
