@@ -7,7 +7,7 @@ import {
 } from "../game_state.slint";
 import { CancelDrag, DragDropItem } from "drag_drop.slint";
 import { Theme } from "../theme.slint";
-import { ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { ScrollView } from "std-widgets.slint";
 import { Icon } from "./icon.slint";
 import { BasePanel } from "./base_panel.slint";
 
@@ -76,23 +76,50 @@ export component InventoryPanel inherits BasePanel {
     title: "Inventory";
     visible: true;
     width: 324px;
-    height: 380px;
+    height: 432px;
     close => {
         GameState.show-inventory = false;
     }
-    ScrollView {
-        viewport-width: self.visible-width;
-        GridLayout {
-            padding: Theme.spacing-small;
-            spacing: Theme.spacing-small;
-            for slot[i] in GameState.inventory: Rectangle {
-                row: i / 6;
-                col: Math.mod(i, 6);
-                width: 44px;
-                height: 44px;
-                InventorySlot {
-                    item: slot;
-                    slot: slot.slot;
+    VerticalLayout {
+        spacing: 0px;
+        ScrollView {
+            min-height: 0px;
+            viewport-width: self.visible-width;
+            GridLayout {
+                padding: Theme.spacing-small;
+                spacing: Theme.spacing-small;
+                for slot[i] in GameState.inventory: Rectangle {
+                    row: i / 6;
+                    col: Math.mod(i, 6);
+                    width: 44px;
+                    height: 44px;
+                    InventorySlot {
+                        item: slot;
+                        slot: slot.slot;
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            height: 30px;
+            background: Theme.surface-primary;
+            border-width: 1px;
+            border-color: Theme.border-muted;
+            border-bottom-left-radius: 2px;
+            border-bottom-right-radius: 2px;
+            HorizontalLayout {
+                padding: 5px;
+                spacing: Theme.spacing-small;
+                Rectangle {}
+
+                Rectangle {
+                    Text {
+                        text: "Weight: " + GameState.current-weight + " / " + GameState.max-weight;
+                        font-size: Theme.font-size-small;
+                        color: Theme.foreground-muted;
+                        font-weight: 400;
+                    }
                 }
             }
         }
