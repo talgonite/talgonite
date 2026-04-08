@@ -1,0 +1,31 @@
+import { Theme } from "../../theme.slint";
+import { SettingsState } from "../../settings_state.slint";
+import { VerticalBox, ScrollView, HorizontalBox, CheckBox } from "std-widgets.slint";
+import { SectionHeader, RadioOption } from "widgets.slint";
+
+export component MouseTab inherits VerticalBox {
+    spacing: Theme.spacing-small;
+    padding: Theme.spacing-medium;
+
+    VerticalBox {
+        spacing: Theme.spacing-xsmall;
+        alignment: start;
+        SectionHeader {
+            title: "NPC Interaction";
+        }
+
+        GridLayout {
+            spacing: 4px;
+            // amount of clicks it takes to interact with monsters or NPCs
+            for option[idx] in ["Single Click (classic)", "Double Click"]: RadioOption {
+                label: option;
+                selected: SettingsState.npc-interaction-clicks == idx;
+                horizontal-stretch: 1;
+                clicked => {
+                    SettingsState.npc-interaction-clicks = idx;
+                    SettingsState.npc-interaction-clicks-changed(idx);
+                }
+            }
+        }
+    }
+}

@@ -327,6 +327,10 @@ fn handle_ui_inbound_ingame(
                 settings.graphics.scale = *scale;
                 zoom_state.set_zoom(*scale);
             }
+            UiToCore::NpcInteractionClicksChange { mode } => {
+                settings.gameplay.npc_interaction_clicks =
+                    crate::settings_types::NpcInteractionClicks::from_u8(*mode);
+            }
             UiToCore::RebindKey {
                 action,
                 new_key,
@@ -998,6 +1002,10 @@ fn handle_ui_inbound_login(
             }
             UiToCore::ScaleChange { scale } => {
                 settings.graphics.scale = *scale;
+            }
+            UiToCore::NpcInteractionClicksChange { mode } => {
+                settings.gameplay.npc_interaction_clicks =
+                    crate::settings_types::NpcInteractionClicks::from_u8(*mode);
             }
             UiToCore::RebindKey {
                 action,

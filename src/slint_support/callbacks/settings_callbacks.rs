@@ -50,6 +50,14 @@ pub fn wire_settings_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
         });
     }
 
+    // Npc Interaction clicks changed
+    {
+        let tx = tx.clone();
+        settings_state.on_npc_interaction_clicks_changed(move |mode| {
+            let _ = tx.send(UiToCore::NpcInteractionClicksChange { mode: mode as u8 });
+        });
+    }
+
     // Start rebind
     {
         let slint_app_weak = slint_app.as_weak();
