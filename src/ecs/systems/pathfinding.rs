@@ -4,11 +4,14 @@ use std::collections::HashSet;
 
 use crate::ecs::collision::{MapCollisionData, WallCollisionTable, can_walk_to};
 use crate::ecs::components::{
-    Direction, GameMap, LocalPlayer, MovementTween, NPC, PathTarget, PathfindingState, Player,
-    Position,
+    Direction, GameMap, ItemSprite, LocalPlayer, MovementTween, NPC, PathTarget,
+    PathfindingState, Player, Position,
 };
 use crate::ecs::spell_casting::SpellCastingState;
-use crate::events::{InputSource, PlayerAction, TileClickEvent};
+use crate::events::{
+    ClickSource, EntityClickEvent, InputSource, InteractionIntentAction, InteractionIntentEvent,
+    InteractionTargetKind, PlayerAction, TileClickEvent,
+};
 use crate::plugins::input::InputTimer;
 
 pub fn pathfinding_target_system(
@@ -45,8 +48,156 @@ pub fn pathfinding_target_system(
                 x: target_x,
                 y: target_y,
             },
+            face_after: None,
             retry_timer: None,
         });
+    }
+}
+
+pub fn resolve_interaction_intents_system(
+    spell_casting: Res<SpellCastingState>,
+    mut entity_clicks: MessageReader<EntityClickEvent>,
+    mut tile_clicks: MessageReader<TileClickEvent>,
+    entity_query: Query<(
+        &Position,
+        Option<&Player>,
+        Option<&NPC>,
+        Option<&ItemSprite>,
+        Option<&LocalPlayer>,
+    )>,
+    mut interaction_intents: MessageWriter<InteractionIntentEvent>,
+) {
+    let is_waiting_for_target = spell_casting
+        .active_cast
+        .as_ref()
+        .map(|cast| cast.waiting_for_target)
+        .unwrap_or(false);
+
+    if is_waiting_for_target {
+        return;
+    }
+
+    for event in entity_clicks.read() {
+        if event.source != ClickSource::AndroidShortPress || event.is_double_click {
+            continue;
+        }
+
+        let Ok((position, player, npc, item, local_player)) = entity_query.get(event.entity) else {
+            continue;
+        };
+
+        if local_player.is_some() {
+            continue;
+        }
+
+        let tile_x = position.x.round() as i32;
+        let tile_y = position.y.round() as i32;
+
+        if item.is_some() {
+            interaction_intents.write(InteractionIntentEvent {
+                source: event.source,
+                target_kind: InteractionTargetKind::Item,
+                target_entity: Some(event.entity),
+                tile_x,
+                tile_y,
+                action: InteractionIntentAction::WalkToTile,
+            });
+            continue;
+        }
+
+        if player.is_some() || npc.is_some() {
+            interaction_intents.write(InteractionIntentEvent {
+                source: event.source,
+                target_kind: InteractionTargetKind::Actor,
+                target_entity: Some(event.entity),
+                tile_x,
+                tile_y,
+                action: InteractionIntentAction::ApproachAndFace,
+            });
+        }
+    }
+
+    for event in tile_clicks.read() {
+        if event.source != ClickSource::AndroidShortPress || event.button != MouseButton::Left {
+            continue;
+        }
+
+        interaction_intents.write(InteractionIntentEvent {
+            source: event.source,
+            target_kind: InteractionTargetKind::Ground,
+            target_entity: None,
+            tile_x: event.tile_x,
+            tile_y: event.tile_y,
+            action: InteractionIntentAction::WalkToTile,
+        });
+    }
+}
+
+pub fn consume_interaction_intents_system(
+    mut commands: Commands,
+    mut interaction_intents: MessageReader<InteractionIntentEvent>,
+    player_query: Query<(Entity, &Position), With<LocalPlayer>>,
+    map_query: Query<&GameMap>,
+    collision_table: Option<Res<WallCollisionTable>>,
+    map_collision: Option<Res<MapCollisionData>>,
+    entity_positions: Query<&Position, (Or<(With<NPC>, With<Player>)>, Without<LocalPlayer>)>,
+) {
+    let Ok((player_entity, player_pos)) = player_query.single() else {
+        return;
+    };
+
+    let Ok(map) = map_query.single() else {
+        return;
+    };
+
+    let start = (player_pos.x.round() as u8, player_pos.y.round() as u8);
+    let occupied_tiles: HashSet<(u8, u8)> = entity_positions
+        .iter()
+        .map(|pos| (pos.x.round() as u8, pos.y.round() as u8))
+        .collect();
+
+    for event in interaction_intents.read() {
+        let target_x = event.tile_x.clamp(0, map.width as i32 - 1) as u8;
+        let target_y = event.tile_y.clamp(0, map.height as i32 - 1) as u8;
+
+        match event.action {
+            InteractionIntentAction::WalkToTile => {
+                if start == (target_x, target_y) {
+                    continue;
+                }
+
+                commands.entity(player_entity).insert(PathfindingState {
+                    target: PathTarget::Tile {
+                        x: target_x,
+                        y: target_y,
+                    },
+                    face_after: None,
+                    retry_timer: None,
+                });
+            }
+            InteractionIntentAction::ApproachAndFace => {
+                let Some(destination) = choose_best_approach_tile(
+                    start,
+                    (target_x, target_y),
+                    map.width,
+                    map.height,
+                    collision_table.as_deref(),
+                    map_collision.as_deref(),
+                    &occupied_tiles,
+                ) else {
+                    continue;
+                };
+
+                commands.entity(player_entity).insert(PathfindingState {
+                    target: PathTarget::Tile {
+                        x: destination.0,
+                        y: destination.1,
+                    },
+                    face_after: Some((target_x, target_y)),
+                    retry_timer: None,
+                });
+            }
+        }
     }
 }
 
@@ -58,6 +209,7 @@ pub fn pathfinding_execution_system(
         (
             Entity,
             &Position,
+            &mut Direction,
             Option<&MovementTween>,
             &mut PathfindingState,
         ),
@@ -70,7 +222,9 @@ pub fn pathfinding_execution_system(
     mut player_actions: MessageWriter<PlayerAction>,
     spell_casting: Res<SpellCastingState>,
 ) {
-    let Ok((player_entity, player_pos, tween, mut pathfinding)) = player_query.single_mut() else {
+    let Ok((player_entity, player_pos, mut player_direction, tween, mut pathfinding)) =
+        player_query.single_mut()
+    else {
         return;
     };
 
@@ -105,10 +259,23 @@ pub fn pathfinding_execution_system(
         x: target_x,
         y: target_y,
     } = pathfinding.target;
+    let face_after = pathfinding.face_after;
     let start_x = player_pos.x.round() as u8;
     let start_y = player_pos.y.round() as u8;
 
     if start_x == target_x && start_y == target_y {
+        if let Some(face_tile) = face_after {
+            if let Some(direction) = direction_toward((start_x, start_y), face_tile) {
+                if *player_direction != direction {
+                    *player_direction = direction;
+                    player_actions.write(PlayerAction::Turn {
+                        direction,
+                        source: InputSource::Pathfinding,
+                    });
+                }
+            }
+        }
+
         commands.entity(player_entity).remove::<PathfindingState>();
         return;
     }
@@ -199,4 +366,130 @@ fn find_path(
     );
 
     result.map(|(path, _cost)| path)
+}
+
+fn choose_best_approach_tile(
+    start: (u8, u8),
+    target: (u8, u8),
+    map_width: u8,
+    map_height: u8,
+    collision_table: Option<&WallCollisionTable>,
+    map_collision: Option<&MapCollisionData>,
+    occupied_tiles: &HashSet<(u8, u8)>,
+) -> Option<(u8, u8)> {
+    let neighbors = [
+        (0_i32, -1_i32),
+        (1_i32, 0_i32),
+        (0_i32, 1_i32),
+        (-1_i32, 0_i32),
+    ];
+    let mut best: Option<(usize, (u8, u8))> = None;
+
+    for (dx, dy) in neighbors {
+        let nx = target.0 as i32 + dx;
+        let ny = target.1 as i32 + dy;
+
+        if nx < 0 || nx >= map_width as i32 || ny < 0 || ny >= map_height as i32 {
+            continue;
+        }
+
+        let candidate = (nx as u8, ny as u8);
+        if candidate != start && occupied_tiles.contains(&candidate) {
+            continue;
+        }
+
+        if !can_walk_to(candidate.0, candidate.1, collision_table, map_collision) {
+            continue;
+        }
+
+        if candidate == start {
+            return Some(candidate);
+        }
+
+        let Some(path) = find_path(
+            start,
+            candidate,
+            map_width,
+            map_height,
+            collision_table,
+            map_collision,
+            occupied_tiles,
+        ) else {
+            continue;
+        };
+
+        let candidate_score = path.len();
+        let replace_best = best
+            .map(|(best_score, best_tile)| {
+                candidate_score < best_score || (candidate_score == best_score && candidate < best_tile)
+            })
+            .unwrap_or(true);
+
+        if replace_best {
+            best = Some((candidate_score, candidate));
+        }
+    }
+
+    best.map(|(_, tile)| tile)
+}
+
+fn direction_toward(from: (u8, u8), to: (u8, u8)) -> Option<Direction> {
+    let dx = to.0 as i32 - from.0 as i32;
+    let dy = to.1 as i32 - from.1 as i32;
+
+    match (dx, dy) {
+        (0, -1) => Some(Direction::Up),
+        (1, 0) => Some(Direction::Right),
+        (0, 1) => Some(Direction::Down),
+        (-1, 0) => Some(Direction::Left),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn approach_prefers_current_tile_when_already_adjacent() {
+        let occupied_tiles = HashSet::from([(4_u8, 4_u8)]);
+
+        let result = choose_best_approach_tile(
+            (4, 3),
+            (4, 4),
+            10,
+            10,
+            None,
+            None,
+            &occupied_tiles,
+        );
+
+        assert_eq!(result, Some((4, 3)));
+    }
+
+    #[test]
+    fn approach_selects_reachable_adjacent_tile() {
+        let occupied_tiles = HashSet::from([(4_u8, 4_u8), (4_u8, 3_u8)]);
+
+        let result = choose_best_approach_tile(
+            (2, 4),
+            (4, 4),
+            10,
+            10,
+            None,
+            None,
+            &occupied_tiles,
+        );
+
+        assert_eq!(result, Some((3, 4)));
+    }
+
+    #[test]
+    fn direction_toward_returns_cardinal_direction() {
+        assert_eq!(direction_toward((5, 5), (5, 4)), Some(Direction::Up));
+        assert_eq!(direction_toward((5, 5), (6, 5)), Some(Direction::Right));
+        assert_eq!(direction_toward((5, 5), (5, 6)), Some(Direction::Down));
+        assert_eq!(direction_toward((5, 5), (4, 5)), Some(Direction::Left));
+        assert_eq!(direction_toward((5, 5), (6, 6)), None);
+    }
 }

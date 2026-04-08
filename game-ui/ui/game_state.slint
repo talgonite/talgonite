@@ -34,9 +34,7 @@ export struct InventoryItem {
     quantity: int,
 }
 
-export struct Cooldown {
-    time_left: duration,
-    total: duration}
+export struct Cooldown { time_left: duration, total: duration}
 
 export struct HotbarEntry {
     name: string,
@@ -214,6 +212,9 @@ export global GameState {
     // display_scale is how much the render texture is scaled up for display
     // (display_size / render_size, typically user_zoom for pixel-perfect rendering)
     in-out property <float> display_scale: 1;
+    in-out property <string> responsive-mode: "normal";
+    in-out property <bool> responsive-compact: false;
+    in-out property <bool> responsive-wide: false;
     in-out property <[WorldLabel]> world_labels: [];
     in-out property <[ChatMessage]> chat-messages: [];
     in-out property <[string]> action-bar-messages: [];

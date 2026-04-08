@@ -65,6 +65,7 @@ pub enum PathTarget {
 #[derive(Component, Debug)]
 pub struct PathfindingState {
     pub target: PathTarget,
+    pub face_after: Option<(u8, u8)>,
     pub retry_timer: Option<Timer>,
 }
 

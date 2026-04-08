@@ -1,5 +1,6 @@
 import { GameState, DragDropState, SlotPanelType } from "../game_state.slint";
 import { InputBridge } from "../input_bridge.slint";
+import { PlatformState } from "../platform_state.slint";
 import { UiSettings } from "../ui-settings.slint";
 import { SettingsState } from "../settings_state.slint";
 import { NpcDialog } from "./menu_dialog.slint";
@@ -95,6 +96,7 @@ export component GameScene inherits Rectangle {
     chat-log := ChatLog {
         x: 20px;
         y: parent.height - self.height - 20px;
+        visible: !PlatformState.is-android;
         chat-sent => {
             focus-scope.focus();
         }
@@ -106,7 +108,7 @@ export component GameScene inherits Rectangle {
     }
 
     // Hot bar at bottom right
-    HotBar {
+    if (!PlatformState.is-android): HotBar {
         x: parent.width - self.width - Theme.spacing-small;
         y: parent.height - self.height - Theme.spacing-small;
     }
