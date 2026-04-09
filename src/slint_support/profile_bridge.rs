@@ -6,6 +6,67 @@ use packets::server::EquipmentSlot;
 use crate::slint_support::state_bridge::{SlintAssetLoaderRes, SlintWindow};
 use crate::{EquipmentSlotData, GameState, LegendMarkData, ProfileData, RendererState};
 
+fn element_name(value: u8) -> slint::SharedString {
+    let name = match value {
+        0 => "None",
+        1 => "Fire",
+        2 => "Water",
+        3 => "Wind",
+        4 => "Earth",
+        5 => "Holy",
+        6 => "Dark",
+        7 => "Wood",
+        8 => "Metal",
+        9 => "Undead",
+        _ => "Unknown",
+    };
+    slint::SharedString::from(name)
+}
+
+fn apply_profile_attributes(profile: &mut ProfileData, attrs: &crate::resources::PlayerAttributes) {
+    profile.level = attrs.level as i32;
+    profile.ability_level = attrs.ability_level as i32;
+    profile.experience = attrs.experience as i32;
+    profile.experience_to_next_level = attrs.experience_to_next_level as i32;
+    profile.ability_experience = attrs.ability_experience as i32;
+    profile.ability_experience_to_next_level = attrs.ability_experience_to_next_level as i32;
+    profile.game_points = attrs.game_points as i32;
+    profile.stat_str = attrs.stat_str as i32;
+    profile.stat_int = attrs.stat_int as i32;
+    profile.stat_wis = attrs.stat_wis as i32;
+    profile.stat_con = attrs.stat_con as i32;
+    profile.stat_dex = attrs.stat_dex as i32;
+    profile.unspent_stat_points = attrs.unspent_stat_points as i32;
+    profile.attack_element = element_name(attrs.attack_element);
+    profile.defense_element = element_name(attrs.defense_element);
+    profile.magic_resistance = (attrs.magic_resistance * 10) as i32;
+    profile.ac = attrs.ac as i32;
+    profile.dmg = attrs.dmg as i32;
+    profile.hit = attrs.hit as i32;
+}
+
+fn clear_profile_attributes(profile: &mut ProfileData) {
+    profile.level = 0;
+    profile.ability_level = 0;
+    profile.experience = 0;
+    profile.experience_to_next_level = 0;
+    profile.ability_experience = 0;
+    profile.ability_experience_to_next_level = 0;
+    profile.game_points = 0;
+    profile.stat_str = 0;
+    profile.stat_int = 0;
+    profile.stat_wis = 0;
+    profile.stat_con = 0;
+    profile.stat_dex = 0;
+    profile.unspent_stat_points = 0;
+    profile.attack_element = slint::SharedString::from("");
+    profile.defense_element = slint::SharedString::from("");
+    profile.magic_resistance = 0;
+    profile.ac = 0;
+    profile.dmg = 0;
+    profile.hit = 0;
+}
+
 /// Event emitted when the player wants to show a profile panel
 #[derive(Debug, Clone, Message)]
 pub enum ShowSelfProfileEvent {
@@ -61,6 +122,7 @@ pub fn sync_profile_to_slint(
     game_files: Res<crate::game_files::GameFiles>,
     eq_state: Res<crate::webui::plugin::EquipmentState>,
     profile_state: Res<crate::webui::plugin::PlayerProfileState>,
+    player_attrs: Res<crate::resources::PlayerAttributes>,
     mut portrait_state: ResMut<crate::resources::ProfilePortraitState>,
     renderer: Res<RendererState>,
     mut last_portrait_version: Local<u32>,
@@ -90,7 +152,7 @@ pub fn sync_profile_to_slint(
         *last_portrait_version = portrait_state.version;
     }
 
-    if profile_state.is_changed() || portrait_image.is_some() {
+    if profile_state.is_changed() || portrait_image.is_some() || player_attrs.is_changed() {
         let game_state = slint::ComponentHandle::global::<GameState>(&strong);
         let mut profile = game_state.get_profile();
 
@@ -108,6 +170,12 @@ pub fn sync_profile_to_slint(
         profile.town = slint::SharedString::from(format!("{:?}", profile_state.nation));
         profile.group_requests_enabled = profile_state.group_open;
         profile.profile_text = slint::SharedString::from(profile_state.profile_text.to_plain_string());
+
+        if profile_state.is_self {
+            apply_profile_attributes(&mut profile, &player_attrs);
+        } else {
+            clear_profile_attributes(&mut profile);
+        }
 
         let legend_marks: Vec<LegendMarkData> = profile_state
             .legend_marks
@@ -172,6 +240,7 @@ pub fn handle_show_self_profile(
     game_files: Res<crate::game_files::GameFiles>,
     eq_state: Res<crate::webui::plugin::EquipmentState>,
     mut profile_state: ResMut<crate::webui::plugin::PlayerProfileState>,
+    player_attrs: Res<crate::resources::PlayerAttributes>,
     mut portrait_state: ResMut<crate::resources::ProfilePortraitState>,
 ) {
     let Some(strong) = win.0.upgrade() else {
@@ -243,6 +312,12 @@ pub fn handle_show_self_profile(
         profile.town = slint::SharedString::from(format!("{:?}", profile_state.nation));
         profile.group_requests_enabled = profile_state.group_open;
         profile.profile_text = slint::SharedString::from(profile_state.profile_text.to_plain_string());
+
+        if profile.is_self {
+            apply_profile_attributes(&mut profile, &player_attrs);
+        } else {
+            clear_profile_attributes(&mut profile);
+        }
 
         let legend_marks: Vec<LegendMarkData> = profile_state
             .legend_marks
