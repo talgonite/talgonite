@@ -16,9 +16,13 @@ use packets::server::display_menu::DisplayMenuPayload;
 use packets::types::{EntityType, MenuType};
 
 use crate::app_state::AppState;
-use crate::events::{AbilityEvent, ChatEvent, InventoryEvent, SessionEvent};
+use crate::events::{
+    AbilityEvent, ChatEvent, InteractionIntentAction, InteractionIntentEvent,
+    InteractionTargetKind, InventoryEvent, SessionEvent, WorldContextMenuEntry,
+};
 use crate::render_plugin::game::WebUi;
 use crate::rich_text::RichText;
+use crate::slint_plugin::ShowSelfProfileEvent;
 use rendering::scene::utils::screen_to_iso_tile;
 
 use super::keyring;
@@ -46,6 +50,12 @@ pub struct ActiveMenuContext {
     pub dialog_id: Option<u16>,
 }
 
+#[derive(Resource, Default, Debug, Clone)]
+pub struct ActiveWorldContextMenu {
+    pub title: String,
+    pub entries: Vec<WorldContextMenuEntry>,
+}
+
 #[derive(Message)]
 pub struct UiInbound(pub UiToCore);
 
@@ -67,6 +77,7 @@ impl Plugin for UiBridgePlugin {
             .init_resource::<crate::ecs::hotbar::HotbarState>()
             .init_resource::<crate::ecs::hotbar::HotbarPanelState>()
             .init_resource::<ActiveMenuContext>()
+            .init_resource::<ActiveWorldContextMenu>()
             .init_resource::<CursorPosition>()
             .init_resource::<ButtonInput<KeyCode>>()
             .init_resource::<ButtonInput<MouseButton>>()
@@ -159,6 +170,21 @@ struct InputBindingResources<'w> {
     unified_bindings: ResMut<'w, crate::input::UnifiedInputBindings>,
 }
 
+#[derive(bevy::ecs::system::SystemParam)]
+struct WorldContextResources<'w, 's> {
+    world_context_menu: ResMut<'w, ActiveWorldContextMenu>,
+    interaction_intents: MessageWriter<'w, InteractionIntentEvent>,
+    profile_events: MessageWriter<'w, ShowSelfProfileEvent>,
+    entity_ids: Query<
+        'w,
+        's,
+        (
+            &'static crate::ecs::components::EntityId,
+            Option<&'static crate::ecs::components::LocalPlayer>,
+        ),
+    >,
+}
+
 fn handle_ui_inbound_ingame(
     mut inbound: MessageReader<UiInbound>,
     mut outbound: MessageWriter<UiOutbound>,
@@ -174,6 +200,7 @@ fn handle_ui_inbound_ingame(
     hotbar_res: HotbarResources,
     interaction_res: InteractionResources,
     mut group_state: ResMut<GroupState>,
+    mut world_context: WorldContextResources,
 ) {
     let mut hotbar_state = hotbar_res.hotbar_state;
     let mut hotbar_panel_state = hotbar_res.hotbar_panel_state;
@@ -188,6 +215,87 @@ fn handle_ui_inbound_ingame(
         match msg {
             UiToCore::InputKeyboard { .. } | UiToCore::InputPointer { .. } => {
                 // Handled by handle_input_bridge
+            }
+            UiToCore::WorldContextMenuSelect { id } => {
+                let selected = world_context
+                    .world_context_menu
+                    .entries
+                    .iter()
+                    .find(|entry| entry.id == *id)
+                    .cloned();
+
+                world_context.world_context_menu.entries.clear();
+                world_context.world_context_menu.title.clear();
+                outbound.write(UiOutbound(CoreToUi::HideWorldContextMenu));
+
+                let Some(selected) = selected else {
+                    continue;
+                };
+
+                match selected.action {
+                    crate::events::WorldContextAction::WalkToTile { tile_x, tile_y } => {
+                        world_context.interaction_intents.write(InteractionIntentEvent {
+                            source: crate::events::ClickSource::AndroidLongPress,
+                            target_kind: InteractionTargetKind::Ground,
+                            target_entity: None,
+                            tile_x,
+                            tile_y,
+                            action: InteractionIntentAction::WalkToTile,
+                        });
+                    }
+                    crate::events::WorldContextAction::ApproachActor {
+                        entity,
+                        tile_x,
+                        tile_y,
+                    } => {
+                        world_context.interaction_intents.write(InteractionIntentEvent {
+                            source: crate::events::ClickSource::AndroidLongPress,
+                            target_kind: InteractionTargetKind::Actor,
+                            target_entity: Some(entity),
+                            tile_x,
+                            tile_y,
+                            action: InteractionIntentAction::ApproachAndFace,
+                        });
+                    }
+                    crate::events::WorldContextAction::ViewProfile { entity, is_self } => {
+                        if is_self {
+                            world_context
+                                .profile_events
+                                .write(ShowSelfProfileEvent::SelfRequested);
+                            outbox.send(&packets::client::SelfProfileRequest {});
+                        } else if let Ok((entity_id, _)) = world_context.entity_ids.get(entity) {
+                            world_context
+                                .profile_events
+                                .write(ShowSelfProfileEvent::OtherRequested);
+                            outbox.send(&packets::client::Click::TargetEntity(entity_id.id));
+                        }
+                    }
+                    crate::events::WorldContextAction::PickUpItem { tile_x, tile_y } => {
+                        outbox.send(&packets::client::Pickup {
+                            destination_slot: 0,
+                            source_point: (tile_x.max(0) as u16, tile_y.max(0) as u16),
+                        });
+                    }
+                    crate::events::WorldContextAction::SpeakToNpc { entity } => {
+                        if let Ok((entity_id, _)) = world_context.entity_ids.get(entity) {
+                            outbox.send(&packets::client::Click::TargetEntity(entity_id.id));
+                        }
+                    }
+                    crate::events::WorldContextAction::InteractWalls { walls } => {
+                        for (tile_x, tile_y, is_right) in walls {
+                            outbox.send(&packets::client::Click::TargetWall {
+                                x: tile_x.max(0) as u16,
+                                y: tile_y.max(0) as u16,
+                                is_right,
+                            });
+                        }
+                    }
+                }
+            }
+            UiToCore::WorldContextMenuClose => {
+                world_context.world_context_menu.entries.clear();
+                world_context.world_context_menu.title.clear();
+                outbound.write(UiOutbound(CoreToUi::HideWorldContextMenu));
             }
             UiToCore::WorldMapClick {
                 map_id,

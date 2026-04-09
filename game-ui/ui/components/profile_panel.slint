@@ -3,6 +3,7 @@ import { Theme } from "../theme.slint";
 import { ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
 import { Icon } from "icon.slint";
 import { BasePanel } from "base_panel.slint";
+import { PlatformState } from "../platform_state.slint";
 
 import "../../fonts/JetBrainsMono[wght].ttf";
 
@@ -100,7 +101,7 @@ export component ProfilePanel inherits Rectangle {
     property <string> active-tab: "profile";
     in property <float> preview-zoom: 2.0;
     width: 560px;
-    height: 480px;
+    height: PlatformState.is-android ? 360px : 480px;
 
     HorizontalLayout {
         y: -32px;
@@ -484,9 +485,7 @@ export component ProfilePanel inherits Rectangle {
                     Rectangle {
                         width: 180px;
                         height: 30px;
-                        background: GameState.is-groupable
-                            ? (self-group-touch.has-hover ? #16a34a : #15803d)
-                            : (self-group-touch.has-hover ? #4b5563 : #374151);
+                        background: GameState.is-groupable ? (self-group-touch.has-hover ? #16a34a : #15803d) : (self-group-touch.has-hover ? #4b5563 : #374151);
                         border-radius: 6px;
                         border-width: 1px;
                         border-color: GameState.is-groupable ? #22c55e : #6b7280;
@@ -502,7 +501,9 @@ export component ProfilePanel inherits Rectangle {
 
                         self-group-touch := TouchArea {
                             mouse-cursor: pointer;
-                            clicked => { GameState.toggle-groupable(); }
+                            clicked => {
+                                GameState.toggle-groupable();
+                            }
                         }
                     }
                 }

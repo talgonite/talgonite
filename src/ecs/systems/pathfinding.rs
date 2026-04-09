@@ -87,6 +87,19 @@ pub fn resolve_interaction_intents_system(
         };
 
         if local_player.is_some() {
+            let player_tile_x = position.x.round() as i32;
+            let player_tile_y = position.y.round() as i32;
+
+            if (event.ground_tile_x, event.ground_tile_y) != (player_tile_x, player_tile_y) {
+                interaction_intents.write(InteractionIntentEvent {
+                    source: event.source,
+                    target_kind: InteractionTargetKind::Ground,
+                    target_entity: None,
+                    tile_x: event.ground_tile_x,
+                    tile_y: event.ground_tile_y,
+                    action: InteractionIntentAction::WalkToTile,
+                });
+            }
             continue;
         }
 

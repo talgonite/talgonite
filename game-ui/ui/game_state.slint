@@ -27,6 +27,11 @@ export struct MenuEntry {
     cost: int,
 }
 
+export struct ContextMenuEntry {
+    id: int,
+    text: string,
+}
+
 export struct InventoryItem {
     slot: int,
     name: string,
@@ -290,6 +295,44 @@ export global PopupState {
     }
     public function hide() {
         root.visible = false;
+    }
+}
+
+export global ContextMenuState {
+    in-out property <string> title: "";
+    in-out property <[ContextMenuEntry]> items: [];
+    in-out property <bool> visible: false;
+    in-out property <length> x: 0px;
+    in-out property <length> y: 0px;
+    in-out property <length> anchor-width: 0px;
+    in-out property <length> anchor-height: 0px;
+    callback item-selected-request(int);
+    callback close-request();
+
+    public function show(title: string, items: [ContextMenuEntry], x: length, y: length, w: length, h: length) {
+        root.title = title;
+        root.items = items;
+        root.x = x;
+        root.y = y;
+        root.anchor-width = w;
+        root.anchor-height = h;
+        root.visible = true;
+    }
+
+    public function select-item(id: int) {
+        root.visible = false;
+        item-selected-request(id);
+    }
+
+    public function close() {
+        root.visible = false;
+        close-request();
+    }
+
+    public function hide() {
+        root.visible = false;
+        root.title = "";
+        root.items = [];
     }
 }
 

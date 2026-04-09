@@ -4,7 +4,9 @@ use crossbeam_channel::Sender;
 use slint::ComponentHandle;
 
 use crate::webui::ipc::{UiToCore, WorldListFilter};
-use crate::{DragDropState, GameState, MainWindow, NpcDialogState, SlotPanelType};
+use crate::{
+    ContextMenuState, DragDropState, GameState, MainWindow, NpcDialogState, SlotPanelType,
+};
 
 /// Convert Slint SlotPanelType to game types.
 fn slint_to_game_panel(panel: SlotPanelType) -> game_types::SlotPanelType {
@@ -37,6 +39,7 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
 
     // NPC Dialog callbacks
     let npc_dialog = slint_app.global::<NpcDialogState>();
+    let context_menu = slint_app.global::<ContextMenuState>();
 
     // Menu select (option selection)
     {
@@ -75,6 +78,20 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
             if tx.send(UiToCore::Unequip { slot: slot as u8 }).is_err() {
                 tracing::error!("Failed to send Unequip message");
             }
+        });
+    }
+
+    {
+        let tx = tx.clone();
+        context_menu.on_item_selected_request(move |id| {
+            let _ = tx.send(UiToCore::WorldContextMenuSelect { id });
+        });
+    }
+
+    {
+        let tx = tx.clone();
+        context_menu.on_close_request(move || {
+            let _ = tx.send(UiToCore::WorldContextMenuClose);
         });
     }
 

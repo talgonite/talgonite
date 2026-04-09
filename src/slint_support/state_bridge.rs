@@ -558,6 +558,36 @@ pub fn apply_core_to_slint(
                     text_entry_args: slint::SharedString::default(),
                 });
             }
+            crate::webui::ipc::CoreToUi::ShowWorldContextMenu {
+                title,
+                x,
+                y,
+                anchor_width,
+                anchor_height,
+                entries,
+            } => {
+                let context_menu =
+                    slint::ComponentHandle::global::<crate::ContextMenuState>(&strong);
+                let slint_entries: Vec<crate::ContextMenuEntry> = entries
+                    .iter()
+                    .map(|entry| crate::ContextMenuEntry {
+                        id: entry.id,
+                        text: slint::SharedString::from(entry.text.as_str()),
+                    })
+                    .collect();
+
+                context_menu.invoke_show(
+                    slint::SharedString::from(title.as_str()),
+                    slint::ModelRc::new(slint::VecModel::from(slint_entries)),
+                    *x,
+                    *y,
+                    *anchor_width,
+                    *anchor_height,
+                );
+            }
+            crate::webui::ipc::CoreToUi::HideWorldContextMenu => {
+                slint::ComponentHandle::global::<crate::ContextMenuState>(&strong).invoke_hide();
+            }
             crate::webui::ipc::CoreToUi::DisplayMenuClose => {
                 slint::ComponentHandle::global::<crate::NpcDialogState>(&strong).invoke_reset();
             }
