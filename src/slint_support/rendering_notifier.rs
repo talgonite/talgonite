@@ -81,7 +81,13 @@ pub fn handle_before_rendering<W: slint::ComponentHandle>(
             }
         }
 
-        if let Ok(new_texture) = ch.front_buffer_rx.try_recv() {
+        let new_texture = ch
+            .latest_front_buffer
+            .lock()
+            .expect("latest front buffer mutex poisoned")
+            .take();
+
+        if let Some(new_texture) = new_texture {
             let current = get_texture(slint_app);
             if let Some(old) = current.to_wgpu_28_texture() {
                 let _ = ch
