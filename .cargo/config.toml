@@ -2,11 +2,6 @@
 rustflags = ["-Clink-arg=-fuse-ld=mold"]
 rustdocflags = ["-Clink-arg=-fuse-ld=mold"]
 
-[target.x86_64-pc-windows-msvc]
-linker = "rust-lld.exe"
-rustdocflags = ["-Clinker=rust-lld.exe"]
-rustflags = ["-Clink-arg=/FORCE:MULTIPLE"]
-
 [env]
 WGPU_VALIDATION = "0"
 WGPU_DEBUG = "0"
