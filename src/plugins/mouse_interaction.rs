@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use glam::Vec2;
-use std::cmp::Ordering;
 use rendering::scene::utils::screen_to_iso_tile;
+use std::cmp::Ordering;
 
 use crate::app_state::AppState;
 use crate::ecs::components::{EntityId, Hitbox, ItemSprite, LocalPlayer, NPC, Player, Position};
@@ -377,7 +377,10 @@ fn hit_test_scene(
     }
 
     let cursor_scale = zoom_state.cursor_to_render_scale();
-    let screen = Vec2::new(pointer_position.0 * cursor_scale, pointer_position.1 * cursor_scale);
+    let screen = Vec2::new(
+        pointer_position.0 * cursor_scale,
+        pointer_position.1 * cursor_scale,
+    );
     let tile = screen_to_iso_tile(screen, cam_pos, win_size, zoom);
 
     let mut matching_walls = Vec::new();
@@ -513,6 +516,8 @@ fn emit_scene_click(
                 source,
                 is_double_click,
             });
+
+            return;
         }
 
         tile_click_events.write(TileClickEvent {
@@ -564,7 +569,9 @@ fn show_world_context_menu(
     true
 }
 
-fn build_world_context_entries(hit_result: &SceneHitResult) -> (String, Vec<WorldContextMenuEntry>) {
+fn build_world_context_entries(
+    hit_result: &SceneHitResult,
+) -> (String, Vec<WorldContextMenuEntry>) {
     let mut title = String::new();
     let mut entries = Vec::new();
 

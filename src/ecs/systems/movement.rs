@@ -29,7 +29,10 @@ pub fn player_movement_system(
         ),
         With<LocalPlayer>,
     >,
-    entity_positions: Query<&Position, (Or<(With<NPC>, With<Player>)>, Without<LocalPlayer>)>,
+    entity_positions: Query<
+        (&Position, Option<&MovementTween>),
+        (Or<(With<NPC>, With<Player>)>, Without<LocalPlayer>),
+    >,
     mut commands: Commands,
     collision_table: Option<Res<WallCollisionTable>>,
     map_collision: Option<Res<MapCollisionData>>,
@@ -99,7 +102,10 @@ fn handle_walk_request(
     position: &mut Position,
     facing: &mut Direction,
     tween: Option<&MovementTween>,
-    entity_positions: &Query<&Position, (Or<(With<NPC>, With<Player>)>, Without<LocalPlayer>)>,
+    entity_positions: &Query<
+        (&Position, Option<&MovementTween>),
+        (Or<(With<NPC>, With<Player>)>, Without<LocalPlayer>),
+    >,
     commands: &mut Commands,
     collision_table: Option<&WallCollisionTable>,
     map_collision: Option<&MapCollisionData>,
@@ -130,9 +136,9 @@ fn handle_walk_request(
     }
 
     // Check entity collision (other players and NPCs)
-    let is_tile_occupied = entity_positions
-        .iter()
-        .any(|pos| pos.to_vec2().distance_squared(target_pos) < 0.25);
+    let is_tile_occupied = entity_positions.iter().any(|(pos, movement)| {
+        occupied_tile(pos, movement) == (target_tile.x as u8, target_tile.y as u8)
+    });
     if is_tile_occupied {
         return None;
     }
