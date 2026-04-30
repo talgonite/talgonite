@@ -13,6 +13,7 @@ use crate::events::{
 };
 use crate::network::PacketOutbox;
 use crate::resources::ZoomState;
+use crate::settings_types::{Settings, NpcInteractionClicks};
 use crate::slint_plugin::{ShowSelfProfileEvent, SlintDoubleClickEvent};
 use crate::webui::plugin::{ActiveWorldContextMenu, CursorPosition, UiOutbound};
 use crate::{Camera, WindowSurface};
@@ -285,6 +286,7 @@ fn handle_entity_clicks(
     mut events: MessageReader<EntityClickEvent>,
     mut profile_events: MessageWriter<ShowSelfProfileEvent>,
     spell_casting: Res<SpellCastingState>,
+    settings: Res<Settings>,
     query: Query<(
         &EntityId,
         &Position,
@@ -324,12 +326,19 @@ fn handle_entity_clicks(
                         profile_events.write(ShowSelfProfileEvent::OtherRequested);
                         outbox.send(&Click::TargetEntity(entity_id.id));
                     } else if npc.is_some() {
-                        outbox.send(&Click::TargetEntity(entity_id.id));
+                        if settings.gameplay.npc_interaction_clicks == NpcInteractionClicks::DoubleClick {
+                            outbox.send(&Click::TargetEntity(entity_id.id));
+                        }
                     }
                 } else {
-                    // Single click for players/NPCs is now ignored here to prevent
+                    // Single click for players is now ignored here to prevent
                     // opening profiles on single clicks. Targeting is handled
                     // separately by spell systems or client-side selection.
+                    if settings.gameplay.npc_interaction_clicks == NpcInteractionClicks::SingleClick {
+                        if npc.is_some() {
+                            outbox.send(&Click::TargetEntity(entity_id.id));
+                        }
+                    }
                 }
             }
         }
