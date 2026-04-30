@@ -1,5 +1,6 @@
 import { Theme } from "../theme.slint";
 import { SavedLoginItem } from "../types.slint";
+import { PlatformState } from "../platform_state.slint";
 
 export component CharacterCard inherits Rectangle {
     in property <SavedLoginItem> character;
@@ -98,7 +99,7 @@ export component CharacterCard inherits Rectangle {
             }
 
             states [
-                card-hovered when touch.has-hover: {
+                card-hovered when touch.has-hover || PlatformState.is-android: {
                     opacity: 1.0;
                 }
                 delete-hovered when delete-touch.has-hover: {

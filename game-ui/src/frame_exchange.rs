@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use std::sync::Mutex;
 
 #[derive(Debug)]
 pub enum ControlMessage {
@@ -8,19 +9,16 @@ pub enum ControlMessage {
 
 #[derive(Resource)]
 pub struct FrameChannels {
-    pub front_buffer_tx: smol::channel::Sender<wgpu::Texture>,
-    pub front_buffer_rx: smol::channel::Receiver<wgpu::Texture>,
+    pub latest_front_buffer: Mutex<Option<wgpu::Texture>>,
     pub control_tx: smol::channel::Sender<ControlMessage>,
     pub control_rx: smol::channel::Receiver<ControlMessage>,
 }
 
 impl FrameChannels {
     pub fn new() -> Self {
-        let (front_buffer_tx, front_buffer_rx) = smol::channel::bounded(3);
         let (control_tx, control_rx) = smol::channel::bounded(8);
         Self {
-            front_buffer_tx,
-            front_buffer_rx,
+            latest_front_buffer: Mutex::new(None),
             control_tx,
             control_rx,
         }

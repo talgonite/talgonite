@@ -9,16 +9,7 @@ export component BasePanel inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border-panel;
 
-    // Inner Highlight
-    // Rectangle {
-    //     x: 1px;
-    //     y: 1px;
-    //     width: parent.width - 2px;
-    //     height: parent.height - 2px;
-    //     border-radius: Theme.radius-medium - 1px;
-    //     border-width: 1px;
-    //     border-color: Theme.border-panel-highlight;
-    // }
+    TouchArea { }
 
     VerticalLayout {
         padding: 1px;
@@ -42,7 +33,6 @@ export component BasePanel inherits Rectangle {
                     letter-spacing: 0.5px;
                 }
 
-                // Spring
                 Rectangle { }
 
                 if root.show-close: close-btn := Rectangle {
@@ -67,7 +57,6 @@ export component BasePanel inherits Rectangle {
                 }
             }
 
-            // Header Bottom Divider
             Rectangle {
                 y: parent.height - 1px;
                 height: 1px;
@@ -77,7 +66,6 @@ export component BasePanel inherits Rectangle {
         }
 
         Rectangle {
-            // Content Area
             @children
         }
     }

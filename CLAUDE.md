@@ -22,6 +22,7 @@ Requires mold linker on Linux. WGPU validation disabled via `.cargo/config.toml`
 ### The Three Layers
 
 **Bevy (ECS only, no rendering)**
+
 - Game state machine (Loading, MainMenu, InGame)
 - Entity management (players, creatures, items, effects)
 - Game logic systems (pathfinding, movement, animation state)
@@ -29,6 +30,7 @@ Requires mold linker on Linux. WGPU validation disabled via `.cargo/config.toml`
 - System scheduling via `GameSet` phases
 
 **rendering crate (standalone wgpu, no Bevy dependency)**
+
 - Pure graphics library that could work without Bevy
 - Manages GPU resources, textures, shaders, batching
 - Scene rendering: map tiles, walls, players, creatures, items, effects
@@ -36,6 +38,7 @@ Requires mold linker on Linux. WGPU validation disabled via `.cargo/config.toml`
 - Instance batching for efficient GPU rendering
 
 **Slint (owns the window and wgpu context)**
+
 - Creates and owns the wgpu Device/Queue
 - Provides GPU context to the game renderer (not vice versa)
 - Renders all UI (login, inventory, chat, dialogs)
@@ -61,33 +64,34 @@ Slint rendering_notifier(BeforeRendering)
 
 ### Workspace Crates
 
-| Crate | Purpose |
-|-------|---------|
-| **talgonite** | Main app: ECS systems, Slint bridge, session management |
-| **rendering** | Standalone wgpu renderer (no Bevy dependency) |
-| **packets** | Protocol definitions (100+ packet types in server/ and client/) |
-| **network** | Async networking, packet encryption/decryption |
-| **formats** | Game file parsers (EFA, EPF, MPF, HPF for Darkages archives) |
-| **game-ui** | Slint UI definitions (.slint files) and Rust bindings |
-| **game-input** | Unified keyboard/gamepad input abstraction |
-| **installer** | Downloads and installs .arx game archives |
-| **game-types** | Shared types (hotbar, settings) |
+| Crate          | Purpose                                                         |
+| -------------- | --------------------------------------------------------------- |
+| **talgonite**  | Main app: ECS systems, Slint bridge, session management         |
+| **rendering**  | Standalone wgpu renderer (no Bevy dependency)                   |
+| **packets**    | Protocol definitions (100+ packet types in server/ and client/) |
+| **network**    | Async networking, packet encryption/decryption                  |
+| **formats**    | Game file parsers (EFA, EPF, MPF, HPF for Darkages archives)    |
+| **game-ui**    | Slint UI definitions (.slint files) and Rust bindings           |
+| **game-input** | Unified keyboard/gamepad input abstraction                      |
+| **installer**  | Downloads and installs .arx game archives                       |
+| **game-types** | Shared types (hotbar, settings)                                 |
 
 ### Key Source Files
 
-| File | Purpose |
-|------|---------|
-| `src/slint_plugin.rs` | Main bridge (~46KB): rendering_notifier callback, frame exchange, UI state sync |
-| `src/render_plugin/game.rs` | Bevy plugin: draw_frame(), GPU init, resize handling |
-| `src/ecs/systems/rendering.rs` | Syncs ECS state to GPU batches each frame |
-| `src/ecs/plugin.rs` | System ordering via GameSet phases |
-| `src/session/runtime.rs` | Network session, login flow, main game loop |
-| `rendering/src/scene/mod.rs` | Scene pipeline, depth texture, bind groups |
-| `rendering/src/shaders/shader.wgsl` | Main vertex/fragment shaders |
+| File                                | Purpose                                                                         |
+| ----------------------------------- | ------------------------------------------------------------------------------- |
+| `src/slint_plugin.rs`               | Main bridge (~46KB): rendering_notifier callback, frame exchange, UI state sync |
+| `src/render_plugin/game.rs`         | Bevy plugin: draw_frame(), GPU init, resize handling                            |
+| `src/ecs/systems/rendering.rs`      | Syncs ECS state to GPU batches each frame                                       |
+| `src/ecs/plugin.rs`                 | System ordering via GameSet phases                                              |
+| `src/session/runtime.rs`            | Network session, login flow, main game loop                                     |
+| `rendering/src/scene/mod.rs`        | Scene pipeline, depth texture, bind groups                                      |
+| `rendering/src/shaders/shader.wgsl` | Main vertex/fragment shaders                                                    |
 
 ### ECS System Ordering
 
 Systems run in `GameSet` phases (defined in `src/ecs/plugin.rs`):
+
 ```
 EventProcessing → Spawning → Despawning → Movement → Physics → Animation → Camera → RenderSync → Effects
 ```
@@ -109,6 +113,7 @@ Stored in platform data directory (`~/.local/share/Talgonite/` on Linux) as TOML
 ### Avoiding Binding Loops
 
 Binding loops occur when property A depends on B, which depends on A. Avoid by:
+
 - Don't set `height: child.preferred-height` — use layouts with padding instead
 - Don't reference `root.height/width` in nested elements — use fixed values
 - Don't mix `height` and `max-height` on the same element
@@ -164,6 +169,11 @@ Rectangle { }
 - Export globals from `scene.slint` to make them available in Rust
 - Use callbacks for user actions, properties for data display
 
-## Dependencies Note
+## Data-Driven UI Philosophy
 
-Slint is patched from a specific git commit (`[patch.crates-io]` in Cargo.toml) for unstable wgpu 27 integration.
+To ensure a robust and maintainable UI, follow the "Backend-as-Source" pattern:
+
+- **Minimal Slint Logic**: Avoid calculating business logic in `.slint` files. If you find yourself using `idx + 1` or filtering arrays in Slint, that logic belongs in the Rust `state_bridge.rs` or ECS systems.
+- **Pre-populated Models**: Initialize models (like inventory grids) in Rust with all constant metadata (IDs, slot indices) even for empty slots. Slint should only be responsible for rendering what it is given.
+- **Dumb Components**: UI components should be "dumb" observers of state. If a value is needed for an action (like a slot index), it should be a property passed from the data model, not derived from the view's layout or iteration index.
+- **Sync over Computation**: Prefer syncing a pre-computed value from Rust over using complex bindings or expressions in Slint.

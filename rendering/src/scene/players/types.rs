@@ -3,8 +3,6 @@ use formats::epf::{AnimationDirection, EpfAnimation, EpfAnimationType};
 use glam::Vec2;
 use rustc_hash::FxHashMap;
 
-pub const EQUIPMENT_Z_RANGE: f32 = 0.000001;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum Gender {
@@ -41,6 +39,7 @@ pub enum PlayerPieceType {
     Armor,
     Arms,
     Weapon,
+    Emote,
 }
 
 impl PlayerPieceType {
@@ -74,6 +73,7 @@ impl PlayerPieceType {
             | PlayerPieceType::Accessory2Fg
             | PlayerPieceType::Accessory3Fg => 'c',
             PlayerPieceType::Face => 'o',
+            PlayerPieceType::Emote => ' ', // Not used for path construction
         }
     }
 
@@ -91,6 +91,7 @@ impl PlayerPieceType {
                 PlayerPieceType::Boots => 0.25,
                 PlayerPieceType::Pants => 0.2,
                 PlayerPieceType::Arms => 0.175,
+                PlayerPieceType::Emote => 0.16, // Slightly above face
                 PlayerPieceType::Face => 0.15,
                 PlayerPieceType::Body => 0.1,
                 PlayerPieceType::Accessory1Bg => 0.09,
@@ -108,6 +109,7 @@ impl PlayerPieceType {
                 PlayerPieceType::Boots => 0.325,
                 PlayerPieceType::Pants => 0.3,
                 PlayerPieceType::Arms => 0.275,
+                PlayerPieceType::Emote => 0.23, // Slightly above face
                 PlayerPieceType::Face => 0.225,
                 PlayerPieceType::Body => 0.2,
                 PlayerPieceType::Shield => 0.15,
@@ -147,6 +149,7 @@ impl PlayerSpriteKey {
             PlayerPieceType::Accessory1Bg
             | PlayerPieceType::Accessory2Bg
             | PlayerPieceType::Accessory3Bg => 'c',
+            PlayerPieceType::Face | PlayerPieceType::Emote => 'm',
             _ => self.slot.prefix(sprite_id),
         }
     }
@@ -165,7 +168,7 @@ pub struct AnimationData {
     pub epf_index: usize,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct PlayerSpriteIndex(pub(crate) usize);
 impl PlayerSpriteIndex {
     pub fn index(&self) -> usize {
@@ -176,4 +179,5 @@ impl PlayerSpriteIndex {
 pub struct PlayerSpriteHandle {
     pub key: PlayerSpriteKey,
     pub index: PlayerSpriteIndex,
+    pub stack_order: u8,
 }

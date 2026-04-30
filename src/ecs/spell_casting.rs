@@ -1,7 +1,5 @@
 use bevy::prelude::*;
-use packets::client::{
-    BeginChant, Chant, PublicMessage, PublicMessageType, SpellUse, SpellUseArgs,
-};
+use packets::client::{BeginChant, SpellChant, SpellUse, SpellUseArgs};
 use packets::server::SpellType;
 
 use crate::ecs::interaction::HoveredEntity;
@@ -72,12 +70,8 @@ pub fn start_spell_cast(
                         outbox.send(&BeginChant {
                             cast_line_count: spell.cast_lines,
                         });
-                        outbox.send(&Chant {
+                        outbox.send(&SpellChant {
                             chant_message: "1".to_string(),
-                        });
-                        outbox.send(&PublicMessage {
-                            public_message_type: PublicMessageType::Chant,
-                            message: "1".to_string(),
                         });
 
                         casting_state.active_cast = Some(ActiveSpellCast {
@@ -116,13 +110,8 @@ pub fn update_spell_casting(
         cast.current_line += 1;
 
         if cast.current_line <= cast.total_cast_lines {
-            outbox.send(&Chant {
+            outbox.send(&SpellChant {
                 chant_message: cast.current_line.to_string(),
-            });
-
-            outbox.send(&PublicMessage {
-                public_message_type: PublicMessageType::Chant,
-                message: cast.current_line.to_string(),
             });
             cast.time_since_last_chant = 0.0;
         } else {
@@ -208,12 +197,8 @@ pub fn handle_spell_targeting(
                     outbox.send(&BeginChant {
                         cast_line_count: cast.total_cast_lines,
                     });
-                    outbox.send(&Chant {
+                    outbox.send(&SpellChant {
                         chant_message: "1".to_string(),
-                    });
-                    outbox.send(&PublicMessage {
-                        public_message_type: PublicMessageType::Chant,
-                        message: "1".to_string(),
                     });
 
                     cast.current_line = 1;

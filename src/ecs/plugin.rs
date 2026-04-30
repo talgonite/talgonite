@@ -22,7 +22,10 @@ impl Plugin for GamePlugin {
 
         app.init_resource::<SpellCastingState>()
             .init_resource::<LocalSocialStatus>()
+            .init_resource::<systems::AutoAttackState>()
             .init_resource::<crate::resources::LobbyPortraits>()
+            .init_resource::<crate::resources::ItemTileCounters>()
+            .init_resource::<super::components::MapDoorQueue>()
             .add_message::<super::components::MapPrepared>()
             .add_systems(
                 OnEnter(crate::app_state::AppState::InGame),
@@ -50,9 +53,19 @@ impl Plugin for GamePlugin {
                     spell_casting::handle_spell_targeting
                         .after(crate::plugins::mouse_interaction::MouseInteractionSet),
                     spell_casting::update_targeting_hover,
+                    systems::resolve_interaction_intents_system
+                        .after(spell_casting::handle_spell_targeting)
+                        .after(crate::plugins::mouse_interaction::MouseInteractionSet),
                     systems::pathfinding_target_system
                         .after(crate::plugins::mouse_interaction::MouseInteractionSet),
-                    systems::player_interruption_system,
+                    systems::auto_attack_system
+                        .after(crate::plugins::input::input_handling_system),
+                    systems::player_interruption_system
+                        .after(systems::resolve_interaction_intents_system),
+                    systems::consume_interaction_intents_system
+                        .after(systems::resolve_interaction_intents_system)
+                        .after(systems::player_interruption_system),
+                    crate::ecs::hotbar::sync_hotbar_panel_to_settings,
                     systems::handle_public_messages,
                     systems::expire_speech_bubbles,
                     systems::expire_chant_labels,
@@ -66,6 +79,7 @@ impl Plugin for GamePlugin {
                 Update,
                 (
                     systems::map_system,
+                    systems::handle_doors,
                     systems::spawn_entities_system,
                     systems::dedupe_entities_by_id,
                     systems::health_bar_system,
@@ -76,17 +90,11 @@ impl Plugin for GamePlugin {
                     .run_if(in_state(crate::app_state::AppState::InGame))
                     .in_set(GameSet::Spawning),
             )
-            // === Despawning Systems ===
-            .add_systems(
-                Update,
-                systems::handle_remove_entity_event
-                    .run_if(in_state(crate::app_state::AppState::InGame))
-                    .in_set(GameSet::Despawning),
-            )
             // === Movement Systems ===
             .add_systems(
                 Update,
                 (
+                    systems::player_reconciliation_system,
                     systems::pathfinding_execution_system.before(systems::player_movement_system),
                     systems::player_movement_system,
                     systems::entity_motion_system,
@@ -96,6 +104,14 @@ impl Plugin for GamePlugin {
                     .run_if(in_state(crate::app_state::AppState::InGame))
                     .in_set(GameSet::Movement),
             )
+           // === Item systems ===
+           .add_systems(
+               Update,
+               systems::keyboard_item_pickup_system
+                   .run_if(in_state(crate::app_state::AppState::InGame))
+                   .after(crate::plugins::input::InputPumpSet)
+                   .in_set(GameSet::EventProcessing),
+           )
             // === Physics Systems ===
             .add_systems(
                 Update,

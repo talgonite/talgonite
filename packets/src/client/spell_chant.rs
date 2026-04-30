@@ -5,11 +5,11 @@ use encoding::all::WINDOWS_949;
 use encoding::{EncoderTrap, Encoding};
 
 #[derive(Debug)]
-pub struct Chant {
+pub struct SpellChant {
     pub chant_message: String,
 }
 
-impl ToBytes for Chant {
+impl ToBytes for SpellChant {
     const OPCODE: u8 = Codes::Chant as _;
 
     fn write_payload(&self, bytes: &mut Vec<u8>) {

@@ -21,6 +21,7 @@ pub struct NetEventRx(pub crossbeam_channel::Receiver<NetworkEvent>);
 pub struct NetSessionState {
     start_time: Instant,
     map_download: MapDownloadState,
+    metadata_requested: bool,
 }
 
 impl Default for NetSessionState {
@@ -28,6 +29,7 @@ impl Default for NetSessionState {
         Self {
             start_time: Instant::now(),
             map_download: MapDownloadState::None,
+            metadata_requested: false,
         }
     }
 }
@@ -58,8 +60,7 @@ impl Plugin for SessionRuntimePlugin {
                 PreUpdate,
                 drain_net_events.run_if(in_state(AppState::InGame)),
             )
-            .add_systems(Update, (process_net_packets, send_client_actions))
-            .add_systems(PostUpdate, crate::network::flush_packet_outbox);
+            .add_systems(Update, (process_net_packets, send_client_actions));
     }
 }
 
@@ -75,7 +76,7 @@ fn drain_net_events(rx: Res<NetEventRx>, mut writer: MessageWriter<NetworkEvent>
 #[allow(dead_code)]
 pub struct NetBgTask(pub Task<()>);
 
-// Core network packet processor -> emits GameEvent and sends replies via NetworkManager
+// Core network packet processor -> emits GameEvent and sends replies via PacketOutbox
 fn process_net_packets(
     mut net_events: MessageReader<NetworkEvent>,
     mut session: ResMut<NetSessionState>,
@@ -89,7 +90,16 @@ fn process_net_packets(
     mut chat_events: MessageWriter<ChatEvent>,
     mut session_events: MessageWriter<SessionEvent>,
     map_store: Res<crate::map_store::MapStore>,
+    mut metafile_store: ResMut<crate::metafile_store::MetafileStore>,
+    current_session: Option<Res<crate::CurrentSession>>,
+    storage_config: Res<crate::resources::StorageConfig>,
 ) {
+    let Some(current_session) = current_session else {
+        return;
+    };
+    let server_id = current_session.server_id;
+    metafile_store.set_server(&storage_config, server_id);
+
     for evt in net_events.read() {
         match evt {
             NetworkEvent::Connected => {
@@ -125,17 +135,27 @@ fn process_net_packets(
                 }
                 &server::Codes::MapInfo => {
                     if let Some(q) = parse_packet::<server::MapInfo>(data) {
-                        handle_map_info(&mut session, &outbox, &mut map_events, q, &map_store);
+                        handle_map_info(
+                            &mut session,
+                            &outbox,
+                            &mut map_events,
+                            q,
+                            &map_store,
+                            &storage_config,
+                            server_id,
+                        );
                     }
                 }
                 &server::Codes::MapData => {
-                    if let Some(seg) = parse_packet::<server::MapData>(data) {
-                        handle_map_data(&mut session, &mut map_events, seg, &map_store);
+                    if let Some(q) = parse_packet::<server::MapData>(data) {
+                        handle_map_data(&mut session, &mut map_events, q, &map_store, &storage_config, server_id);
                     }
                 }
                 &server::Codes::ServerMessage => {
                     if let Some(q) = parse_packet::<server::ServerMessage>(data) {
-                        chat_events.write(ChatEvent::ServerMessage(q));
+                        if q.message != "" {
+                            chat_events.write(ChatEvent::ServerMessage(q));
+                        }
                     }
                 }
                 &server::Codes::DisplayPublicMessage => {
@@ -203,8 +223,13 @@ fn process_net_packets(
                         entity_events.write(EntityEvent::Walk(q));
                     }
                 }
-                &server::Codes::CreatureTurn => {
-                    if let Some(q) = parse_packet::<server::CreatureTurn>(data) {
+                &server::Codes::ClientWalkResponse => {
+                    if let Some(q) = parse_packet::<server::ClientWalkResponse>(data) {
+                        entity_events.write(EntityEvent::PlayerWalkResponse(q));
+                    }
+                }
+                &server::Codes::EntityTurn => {
+                    if let Some(q) = parse_packet::<server::EntityTurn>(data) {
                         entity_events.write(EntityEvent::Turn(q));
                     }
                 }
@@ -306,8 +331,23 @@ fn process_net_packets(
                 }
                 &server::Codes::DisplayDialog => {
                     if let Some(q) = parse_packet::<server::DisplayDialog>(data) {
-                        tracing::info!("Received DisplayDialog: {:?}", q);
+                        tracing::debug!("Received DisplayDialog: {:?}", q);
                         session_events.write(SessionEvent::DisplayDialog(q));
+                    }
+                }
+                &server::Codes::MapLoadComplete => {
+                    if let Some(_) = parse_packet::<server::MapLoadComplete>(data) {
+                        handle_map_load_complete(&mut session, &outbox);
+                    }
+                }
+                &server::Codes::MetaData => {
+                    if let Some(q) = parse_packet::<server::MetaData>(data) {
+                        handle_metadata(&outbox, &mut metafile_store, q);
+                    }
+                }
+                &server::Codes::DisplayGroupInvite => {
+                    if let Some(q) = parse_packet::<server::DisplayGroupInvite>(data) {
+                        session_events.write(SessionEvent::GroupInvite(q));
                     }
                 }
                 e => {
@@ -395,11 +435,13 @@ fn handle_map_info(
     map_events: &mut MessageWriter<MapEvent>,
     map_info: server::MapInfo,
     map_store: &crate::map_store::MapStore,
+    storage_config: &crate::resources::StorageConfig,
+    server_id: u32,
 ) {
     let map_id = map_info.map_id;
     let checksum = map_info.check_sum;
 
-    let cached_data = if let Some(data) = map_store.get_map(map_id) {
+    let cached_data = if let Some(data) = map_store.get_map(storage_config, server_id, map_id) {
         let cached_checksum = crc16(&data);
         if cached_checksum == checksum {
             Some(data)
@@ -454,6 +496,8 @@ fn handle_map_data(
     map_events: &mut MessageWriter<MapEvent>,
     seg: server::MapData,
     map_store: &crate::map_store::MapStore,
+    storage_config: &crate::resources::StorageConfig,
+    server_id: u32,
 ) {
     let MapDownloadState::Requested { map_info, map_buf } = &mut session.map_download else {
         return;
@@ -483,7 +527,7 @@ fn handle_map_data(
     if end >= map_buf.len() {
         let checksum = crc16(&map_buf);
         if checksum == map_info.check_sum {
-            map_store.save_map(map_info.map_id, &map_buf);
+            map_store.save_map(storage_config, server_id, map_info.map_id, &map_buf);
             let owned = std::mem::take(map_buf);
             map_events.write(MapEvent::SetInfo(
                 map_info.clone(),
@@ -512,6 +556,80 @@ fn parse_packet<T: TryFromBytes>(data: &Vec<u8>) -> Option<T> {
                 "Failed to parse packet"
             );
             None
+        }
+    }
+}
+
+fn handle_map_load_complete(session: &mut NetSessionState, outbox: &crate::network::PacketOutbox) {
+    // Only request metadata checksums once per session
+    if !session.metadata_requested {
+        tracing::info!("Map load complete, requesting metadata checksums");
+        session.metadata_requested = true;
+        outbox.send(&client::MetaDataRequest::AllCheckSums);
+    }
+}
+
+fn handle_metadata(
+    outbox: &crate::network::PacketOutbox,
+    metafile_store: &mut crate::metafile_store::MetafileStore,
+    metadata: server::MetaData,
+) {
+    match metadata {
+        server::MetaData::AllCheckSums { collection } => {
+            tracing::info!(
+                "Received {} metadata checksums from server",
+                collection.len()
+            );
+
+            // Request any metafiles that are missing or have mismatched checksums
+            let mut request_count = 0;
+            for entry in collection {
+                let needs_download = match metafile_store.get_checksum(&entry.name) {
+                    Some(local_checksum) => {
+                        if local_checksum != entry.check_sum {
+                            tracing::debug!(
+                                "Metafile {} checksum mismatch (local {}, server {})",
+                                entry.name,
+                                local_checksum,
+                                entry.check_sum
+                            );
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    None => {
+                        tracing::debug!("Metafile {} not found locally", entry.name);
+                        true
+                    }
+                };
+
+                if needs_download {
+                    outbox.send(&client::MetaDataRequest::DataByName(entry.name));
+                    request_count += 1;
+                }
+            }
+
+            if request_count > 0 {
+                tracing::info!("Requested {} metafiles from server", request_count);
+            } else {
+                tracing::info!("All metafiles are up to date");
+            }
+        }
+        server::MetaData::DataByName {
+            name,
+            check_sum,
+            data,
+        } => {
+            tracing::debug!(
+                "Received metafile {} ({} bytes, checksum {})",
+                name,
+                data.len(),
+                check_sum
+            );
+
+            // Save the metafile (this validates the checksum)
+            metafile_store.save_metafile(&name, &data, check_sum);
         }
     }
 }

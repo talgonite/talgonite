@@ -5,13 +5,16 @@ use bincode::config::Configuration;
 use etagere::AtlasAllocator;
 use formats::epf::EpfImage;
 use glam::Vec2;
+use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 use tracing::error;
 
 use crate::{
     SharedInstanceBatch,
     instance::InstanceFlag,
-    scene::{Instance, get_isometric_coordinate, texture_bind::TextureBind},
+    scene::{
+        Instance, get_isometric_coordinate, texture_bind::TextureBind, utils::calculate_tile_z,
+    },
     texture,
 };
 
@@ -29,8 +32,12 @@ pub struct ItemAssetStore {
 
 pub struct ItemBatch {
     pub(crate) instances: SharedInstanceBatch,
-    pub(crate) item_order_counter: u32,
+    handles: std::sync::Mutex<FxHashMap<usize, u16>>,
 }
+
+pub const ITEM_Z_RANGE: f32 = 0.1;
+/// Item z-order is based on item.id % this value for deterministic ordering
+const ITEM_COUNT_BUCKET_SIZE: u32 = 20;
 
 impl ItemAssetStore {
     pub fn new(
@@ -86,7 +93,8 @@ impl ItemAssetStore {
         archive: &formats::game_files::ArxArchive,
         sheet_index: u32,
     ) -> anyhow::Result<()> {
-        if self.loaded_sheets.contains_key(&sheet_index) {
+        if let Some(sheet) = self.loaded_sheets.get_mut(&sheet_index) {
+            sheet.ref_count += 1;
             return Ok(());
         }
         let path = format!("Legend/item{:03}.epf.bin", sheet_index);
@@ -98,9 +106,30 @@ impl ItemAssetStore {
         let mut allocations: Vec<Option<etagere::Allocation>> =
             Vec::with_capacity(epf.frames.len());
         allocations.resize(epf.frames.len(), None);
-        self.loaded_sheets
-            .insert(sheet_index, LoadedItemSheet { epf, allocations });
+        self.loaded_sheets.insert(
+            sheet_index,
+            LoadedItemSheet {
+                epf,
+                allocations,
+                ref_count: 1,
+            },
+        );
         Ok(())
+    }
+
+    pub(crate) fn unload_sprite(&mut self, sprite_id: u16) {
+        let sheet_index = ((sprite_id - 1) as u32 / ITEMS_PER_EPF_FILE) + 1;
+        if let Some(sheet) = self.loaded_sheets.get_mut(&sheet_index) {
+            sheet.ref_count -= 1;
+            if sheet.ref_count == 0 {
+                for allocation in &sheet.allocations {
+                    if let Some(allocation) = allocation {
+                        self.allocation_atlas.deallocate(allocation.id);
+                    }
+                }
+                self.loaded_sheets.remove(&sheet_index);
+            }
+        }
     }
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {
@@ -114,8 +143,23 @@ impl ItemBatch {
         let batch = SharedInstanceBatch::new(device, vertices, store.bind_group.clone());
         Self {
             instances: batch,
-            item_order_counter: 1,
+            handles: std::sync::Mutex::new(FxHashMap::default()),
         }
+    }
+
+    /// Clear all item instances.
+    pub fn clear(&self) {
+        self.instances.clear();
+        self.handles.lock().unwrap().clear();
+    }
+
+    pub fn clear_and_unload(&self, store: &mut ItemAssetStore) {
+        let mut handles = self.handles.lock().unwrap();
+        for sprite_id in handles.values() {
+            store.unload_sprite(*sprite_id);
+        }
+        handles.clear();
+        self.instances.clear();
     }
 
     pub fn add_item(
@@ -197,7 +241,11 @@ impl ItemBatch {
 
         let item_offset = Vec2::new(offset_x, offset_y);
 
-        let z = -0.5 + self.item_order_counter as f32 * 0.000001;
+        // Use spawn_order for z-ordering (set by network receive order)
+        // Modulo ensures we stay within ITEM_Z_RANGE even if spawn_order exceeds bucket size
+        let item_order = item.spawn_order.min(ITEM_COUNT_BUCKET_SIZE as u8 - 1);
+        let z_within_tile = (item_order as f32 / ITEM_COUNT_BUCKET_SIZE as f32) * ITEM_Z_RANGE;
+        let z = calculate_tile_z(item.x as f32, item.y as f32, z_within_tile);
 
         let instance = Instance::with_texture_atlas(
             (world_pos + item_offset).extend(z),
@@ -223,10 +271,13 @@ impl ItemBatch {
             InstanceFlag::None,
         );
 
-        self.item_order_counter = self.item_order_counter.wrapping_add(1);
-
         let idx = self.instances.add(queue, instance)?;
-        Some(ItemInstanceHandle(idx))
+        let handle = ItemInstanceHandle {
+            index: idx,
+            sprite_id: item.sprite,
+        };
+        self.handles.lock().unwrap().insert(handle.index, handle.sprite_id);
+        Some(handle)
     }
 
     pub fn render(&self, render_pass: &mut wgpu::RenderPass) {
@@ -273,7 +324,10 @@ impl ItemBatch {
 
         let item_offset = Vec2::new(offset_x, offset_y);
 
-        let z = 0.00001;
+        // Apply modulo to ensure z stays within ITEM_Z_RANGE
+        let item_order = item.spawn_order.min(ITEM_COUNT_BUCKET_SIZE as u8 - 1);
+        let z_within_tile = (item_order as f32 / ITEM_COUNT_BUCKET_SIZE as f32) * ITEM_Z_RANGE;
+        let z = calculate_tile_z(item.x as f32, item.y as f32, z_within_tile);
 
         let instance = Instance::with_texture_atlas(
             (world_pos + item_offset).extend(z),
@@ -299,10 +353,18 @@ impl ItemBatch {
             InstanceFlag::None,
         );
 
-        self.instances.update(queue, handle.0, instance);
+        self.instances.update(queue, handle.index, instance);
     }
 
-    pub fn remove_item(&self, queue: &wgpu::Queue, handle: ItemInstanceHandle) {
-        self.instances.remove(queue, handle.0);
+    pub fn remove_item(
+        &self,
+        queue: &wgpu::Queue,
+        store: &mut ItemAssetStore,
+        handle: ItemInstanceHandle,
+    ) {
+        self.instances.remove(queue, handle.index);
+        store.unload_sprite(handle.sprite_id);
+
+        self.handles.lock().unwrap().remove(&handle.index);
     }
 }

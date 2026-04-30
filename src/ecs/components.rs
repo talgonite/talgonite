@@ -2,6 +2,7 @@ use bevy::ecs::lifecycle::HookContext;
 use bevy::ecs::world::DeferredWorld;
 use bevy::prelude::*;
 use bevy::tasks::Task;
+use packets::types::Direction as PacketDirection;
 use rendering::scene::items::ItemInstanceHandle;
 use rendering::scene::map::renderer::PreparedMap;
 use rendering::scene::{
@@ -9,21 +10,57 @@ use rendering::scene::{
     creatures::AddCreatureResult,
     players::{PlayerPieceType, PlayerSpriteHandle},
 };
+use std::collections::VecDeque;
 
-#[derive(Component, PartialEq)]
+#[derive(Component, PartialEq, Clone, Copy, Debug, Default)]
 pub struct Position {
     pub x: f32,
     pub y: f32,
+}
+
+impl Position {
+    pub fn new(x: f32, y: f32) -> Self {
+        Self { x, y }
+    }
+
+    pub fn to_vec2(&self) -> Vec2 {
+        Vec2::new(self.x, self.y)
+    }
+}
+
+impl From<Vec2> for Position {
+    fn from(v: Vec2) -> Self {
+        Self::new(v.x, v.y)
+    }
+}
+
+impl From<Position> for Vec2 {
+    fn from(pos: Position) -> Self {
+        Vec2::new(pos.x, pos.y)
+    }
+}
+
+pub fn occupied_tile(position: &Position, tween: Option<&MovementTween>) -> (u8, u8) {
+    let tile = tween
+        .map(|movement| movement.end)
+        .unwrap_or_else(|| position.to_vec2());
+
+    (tile.x.round() as u8, tile.y.round() as u8)
+}
+
+impl std::ops::AddAssign<Vec2> for Position {
+    fn add_assign(&mut self, rhs: Vec2) {
+        self.x += rhs.x;
+        self.y += rhs.y;
+    }
 }
 
 // Tween (interpolated) movement between two tile positions.
 // Added to entities (creatures & players) on walk; lasts 500ms.
 #[derive(Component, Debug)]
 pub struct MovementTween {
-    pub start_x: f32,
-    pub start_y: f32,
-    pub end_x: f32,
-    pub end_y: f32,
+    pub start: Vec2,
+    pub end: Vec2,
     pub elapsed: f32,
     pub duration: f32, // seconds
 }
@@ -36,6 +73,7 @@ pub enum PathTarget {
 #[derive(Component, Debug)]
 pub struct PathfindingState {
     pub target: PathTarget,
+    pub face_after: Option<(u8, u8)>,
     pub retry_timer: Option<Timer>,
 }
 
@@ -58,6 +96,66 @@ impl From<u8> for Direction {
             _ => Direction::Down,
         }
     }
+}
+
+impl From<PacketDirection> for Direction {
+    fn from(value: PacketDirection) -> Self {
+        match value {
+            PacketDirection::Up => Direction::Up,
+            PacketDirection::Right => Direction::Right,
+            PacketDirection::Down => Direction::Down,
+            PacketDirection::Left => Direction::Left,
+        }
+    }
+}
+
+impl Into<PacketDirection> for Direction {
+    fn into(self) -> PacketDirection {
+        match self {
+            Direction::Up => PacketDirection::Up,
+            Direction::Right => PacketDirection::Right,
+            Direction::Down => PacketDirection::Down,
+            Direction::Left => PacketDirection::Left,
+        }
+    }
+}
+
+impl Direction {
+    pub fn delta(&self) -> (i16, i16) {
+        match self {
+            Direction::Up => (0, -1),
+            Direction::Right => (1, 0),
+            Direction::Down => (0, 1),
+            Direction::Left => (-1, 0),
+        }
+    }
+
+    pub fn vec2_delta(&self) -> Vec2 {
+        let (dx, dy) = self.delta();
+        Vec2::new(dx as f32, dy as f32)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct UnconfirmedStep {
+    pub direction: Direction,
+    pub expected_from: Vec2,
+}
+
+#[derive(Component, Default)]
+pub struct UnconfirmedWalks {
+    pub pending: VecDeque<UnconfirmedStep>,
+    pub recent_deltas: VecDeque<Vec2>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct UnconfirmedTurn {
+    pub direction: Direction,
+}
+
+#[derive(Component, Default)]
+pub struct UnconfirmedTurns {
+    pub pending: VecDeque<UnconfirmedTurn>,
 }
 
 #[derive(Component)]
@@ -86,6 +184,8 @@ pub struct ItemBundle {
 pub struct ItemSprite {
     pub id: u16,
     pub color: u8,
+    /// Z-ordering within tile, assigned at spawn time
+    pub spawn_order: u8,
 }
 
 #[derive(Component)]
@@ -201,6 +301,12 @@ pub struct MapPrepared {
 #[derive(Component)]
 pub struct MapScoped;
 
+/// Queue of door states waiting to be applied to the map.
+#[derive(Resource, Default, Debug, Clone)]
+pub struct MapDoorQueue {
+    pub pending: Vec<packets::server::DoorInstance>,
+}
+
 // Marker component: entity is tied to the current in-game session and should
 // be despawned when leaving AppState::InGame.
 #[derive(Component)]
@@ -279,13 +385,15 @@ impl Hitbox {
                         * Vec2::new(
                             rendering::scene::TILE_WIDTH as f32,
                             rendering::scene::TILE_HEIGHT as f32,
-                        );
+                        )
+                        * zoom;
                 let bounds_max = entity_screen
                     + self.max
                         * Vec2::new(
                             rendering::scene::TILE_WIDTH as f32,
                             rendering::scene::TILE_HEIGHT as f32,
-                        );
+                        )
+                        * zoom;
 
                 test_screen.x >= bounds_min.x
                     && test_screen.x < bounds_max.x
@@ -353,7 +461,7 @@ impl HoverLabel {
     pub fn to_world_label(&self) -> WorldLabel {
         WorldLabel {
             text: self.text.clone(),
-            y_offset: -80.0,
+            y_offset: -40.0,
             color: self.color,
             is_speech: false,
         }
@@ -383,7 +491,7 @@ impl SpeechBubble {
     pub fn to_world_label(&self) -> WorldLabel {
         WorldLabel {
             text: self.text.clone(),
-            y_offset: -70.0,
+            y_offset: -45.0,
             color: if self.is_shout {
                 glam::Vec4::new(1.0, 1.0, 0.0, 1.0) // Yellow for shouts
             } else {
@@ -415,7 +523,7 @@ impl ChantLabel {
     pub fn to_world_label(&self) -> WorldLabel {
         WorldLabel {
             text: self.text.clone(),
-            y_offset: -95.0,
+            y_offset: -50.0,
             color: glam::Vec4::new(0.5, 0.7, 1.0, 1.0),
             is_speech: false,
         }
@@ -483,20 +591,33 @@ fn cleanup_creature_instance(mut world: DeferredWorld, ctx: HookContext) {
     }
 }
 
-fn cleanup_item_instance(world: DeferredWorld, ctx: HookContext) {
+fn cleanup_item_instance(mut world: DeferredWorld, ctx: HookContext) {
     let entity = ctx.entity;
-    let Some(instance) = world.get::<ItemInstance>(entity) else {
+    let handle = if let Some(instance) = world.get::<ItemInstance>(entity) {
+        instance.handle
+    } else {
         return;
     };
-    let Some(renderer) = world.get_resource::<crate::RendererState>() else {
+
+    let queue_ptr = if let Some(renderer) = world.get_resource::<crate::RendererState>() {
+        &renderer.queue as *const _
+    } else {
         return;
     };
-    let Some(items_batch) = world.get_resource::<crate::ItemBatchState>() else {
+
+    let cell = world.as_unsafe_world_cell();
+    let mut store_state = unsafe { cell.get_resource_mut::<crate::ItemAssetStoreState>() };
+    let batch_state = unsafe { cell.get_resource::<crate::ItemBatchState>() };
+
+    let (Some(store), Some(batch)) = (store_state.as_mut(), batch_state) else {
         return;
     };
-    items_batch
-        .batch
-        .remove_item(&renderer.queue, instance.handle);
+
+    unsafe {
+        batch
+            .batch
+            .remove_item(&*queue_ptr, &mut store.store, handle);
+    }
 }
 
 #[derive(Component)]

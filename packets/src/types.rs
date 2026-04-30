@@ -453,3 +453,12 @@ pub enum MenuType {
     ShowPlayerSpells = 8,
     ShowPlayerSkills = 9,
 }
+
+#[derive(Debug, Clone, Copy, TryFromPrimitive, IntoPrimitive)]
+#[repr(u8)]
+pub enum Direction {
+    Up = 0,
+    Right = 1,
+    Down = 2,
+    Left = 3,
+}

@@ -1,6 +1,8 @@
 use bevy::prelude::{Entity, Message, MouseButton};
 use packets::{client, server};
 
+use crate::ecs::components::Direction;
+
 // === Network Events ===
 
 #[derive(Debug, Clone, Message)]
@@ -18,7 +20,8 @@ pub enum EntityEvent {
     DisplayEntities(server::DisplayVisibleEntities),
     Remove(server::RemoveEntity),
     Walk(server::CreatureWalk),
-    Turn(server::CreatureTurn),
+    PlayerWalkResponse(server::ClientWalkResponse),
+    Turn(server::EntityTurn),
     Animate(server::BodyAnimation),
     Effect(server::Animation),
     HealthBar(server::HealthBar),
@@ -78,8 +81,17 @@ pub enum InputSource {
 
 #[derive(Debug, Clone, Message)]
 pub enum PlayerAction {
-    Walk { direction: u8, source: InputSource },
-    Turn { direction: u8, source: InputSource },
+    Walk {
+        direction: Direction,
+        source: InputSource,
+    },
+    Turn {
+        direction: Direction,
+        source: InputSource,
+    },
+    ItemPickupBelow,
+    BasicAttack,
+    ToggleAutoAttack,
 }
 
 impl PlayerAction {
@@ -87,6 +99,9 @@ impl PlayerAction {
         match self {
             PlayerAction::Walk { source, .. } => *source == InputSource::Manual,
             PlayerAction::Turn { source, .. } => *source == InputSource::Manual,
+            PlayerAction::ItemPickupBelow => true,
+            PlayerAction::BasicAttack => false,
+            PlayerAction::ToggleAutoAttack => false,
         }
     }
 }
@@ -102,6 +117,7 @@ pub enum SessionEvent {
     SelfProfile(server::SelfProfile),
     OtherProfile(server::OtherProfile),
     WorldList(server::WorldList),
+    GroupInvite(server::DisplayGroupInvite),
 }
 
 #[derive(Debug, Clone, Message)]
@@ -119,11 +135,71 @@ pub struct EntityHoverEvent {
     pub entity: Entity,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ClickSource {
+    #[default]
+    DesktopMouse,
+    AndroidShortPress,
+    AndroidLongPress,
+}
+
+#[derive(Debug, Clone, Copy, Message)]
+pub struct ResolvedPointerClickEvent {
+    pub position: (f32, f32),
+    pub button: MouseButton,
+    pub source: ClickSource,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InteractionTargetKind {
+    Ground,
+    Item,
+    Actor,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InteractionIntentAction {
+    WalkToTile,
+    ApproachAndFace,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorldContextAction {
+    WalkToTile { tile_x: i32, tile_y: i32 },
+    ApproachActor { entity: Entity, tile_x: i32, tile_y: i32 },
+    ViewProfile { entity: Entity, is_self: bool },
+    PickUpItem { tile_x: i32, tile_y: i32 },
+    SpeakToNpc { entity: Entity },
+    InteractWalls {
+        walls: Vec<(i32, i32, bool)>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorldContextMenuEntry {
+    pub id: i32,
+    pub text: String,
+    pub action: WorldContextAction,
+}
+
+#[derive(Debug, Clone, Message)]
+pub struct InteractionIntentEvent {
+    pub source: ClickSource,
+    pub target_kind: InteractionTargetKind,
+    pub target_entity: Option<Entity>,
+    pub tile_x: i32,
+    pub tile_y: i32,
+    pub action: InteractionIntentAction,
+}
+
 /// Emitted when an entity is clicked
 #[derive(Debug, Clone, Message)]
 pub struct EntityClickEvent {
     pub entity: Entity,
+    pub ground_tile_x: i32,
+    pub ground_tile_y: i32,
     pub button: MouseButton,
+    pub source: ClickSource,
     pub is_double_click: bool,
 }
 
@@ -132,6 +208,16 @@ pub struct EntityClickEvent {
 pub struct TileClickEvent {
     pub tile_x: i32,
     pub tile_y: i32,
+    pub button: MouseButton,
+    pub source: ClickSource,
+}
+
+/// Emitted when a wall is clicked
+#[derive(Debug, Clone, Message)]
+pub struct WallClickEvent {
+    pub tile_x: i32,
+    pub tile_y: i32,
     pub is_right: bool,
     pub button: MouseButton,
+    pub source: ClickSource,
 }

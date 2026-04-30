@@ -161,7 +161,9 @@ pub struct GameFiles {
 impl GameFiles {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn new(archive_path: &str) -> Self {
-        let archive = ArxArchive::new(archive_path).expect("Failed to open game archive");
+        let archive = ArxArchive::new(archive_path).map_err(|e| {
+            format!("Failed to open game archive at '{}': {:?}", archive_path, e)
+        }).expect("Failed to open game archive");
         Self { archive }
     }
 

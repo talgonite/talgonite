@@ -16,7 +16,7 @@ import "../fonts/Lato-BoldItalic.ttf";
 import "../fonts/Lato-BlackItalic.ttf";
 
 export component NpcDialog inherits Rectangle {
-    property <image> npc-portrait: NpcDialogState.npc-portrait;
+    property <image> npc-portrait: NpcDialogState.data.npc_portrait;
     TouchArea {
         clicked => {
             NpcDialogState.close();
@@ -24,6 +24,11 @@ export component NpcDialog inherits Rectangle {
     }
 
     background: #0007;
+
+    if (!NpcDialogState.data.interaction_enabled): TouchArea {
+        z: 100;
+    }
+
     HorizontalLayout {
         alignment: center;
         VerticalLayout {
@@ -41,47 +46,53 @@ export component NpcDialog inherits Rectangle {
                         spacing: 8px;
 
                         // Portrait
-                    VerticalLayout {
-                            alignment: end;
-                            if (npc-portrait.width > 100): Image {
-                                source: npc-portrait;
-                                height: self.width / (self.source.width / self.source.height);
-                                preferred-width: 320px;
-                                image-fit: ImageFit.contain;
-                            }
-                            if (npc-portrait.width <= 100 && npc-portrait.width > 0): HorizontalLayout {
-                                alignment: center;
-                                Image {
-                                    source: npc-portrait;
-                                    width: self.source.width * 2px;
-                                    height: self.source.height * 2px;
-                                    image-fit: ImageFit.contain;
-                                    image-rendering: pixelated;
-                                }
-                            }
-                            HorizontalLayout {
-                                height: 0px;
-                                padding-top: -18px;
-                                Rectangle {
-                                    height: 36px;
-                                    background: #28210F;
-                                    Image {
-                                        width: parent.width;
-                                        height: parent.height;
-                                        source: @image-url("../panel/Default/Panel/panel-007.png", nine-slice(18));
-                                        colorize: #6c3f1c;
-                                    }
+                        Rectangle {
+                            TouchArea { }
 
-                                    HorizontalLayout {
-                                        alignment: center;
-                                        padding-left: 32px;
-                                        padding-right: self.padding-left;
-                                        portrait-npc-name := Text {
-                                            font-family: "Lato";
-                                            font-size: 20px;
-                                            text: NpcDialogState.npc-name;
-                                            vertical-alignment: center;
-                                            font-weight: 500;
+                            VerticalLayout {
+                                alignment: end;
+                                if (npc-portrait.width > 100): Image {
+                                    source: npc-portrait;
+                                    height: self.width / (self.source.width / self.source.height);
+                                    preferred-width: 320px;
+                                    image-fit: ImageFit.contain;
+                                }
+                                if (npc-portrait.width <= 100 && npc-portrait.width > 0): HorizontalLayout {
+                                    alignment: center;
+                                    Image {
+                                        source: npc-portrait;
+                                        width: self.source.width * 2px;
+                                        height: self.source.height * 2px;
+                                        image-fit: ImageFit.contain;
+                                        image-rendering: pixelated;
+                                    }
+                                }
+                                HorizontalLayout {
+                                    height: 0px;
+                                    padding-top: -18px;
+                                    Rectangle {
+                                        height: 36px;
+                                        background: #28210F;
+                                        TouchArea { }
+
+                                        Image {
+                                            width: parent.width;
+                                            height: parent.height;
+                                            source: @image-url("../panel/Default/Panel/panel-007.png", nine-slice(18));
+                                            colorize: #6c3f1c;
+                                        }
+
+                                        HorizontalLayout {
+                                            alignment: center;
+                                            padding-left: 32px;
+                                            padding-right: self.padding-left;
+                                            portrait-npc-name := Text {
+                                                font-family: "Lato";
+                                                font-size: 20px;
+                                                text: NpcDialogState.data.npc_name;
+                                                vertical-alignment: center;
+                                                font-weight: 500;
+                                            }
                                         }
                                     }
                                 }
@@ -92,24 +103,28 @@ export component NpcDialog inherits Rectangle {
 
                         // Menu options
                         VerticalLayout {
+                            opacity: NpcDialogState.data.interaction_enabled ? 1.0 : 0.6;
+                            animate opacity { duration: 150ms; }
                             alignment: end;
-                            if (NpcDialogState.text-entry-visible): VerticalLayout {
+                            if (NpcDialogState.data.text_entry_visible): VerticalLayout {
                                 Rectangle {
                                     background: @linear-gradient(0deg, #0000 0%, #0007 15%, #0007 85%, #0000 100%);
                                     preferred-height: 240px;
                                     width: 260px;
+                                    TouchArea { }
+
                                     VerticalLayout {
                                         padding: 16px;
                                         spacing: 12px;
                                         alignment: center;
-                                        if NpcDialogState.text-entry-args != "": Rectangle {
+                                        if NpcDialogState.data.text_entry_args != "": Rectangle {
                                             height: 32px;
                                             background: #FFC04010;
                                             border-radius: 6px;
                                             border-width: 1px;
                                             border-color: #FFC04030;
                                             Text {
-                                                text: NpcDialogState.text-entry-args;
+                                                text: NpcDialogState.data.text_entry_args;
                                                 font-size: 13px;
                                                 font-weight: 500;
                                                 color: Theme.accent;
@@ -119,7 +134,7 @@ export component NpcDialog inherits Rectangle {
                                         }
                                         npc-input := LineEdit {
                                             height: 36px;
-                                            placeholder-text: NpcDialogState.text-entry-prompt != "" ? NpcDialogState.text-entry-prompt : "Type here...";
+                                            placeholder-text: NpcDialogState.data.text_entry_prompt != "" ? NpcDialogState.data.text_entry_prompt : "Type here...";
                                             accepted => {
                                                 if self.text != "" {
                                                     NpcDialogState.submit-text(self.text);
@@ -157,12 +172,14 @@ export component NpcDialog inherits Rectangle {
                                     }
                                 }
                             }
-                            if (!NpcDialogState.is-shop && NpcDialogState.menu-entries.length > 0): VerticalLayout {
+                            if (!NpcDialogState.data.is_shop && NpcDialogState.data.menu_entries.length > 0): VerticalLayout {
                                 Rectangle {
                                     background: @linear-gradient(0deg, #0000 0%, #0007 15%, #0007 85%, #0000 100%);
+                                    TouchArea { }
+
                                     VerticalLayout {
                                         padding: 24px;
-                                        for entry in NpcDialogState.menu-entries: Rectangle {
+                                        for entry in NpcDialogState.data.menu_entries: Rectangle {
                                             animate background { duration: 100ms; }
                                             touch := TouchArea {
                                                 mouse-cursor: pointer;
@@ -195,16 +212,18 @@ export component NpcDialog inherits Rectangle {
                                     }
                                 }
                             }
-                            if (NpcDialogState.is-shop && NpcDialogState.menu-entries.length > 0): VerticalLayout {
+                            if (NpcDialogState.data.is_shop && NpcDialogState.data.menu_entries.length > 0): VerticalLayout {
                                 Rectangle {
                                     background: @linear-gradient(0deg, #0000 0%, #0007 15%, #0007 85%, #0000 100%);
                                     preferred-height: 240px;
                                     width: 260px;
+                                    TouchArea { }
+
                                     ScrollView {
                                         GridLayout {
                                             spacing: 10px;
                                             padding: 5px;
-                                            for entry[idx] in NpcDialogState.menu-entries: Rectangle {
+                                            for entry[idx] in NpcDialogState.data.menu_entries: Rectangle {
                                                 row: Math.floor(idx / 2);
                                                 item-touch := TouchArea {
                                                     mouse-cursor: pointer;
@@ -260,6 +279,8 @@ export component NpcDialog inherits Rectangle {
             Rectangle {
                 background: #f5dec2;
                 preferred-height: 80px;
+                TouchArea { }
+
                 Image {
                     width: parent.width;
                     height: parent.height;
@@ -271,14 +292,18 @@ export component NpcDialog inherits Rectangle {
                     alignment: center;
                     padding: 24px;
                     padding-top: 32px;
-                    Text {
-                        font-family: "Lato";
-                        font-size: 16px;
-                        font-weight: 700;
-                        text: NpcDialogState.dialog-text;
-                        horizontal-alignment: left;
-                        wrap: word-wrap;
-                        color: #28210F;
+                    ScrollView {
+                        height: min(text-content.height, 140px);
+                        viewport-height: text-content.height;
+                        text-content := Text {
+                            width: 100%;
+                            font-family: "Lato";
+                            font-size: 16px;
+                            font-weight: 700;
+                            text: NpcDialogState.data.dialog_text;
+                            wrap: word-wrap;
+                            color: #28210F;
+                        }
                     }
                 }
             }

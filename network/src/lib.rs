@@ -7,15 +7,13 @@ use std::io;
 
 use self::cipher::{PacketDecrypter, PacketEncrypter};
 use self::packet::{PacketDecoder, PacketEncoder};
-use self::protocol::EncryptionType;
+use self::protocol::{EncryptionType, PACKET_MAGIC};
 
-#[derive(Clone)]
 pub struct EncryptedSender {
     encoder: PacketEncoder,
     encrypter: PacketEncrypter,
 }
 
-#[derive(Clone)]
 pub struct DecryptedReceiver {
     decoder: PacketDecoder,
     decrypter: PacketDecrypter,
@@ -26,15 +24,37 @@ impl EncryptedSender {
         Self { encoder, encrypter }
     }
 
-    pub async fn send(&mut self, data: &[u8]) -> io::Result<()> {
+    pub fn encrypt(&mut self, data: &[u8]) -> Vec<u8> {
         let enc_type = self.get_encryption_type(data[0]);
-        self.encoder
-            .write(&self.encrypter.encrypt(data, enc_type))
-            .await
+        self.encrypter.encrypt(data, enc_type)
+    }
+
+    pub async fn send(&mut self, data: &[u8]) -> io::Result<()> {
+        let encoded = self.encrypt_with_header(data);
+        self.send_raw(&encoded).await
     }
 
     pub async fn send_packet<T: ToBytes>(&mut self, packet: &T) -> io::Result<()> {
         self.send(&packet.to_bytes()).await
+    }
+
+    pub fn encrypt_with_header(&mut self, data: &[u8]) -> Vec<u8> {
+        let data = self.encrypt(data);
+        let len = data.len();
+        let mut packet = Vec::with_capacity(3 + len);
+        packet.push(PACKET_MAGIC);
+        packet.push((len >> 8) as u8);
+        packet.push(len as u8);
+        packet.extend_from_slice(&data);
+        packet
+    }
+
+    pub async fn send_raw(&mut self, data: &[u8]) -> io::Result<()> {
+        self.encoder.write_raw(data).await
+    }
+
+    pub async fn flush(&mut self) -> io::Result<()> {
+        self.encoder.flush().await
     }
 
     fn get_encryption_type(&self, opcode: u8) -> EncryptionType {

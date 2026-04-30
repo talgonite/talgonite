@@ -1,35 +1,59 @@
 use bevy::prelude::*;
 
+use crate::ecs::components::InGameScoped;
+use crate::ecs::hotbar::{HotbarPanelState, HotbarState};
+use crate::events::MapEvent;
 use crate::game_files::GameFiles;
+use crate::resources::PlayerAttributes;
+use crate::session::runtime::{NetBgTask, NetEventRx, NetSessionState};
 use crate::slint_support::assets::SlintAssetLoader;
 use crate::slint_support::state_bridge::SlintAssetLoaderRes;
-use crate::events::MapEvent;
-use crate::ecs::components::InGameScoped;
-use crate::resources::PlayerAttributes;
 use crate::webui::plugin::{
-    AbilityState, ActiveMenuContext, EquipmentState, InventoryState, PlayerProfileState,
-    WorldListState,
+    AbilityState, ActiveMenuContext, ActiveWindowType, EquipmentState, InventoryState,
+    PlayerProfileState, WorldListState,
 };
-use crate::{MapRendererState, network::{NetworkManager, PacketOutbox}};
-use crate::ecs::hotbar::{HotbarPanelState, HotbarState};
-use crate::session::runtime::{NetBgTask, NetEventRx, NetSessionState};
+use crate::{MapRendererState, network::PacketOutbox};
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
 pub enum AppState {
     #[default]
+    CheckingFiles,
     Installing,
     MainMenu,
     InGame,
 }
 
-pub fn setup_game_files(mut commands: Commands, existing: Option<Res<GameFiles>>) {
+pub fn setup_game_files(
+    mut commands: Commands,
+    existing: Option<Res<GameFiles>>,
+    storage_config: Res<crate::resources::StorageConfig>,
+    state: Res<State<AppState>>,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
     if existing.is_some() {
+        if *state.get() == AppState::CheckingFiles {
+            next_state.set(AppState::MainMenu);
+        }
         return;
     }
 
-    let game_files = GameFiles::new();
+    let path = storage_config.data_arx_path();
+    if !path.exists() {
+        if *state.get() != AppState::Installing {
+            tracing::warn!("data.arx not found at {:?}, switching to Installing state", path);
+            next_state.set(AppState::Installing);
+        }
+        return;
+    }
+
+    tracing::info!("data.arx found, initializing GameFiles");
+    let game_files = GameFiles::from_root(&storage_config.root);
     commands.insert_resource(SlintAssetLoaderRes(SlintAssetLoader::new(&game_files)));
     commands.insert_resource(game_files);
+
+    if *state.get() == AppState::CheckingFiles || *state.get() == AppState::Installing {
+        next_state.set(AppState::MainMenu);
+    }
 }
 
 pub fn cleanup_game_files(mut commands: Commands) {
@@ -69,7 +93,6 @@ pub fn cleanup_ingame_resources(
         commands.entity(e).despawn();
     }
 
-    commands.remove_resource::<NetworkManager>();
     commands.remove_resource::<NetEventRx>();
 
     if let Some(mut state) = inventory {
@@ -97,11 +120,12 @@ pub fn cleanup_ingame_resources(
         *state = PlayerAttributes::default();
     }
     if let Some(mut state) = menu_ctx {
+        state.window_type = ActiveWindowType::None;
         state.entity_type = None;
         state.entity_id = 0;
-        state.pursuit_id = 0;
         state.menu_type = None;
         state.args.clear();
+        state.dialog_id = None;
     }
     if let Some(mut state) = session {
         *state = NetSessionState::default();

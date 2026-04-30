@@ -173,11 +173,8 @@ fn init_render_managers_after_gamefiles(
     }
 
     if existing_items.is_none() {
-        let store = items::ItemAssetStore::new(
-            &renderer.device,
-            &renderer.queue,
-            &files.inner().archive(),
-        );
+        let store =
+            items::ItemAssetStore::new(&renderer.device, &renderer.queue, &files.inner().archive());
         let batch = items::ItemBatch::new(&renderer.device, &store);
         commands.insert_resource(ItemAssetStoreState { store });
         commands.insert_resource(ItemBatchState { batch });
@@ -240,13 +237,11 @@ fn apply_pending_resize(
     let RendererState { device, scene, .. } = &mut *renderer_state;
     scene.resize_depth_texture(device, pending.width, pending.height);
 
-    camera
-        .camera
-        .resize(
-            &renderer_state.queue,
-            (pending.width, pending.height).into(),
-            pending.scale,
-        );
+    camera.camera.resize(
+        &renderer_state.queue,
+        (pending.width, pending.height).into(),
+        pending.scale,
+    );
 
     // Reallocate pool textures to new resolution so next frame can render immediately
     pool.0.clear();
@@ -366,7 +361,6 @@ fn draw_frame(
     // world scene pass (only runs while InGame)
     {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: None,
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &view,
                 resolve_target: None,
@@ -379,39 +373,48 @@ fn draw_frame(
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: &render_hardware.scene.depth_texture.view,
                 depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
+                    load: wgpu::LoadOp::Clear(0.0),
                     store: wgpu::StoreOp::Store,
                 }),
                 stencil_ops: None,
             }),
-            timestamp_writes: None,
-            occlusion_query_set: None,
+            ..Default::default()
         });
         render_pass.set_stencil_reference(0);
         render_pass.set_pipeline(&render_hardware.scene.pipeline);
         render_pass.set_bind_group(1, &camera.camera.camera_bind_group, &[]);
         if let Some(m) = map_renderer_state {
-                m.map_renderer.render(&mut render_pass);
-            }
-            if let Some(im) = &item_batch_state {
-                im.batch.render(&mut render_pass);
-            }
-            if let Some(cm) = creature_batch_state {
-                cm.batch.render(&mut render_pass);
-            }
-            if let Some(pb) = &player_batch_state {
-                pb.batch.render(&mut render_pass);
-            }
-            if let Some(em) = &effect_manager_state {
-                em.effect_manager
-                    .render(&mut render_pass, &camera.camera.camera_bind_group);
+            m.map_renderer.render(&mut render_pass);
+        }
+        if let Some(im) = &item_batch_state {
+            im.batch.render(&mut render_pass);
+        }
+        if let Some(cm) = creature_batch_state {
+            cm.batch.render(&mut render_pass);
+        }
+        if let Some(pb) = &player_batch_state {
+            pb.batch.render(&mut render_pass);
+        }
+        if let Some(em) = &effect_manager_state {
+            em.effect_manager
+                .render(&mut render_pass, &camera.camera.camera_bind_group);
         }
     }
 
     render_hardware.queue.submit([encoder.finish()]);
 
-    // Send the just-rendered back buffer to UI as front buffer
-    let _ = channels.front_buffer_tx.try_send(back);
+    // Publish only the newest completed frame; recycle any unpublished older one.
+    let mut latest_front_buffer = channels
+        .latest_front_buffer
+        .lock()
+        .expect("latest front buffer mutex poisoned");
+    if let Some(stale_texture) = latest_front_buffer.replace(back) {
+        let _ = channels
+            .control_tx
+            .try_send(ControlMessage::ReleaseFrontBufferTexture {
+                texture: stale_texture,
+            });
+    }
 }
 
 /// Track which entity currently has a hover label so we can remove it when hover changes.

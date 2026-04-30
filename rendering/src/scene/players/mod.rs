@@ -9,9 +9,11 @@ use etagere::Allocation;
 use formats::epf::{AnimationDirection, EpfAnimation, EpfAnimationType};
 use glam::{Vec2, Vec3};
 use rustc_hash::FxHashMap;
+use tracing::error;
 use wgpu;
 
 use crate::instance::InstanceFlag;
+use crate::scene::utils::calculate_tile_z;
 use crate::{SharedInstanceBatch, make_quad};
 use crate::{
     scene::{
@@ -24,8 +26,8 @@ use formats::game_files::ArxArchive;
 
 type Archive = ArxArchive;
 
-const ATLAS_WIDTH: usize = 2048;
-const ATLAS_HEIGHT: usize = 4096;
+const ATLAS_WIDTH: usize = 4096;
+const ATLAS_HEIGHT: usize = 8192;
 const VERTEX_WIDTH: usize = 512;
 const VERTEX_HEIGHT: usize = 512;
 const PLAYER_Y_OFFSET: f32 = -70.0;
@@ -37,8 +39,16 @@ pub struct PlayerAssetStore {
     bind_group: wgpu::BindGroup,
 }
 
+/// Max players per tile for z-ordering (wraps after this)
+const PLAYERS_PER_TILE: u8 = 3;
+/// Z range within a tile allocated for player stacking.
+/// Must be much smaller than z_priority layer differences (~0.01) to avoid
+/// equipment parts from different players interleaving.
+const PLAYER_STACK_Z_RANGE: f32 = 0.003;
+
 pub struct PlayerBatch {
     instances: SharedInstanceBatch,
+    handles: std::sync::Mutex<FxHashMap<usize, PlayerSpriteKey>>,
 }
 
 impl PlayerAssetStore {
@@ -86,6 +96,7 @@ impl PlayerAssetStore {
         dye_color: u8,
         flags: InstanceFlag,
         tint: Vec3,
+        stack_order: u8,
     ) -> anyhow::Result<Instance> {
         let (palette_v, palette_dye) = palettes.get_palette_params(sprite, dye_color);
         let direction = if is_towards {
@@ -118,6 +129,13 @@ impl PlayerAssetStore {
                 )
             })?;
 
+        let frame_w = (frame_detail.right - frame_detail.left) as f32;
+        let frame_h = (frame_detail.bottom - frame_detail.top) as f32;
+
+        if frame_w == 0.0 || frame_h == 0.0 {
+            return Ok(Instance::default());
+        }
+
         let allocation = loaded_sprite.allocations[anim_data.start_frame_index + frame_index]
             .as_ref()
             .ok_or_else(|| {
@@ -127,9 +145,6 @@ impl PlayerAssetStore {
                     frame_index
                 )
             })?;
-
-        let frame_w = (frame_detail.right - frame_detail.left) as f32;
-        let frame_h = (frame_detail.bottom - frame_detail.top) as f32;
 
         let mut frame_offset = Vec2::new(frame_detail.left as f32, frame_detail.top as f32);
         let mut piece_offset = sprite.slot.offset();
@@ -141,8 +156,14 @@ impl PlayerAssetStore {
             iso_coord_offset = Vec2::new(1., -1.);
         }
 
-        let z = (position.x + position.y) / 65536.0 - 0.000002
-            + (sprite.slot.z_priority(is_towards) * EQUIPMENT_Z_RANGE);
+        let z = calculate_tile_z(
+            position.x,
+            position.y,
+            // Player Z range is 0.1 to 0.2, with stack_order adding a small offset
+            // to separate multiple players on the same tile
+            0.1 + (sprite.slot.z_priority(is_towards) * 0.1)
+                + (stack_order as f32 / PLAYERS_PER_TILE as f32) * PLAYER_STACK_Z_RANGE,
+        );
 
         let mut instance = Instance::with_texture_atlas(
             (get_isometric_coordinate(
@@ -195,12 +216,16 @@ impl PlayerAssetStore {
         queue: &wgpu::Queue,
         archive: &Archive,
     ) -> anyhow::Result<LoadedSprite> {
-        let path = format!(
-            "khan/{}{}/{:#03}.epfanim",
-            key.gender.char(),
-            prefix,
-            key.sprite_id % 1000
-        );
+        let path = if key.slot == PlayerPieceType::Emote {
+            format!("khan/em/{:03}.epfanim", key.sprite_id % 1000)
+        } else {
+            format!(
+                "khan/{}{}/{:03}.epfanim",
+                key.gender.char(),
+                prefix,
+                key.sprite_id % 1000
+            )
+        };
         let epf_bytes = archive.get_file(&path)?;
         let (epf_image, _) = bincode::decode_from_slice::<Vec<EpfAnimation>, Configuration>(
             &epf_bytes,
@@ -225,8 +250,18 @@ impl PlayerAssetStore {
             for frame in &anim.image.frames {
                 let w = frame.right - frame.left;
                 let h = frame.bottom - frame.top;
-                let alloc = atlas.allocate(queue, w as usize, h as usize, &frame.data);
-                allocations.push(alloc);
+                if w > 0 && h > 0 {
+                    let alloc = atlas.allocate(queue, w as usize, h as usize, &frame.data);
+                    if alloc.is_none() {
+                        error!(
+                            "Player atlas full - cannot allocate sprite {:?} ({}x{})",
+                            key, w, h
+                        );
+                    }
+                    allocations.push(alloc);
+                } else {
+                    allocations.push(None);
+                }
             }
             current_offset += anim.image.frames.len();
         }
@@ -249,7 +284,10 @@ impl PlayerBatch {
         let vertices = make_quad(VERTEX_WIDTH as u32, VERTEX_HEIGHT as u32).to_vec();
         let instances = SharedInstanceBatch::new(device, vertices, store.bind_group.clone());
 
-        Self { instances }
+        Self {
+            instances,
+            handles: std::sync::Mutex::new(FxHashMap::default()),
+        }
     }
 
     pub fn preview_instance_count(&self) -> usize {
@@ -257,6 +295,16 @@ impl PlayerBatch {
     }
 
     pub fn clear(&self) {
+        self.instances.clear();
+        self.handles.lock().unwrap().clear();
+    }
+
+    pub fn clear_and_unload(&self, store: &mut PlayerAssetStore) {
+        let mut handles = self.handles.lock().unwrap();
+        for key in handles.values() {
+            store.unload_sprite(*key);
+        }
+        handles.clear();
         self.instances.clear();
     }
 
@@ -270,6 +318,7 @@ impl PlayerBatch {
         direction: u8,
         x: f32,
         y: f32,
+        entity_id: u32,
         flags: InstanceFlag,
         tint: Vec3,
     ) -> anyhow::Result<PlayerSpriteHandle> {
@@ -293,7 +342,10 @@ impl PlayerBatch {
 
         let (is_towards, flip) = direction_to_orientation(direction);
 
-        let instance = PlayerAssetStore::get_instance_for_frame(
+        // Use entity_id as tiebreaker for players on the same tile
+        let stack_order = (entity_id % PLAYERS_PER_TILE as u32) as u8;
+
+        let instance = match PlayerAssetStore::get_instance_for_frame(
             &store.palettes,
             loaded_sprite,
             &sprite,
@@ -305,17 +357,32 @@ impl PlayerBatch {
             color,
             flags,
             tint,
-        )?;
+            stack_order,
+        ) {
+            Ok(inst) => inst,
+            Err(_) => {
+                // If Idle is missing (e.g. for purely emote pieces), just use an empty instance
+                Instance::default()
+            }
+        };
 
         let instance_index = self
             .instances
             .add(queue, instance)
             .expect("Failed to add instance to batch");
 
-        Ok(PlayerSpriteHandle {
+        let handle = PlayerSpriteHandle {
             key: sprite,
             index: PlayerSpriteIndex(instance_index),
-        })
+            stack_order,
+        };
+
+        self.handles
+            .lock()
+            .unwrap()
+            .insert(handle.index.0, handle.key);
+
+        Ok(handle)
     }
 
     pub fn update_player_sprite(
@@ -349,6 +416,7 @@ impl PlayerBatch {
             color,
             flags,
             tint,
+            handle.stack_order,
         )?;
         self.instances.update(queue, handle.index.0, instance);
 
@@ -404,10 +472,21 @@ impl PlayerBatch {
             color,
             flags,
             tint,
+            handle.stack_order,
         )
         .unwrap_or_default();
 
         self.instances.update(queue, handle.index.0, instance);
+        Ok(())
+    }
+
+    pub fn hide_player_sprite(
+        &self,
+        queue: &wgpu::Queue,
+        handle: &PlayerSpriteHandle,
+    ) -> anyhow::Result<()> {
+        self.instances
+            .update(queue, handle.index.0, Instance::default());
         Ok(())
     }
 
@@ -419,6 +498,8 @@ impl PlayerBatch {
     ) {
         self.instances.remove(queue, handle.index.0);
         store.unload_sprite(handle.key);
+
+        self.handles.lock().unwrap().remove(&handle.index.0);
     }
 
     pub fn render(&self, render_pass: &mut wgpu::RenderPass) {

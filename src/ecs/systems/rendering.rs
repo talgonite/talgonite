@@ -58,7 +58,7 @@ pub fn sync_lobby_portraits(
                 continue;
             }
 
-            batch.clear();
+            batch.clear_and_unload(&mut player_store.store);
 
             let gender = if preview.is_male {
                 Gender::Male
@@ -72,7 +72,7 @@ pub fn sync_lobby_portraits(
                     preview.body.max(1),
                     preview.shield_color as u8,
                 ),
-                (PlayerPieceType::Face, 1, 0), // Standard face
+                (PlayerPieceType::Face, 1, preview.shield_color as u8), // Standard face with body color
                 (
                     PlayerPieceType::HelmetBg,
                     preview.helmet,
@@ -132,6 +132,7 @@ pub fn sync_lobby_portraits(
                         2, // Down
                         0.0,
                         0.0,
+                        0, // No stacking for preview
                         InstanceFlag::None,
                         glam::Vec3::ZERO,
                     );
@@ -160,6 +161,7 @@ pub fn sync_lobby_portraits(
         }
     }
 
+    batch.clear_and_unload(&mut player_store.store);
     portrait_state.version += 1;
 }
 
@@ -217,6 +219,7 @@ pub fn sync_items_to_renderer(
                 y: position.y as u16,
                 sprite: sprite.id,
                 color: sprite.color,
+                spawn_order: sprite.spawn_order,
             },
         ) {
             commands.entity(entity).insert(ItemInstance { handle });
@@ -245,6 +248,7 @@ pub fn update_items_to_renderer(
                 y: position.y as u16,
                 sprite: sprite.id,
                 color: sprite.color,
+                spawn_order: sprite.spawn_order,
             },
         );
     }
@@ -256,13 +260,19 @@ pub fn sync_players_to_renderer(
     shared_state: Res<RendererState>,
     game_files: Res<GameFiles>,
     added_sprites: Query<(Entity, &ChildOf, &PlayerSprite), Added<PlayerSprite>>,
-    player_query: Query<(&Position, &Direction, &Player, Option<&TargetingHover>)>,
+    player_query: Query<(
+        &Position,
+        &Direction,
+        &Player,
+        &EntityId,
+        Option<&TargetingHover>,
+    )>,
     mut store_state: ResMut<PlayerAssetStoreState>,
     batch_state: Res<PlayerBatchState>,
 ) {
     let mut sprites_to_add = Vec::new();
     for (sprite_entity, child_of, sprite) in added_sprites.iter() {
-        if let Ok((position, direction, player, targeting_hover)) =
+        if let Ok((position, direction, player, entity_id, targeting_hover)) =
             player_query.get(child_of.parent())
         {
             sprites_to_add.push((
@@ -272,13 +282,22 @@ pub fn sync_players_to_renderer(
                 position,
                 direction,
                 player,
+                entity_id,
                 targeting_hover,
             ));
         }
     }
 
-    for (sprite_entity, _child_of, sprite, position, direction, player, targeting_hover) in
-        sprites_to_add
+    for (
+        sprite_entity,
+        _child_of,
+        sprite,
+        position,
+        direction,
+        player,
+        entity_id,
+        targeting_hover,
+    ) in sprites_to_add
     {
         let gender = if player.is_male {
             Gender::Male
@@ -300,6 +319,7 @@ pub fn sync_players_to_renderer(
             *direction as u8,
             position.x,
             position.y,
+            entity_id.id,
             InstanceFlag::None,
             tint,
         );
@@ -361,20 +381,45 @@ pub fn update_player_sprites(
 
             for child_entity in children.iter() {
                 if let Ok((sprite, sprite_instance)) = children_query.get(child_entity) {
-                    if let Err(e) = batch_state.batch.update_player_sprite_with_animation(
-                        &shared_state.queue,
-                        &store_state.store,
-                        &sprite_instance.handle,
-                        *direction as u8,
-                        position.x,
-                        position.y,
-                        sprite.color,
-                        anim_type,
-                        frame_index,
-                        InstanceFlag::None,
-                        tint,
-                    ) {
-                        tracing::error!("update_player_sprite_with_animation failed: {:?}", e);
+                    let target = match (anim_type.is_emote(), sprite.slot) {
+                        (true, PlayerPieceType::Emote) => Some((anim_type, frame_index)), // Active emote layer
+                        (true, PlayerPieceType::Face) => None, // Hide face when emoting (face usually in emote)
+                        (true, _) => Some((EpfAnimationType::Idle, 0)), // Base layers go to Idle
+                        (false, PlayerPieceType::Emote) => None, // Hide emote layer when not emoting
+                        (false, _) => Some((anim_type, frame_index)), // Standard animation
+                    };
+
+                    if let Some((at, fi)) = target {
+                        if let Err(e) = batch_state.batch.update_player_sprite_with_animation(
+                            &shared_state.queue,
+                            &store_state.store,
+                            &sprite_instance.handle,
+                            *direction as u8,
+                            position.x,
+                            position.y,
+                            sprite.color,
+                            at,
+                            fi,
+                            InstanceFlag::None,
+                            tint,
+                        ) {
+                            if at.is_emote() {
+                                // If emote fails (e.g. facing away), just hide the emote layer
+                                let _ = batch_state.batch.hide_player_sprite(
+                                    &shared_state.queue,
+                                    &sprite_instance.handle,
+                                );
+                            } else if !anim_type.is_emote() {
+                                tracing::error!(
+                                    "update_player_sprite_with_animation failed: {:?}",
+                                    e
+                                );
+                            }
+                        }
+                    } else {
+                        let _ = batch_state
+                            .batch
+                            .hide_player_sprite(&shared_state.queue, &sprite_instance.handle);
                     }
                 }
             }
@@ -473,7 +518,9 @@ pub fn sync_player_portrait(
 
     if needs_update {
         if let Some((player, children)) = local_player_query.iter().next() {
-            portrait_state.batch.clear();
+            portrait_state
+                .batch
+                .clear_and_unload(&mut player_store.store);
 
             let sprites = collect_player_sprites(player, children, &sprite_query);
             for (key, color) in sprites {
@@ -486,6 +533,7 @@ pub fn sync_player_portrait(
                     1, // "Towards" direction
                     0.0,
                     0.0,
+                    0, // No stacking for portrait
                     rendering::instance::InstanceFlag::None,
                     glam::Vec3::ZERO,
                 );
@@ -535,13 +583,12 @@ pub fn render_player_batch_to_target(
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: depth_view,
                 depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
+                    load: wgpu::LoadOp::Clear(0.0),
                     store: wgpu::StoreOp::Store,
                 }),
                 stencil_ops: None,
             }),
-            timestamp_writes: None,
-            occlusion_query_set: None,
+            ..Default::default()
         });
 
         render_pass.set_pipeline(&renderer.scene.pipeline);
@@ -589,7 +636,9 @@ pub fn sync_profile_portrait(
 
     if portrait_state.dirty {
         if let Some((player, children)) = target_entity {
-            portrait_state.batch.clear();
+            portrait_state
+                .batch
+                .clear_and_unload(&mut player_store.store);
 
             let sprites = collect_player_sprites(player, children, &sprite_query);
             for (key, color) in sprites {
@@ -602,6 +651,7 @@ pub fn sync_profile_portrait(
                     1, // "Towards" direction
                     0.0,
                     0.0,
+                    0, // No stacking for portrait
                     rendering::instance::InstanceFlag::None,
                     glam::Vec3::ZERO,
                 );

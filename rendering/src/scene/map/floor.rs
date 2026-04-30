@@ -21,7 +21,7 @@ impl FloorTile {
     }
 
     pub fn get_position(x: f32, y: f32) -> Vec2 {
-        get_isometric_coordinate(x, y).round()
+        get_isometric_coordinate(x, y)
             + Vec2::new(-(TILE_WIDTH_HALF as f32), -(TILE_HEIGHT_HALF as f32))
     }
 }

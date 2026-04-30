@@ -93,7 +93,8 @@ impl CameraState {
     }
 
     pub fn set_position(&mut self, queue: &wgpu::Queue, x: f32, y: f32) {
-        self.camera.position = get_isometric_coordinate(x, y).round();
+        let pos = get_isometric_coordinate(x, y);
+        self.camera.position = (pos * self.camera.zoom).round() / self.camera.zoom;
         self.update(queue);
     }
 
@@ -248,7 +249,7 @@ impl Scene {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[&texture_bind_group_layout, &camera_bind_group_layout],
-                push_constant_ranges: &[],
+                immediate_size: 0,
             });
 
         let depth_texture =
@@ -298,12 +299,12 @@ impl Scene {
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: texture::Texture::DEPTH_FORMAT,
                 depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
+                depth_compare: wgpu::CompareFunction::Greater,
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
         });
 
         Self {

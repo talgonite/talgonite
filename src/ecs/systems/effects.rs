@@ -28,7 +28,7 @@ pub fn entity_effect_system(
                         if let Some(target_animation) = target_animation {
                             commands.entity(entity).insert(Effect {
                                 effect_id: target_animation,
-                                z_offset: 0.0000001,
+                                z_offset: 0.0001,
                             });
                         }
                     }
@@ -36,7 +36,7 @@ pub fn entity_effect_system(
                         if let Some(source_animation) = source_animation {
                             commands.entity(entity).insert(Effect {
                                 effect_id: source_animation,
-                                z_offset: 0.0000001,
+                                z_offset: 0.0001,
                             });
                         }
                     }
@@ -106,7 +106,7 @@ pub fn update_effects_system(
             instance.current_frame += 1;
             instance.timer.reset();
 
-            let frame_count = instance.handle.frame_sequence.len();
+            let frame_count = instance.handle.frame_count;
             if instance.current_frame >= frame_count {
                 commands.entity(entity).remove::<(Effect, EffectInstance)>();
                 continue;

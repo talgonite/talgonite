@@ -1,6 +1,6 @@
 import { Theme } from "../../theme.slint";
 import { SettingsState } from "../../settings_state.slint";
-import { VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { VerticalBox } from "std-widgets.slint";
 import { SectionHeader, RadioOption, LabeledSlider } from "widgets.slint";
 
 export component GraphicsTab inherits VerticalBox {
@@ -19,43 +19,13 @@ export component GraphicsTab inherits VerticalBox {
 
         GridLayout {
             spacing: 4px;
-            RadioOption {
-                label: "Off";
-                selected: SettingsState.xray-size == 0;
+            for option[idx] in ["Off", "Small", "Medium", "Large"]: RadioOption {
+                label: option;
+                selected: SettingsState.xray-size == idx;
                 horizontal-stretch: 1;
                 clicked => {
-                    SettingsState.xray-size = 0;
-                    SettingsState.xray-size-changed(0);
-                }
-            }
-
-            RadioOption {
-                label: "Small";
-                selected: SettingsState.xray-size == 1;
-                horizontal-stretch: 1;
-                clicked => {
-                    SettingsState.xray-size = 1;
-                    SettingsState.xray-size-changed(1);
-                }
-            }
-
-            RadioOption {
-                label: "Medium";
-                selected: SettingsState.xray-size == 2;
-                horizontal-stretch: 1;
-                clicked => {
-                    SettingsState.xray-size = 2;
-                    SettingsState.xray-size-changed(2);
-                }
-            }
-
-            RadioOption {
-                label: "Large";
-                selected: SettingsState.xray-size == 3;
-                horizontal-stretch: 1;
-                clicked => {
-                    SettingsState.xray-size = 3;
-                    SettingsState.xray-size-changed(3);
+                    SettingsState.xray-size = idx;
+                    SettingsState.xray-size-changed(idx);
                 }
             }
         }

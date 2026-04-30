@@ -1,6 +1,6 @@
 use crate::ecs::components::{LocalPlayer, PathfindingState};
 use crate::ecs::spell_casting::SpellCastingState;
-use crate::events::{PlayerAction, TileClickEvent};
+use crate::events::{InteractionIntentEvent, PlayerAction, TileClickEvent};
 use crate::input::{GameAction, GamepadConfig, UnifiedInputBindings};
 use bevy::prelude::*;
 
@@ -9,6 +9,7 @@ use bevy::prelude::*;
 pub fn player_interruption_system(
     mut actions: MessageReader<PlayerAction>,
     mut tile_clicks: MessageReader<TileClickEvent>,
+    mut interaction_intents: MessageReader<InteractionIntentEvent>,
     mut spells: ResMut<SpellCastingState>,
     mut commands: Commands,
     player: Query<Entity, With<LocalPlayer>>,
@@ -34,6 +35,7 @@ pub fn player_interruption_system(
     ) || actions.read().any(|a| a.is_manual());
 
     let is_new_path = tile_clicks.read().any(|e| e.button == MouseButton::Right);
+    let has_interaction_intent = interaction_intents.read().next().is_some();
 
     if is_manual_move {
         spells.active_cast = None;
@@ -42,5 +44,10 @@ pub fn player_interruption_system(
 
     if is_new_path {
         spells.active_cast = None;
+    }
+
+    if has_interaction_intent {
+        spells.active_cast = None;
+        commands.entity(player_entity).remove::<PathfindingState>();
     }
 }

@@ -6,8 +6,8 @@ pub use board_interaction::{
     BoardControls, BoardInteraction, BoardInteractionArgs, BoardRequestType,
 };
 
-mod chant;
-pub use chant::Chant;
+mod spell_chant;
+pub use spell_chant::SpellChant;
 
 mod click;
 pub use click::Click;

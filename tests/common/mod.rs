@@ -38,9 +38,9 @@ impl TestScene {
             let (device, queue) = adapter
                 .request_device(&wgpu::DeviceDescriptor {
                     label: Some("Test Device"),
-                    required_features: wgpu::Features::PUSH_CONSTANTS,
+                    required_features: wgpu::Features::IMMEDIATES,
                     required_limits: wgpu::Limits {
-                        max_push_constant_size: 16,
+                        max_immediate_size: 16,
                         ..Default::default()
                     },
                     memory_hints: Default::default(),
@@ -75,6 +75,7 @@ impl TestScene {
             graphics: talgonite::settings::GraphicsSettings {
                 xray_size: talgonite::settings::XRaySize::Off,
                 scale: 2.0,
+                high_quality_scaling: true,
             },
             gameplay: talgonite::settings::GameplaySettings {
                 current_server_id: None,
@@ -256,7 +257,7 @@ impl TestScene {
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &depth_view,
                     depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
+                        load: wgpu::LoadOp::Clear(0.0),
                         store: wgpu::StoreOp::Store,
                     }),
                     stencil_ops: None,

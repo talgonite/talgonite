@@ -45,6 +45,77 @@ pub enum EpfAnimationType {
     PrayerSummonChant, // in EPF e
     WizardCast,        // in EPF f
     SummonerCast,      // in EPF f
+    // Emote only - only in emot01-04.epf
+    Smile,          // frame 1 in emot01.epf
+    Cry,            // frame 2 in emot01.epf
+    Sad,            // frame 3 in emot01.epf
+    Wink,           // frame 4 in emot01.epf
+    Stunned,        // frame 5 in emot01.epf
+    Raz,            // frame 6 in emot01.epf
+    Surprise,       // frame 7 in emot01.epf
+    Sleepy,         // frames 8+9 in emot01.epf
+    Yawn,           // frames 10+11 in emot01.epf
+    BalloonElder,   // frame 25 in emot01.epf
+    BalloonJoy,     // frame 26 in emot01.epf
+    BalloonSlick,   // frame 27 in emot01.epf
+    BalloonScheme,  // frame 28 in emot01.epf
+    BalloonLaser,   // frame 29 in emot01.epf
+    BalloonGloom,   // frame 30 in emot01.epf
+    BalloonAwe,     // frame 31 in emot01.epf
+    BalloonShadow,  // frame 32 in emot01.epf
+    BalloonSob,     // frames 33-35 in emot01.epf
+    BalloonFire,    // frames 36-38 in emot01.epf
+    BalloonDizzy,   // frames 39-42 in emot01.epf
+    SymbolRock,     // frame 12 in emot01.epf
+    SymbolScissors, // frame 13 in emot01.epf
+    SymbolPaper,    // frame 14 in emot01.epf
+    SymbolScramble, // frame 15 in emot01.epf
+    SymbolSilence,  // frames 16-18 in emot01.epf
+    Mask,           // frame 19 in emot01.epf
+    Blush,          // frame 20 in emot01.epf
+    SymbolLove,     // frame 21 in emot01.epf
+    SymbolSweat,    // frame 22 in emot01.epf
+    SymbolMusic,    // frame 23 in emot01.epf
+    SymbolAngry,    // frame 24 in emot01.epf
+}
+
+impl EpfAnimationType {
+    pub fn is_emote(&self) -> bool {
+        matches!(
+            self,
+            EpfAnimationType::Smile
+                | EpfAnimationType::Cry
+                | EpfAnimationType::Sad
+                | EpfAnimationType::Wink
+                | EpfAnimationType::Stunned
+                | EpfAnimationType::Raz
+                | EpfAnimationType::Surprise
+                | EpfAnimationType::Sleepy
+                | EpfAnimationType::Yawn
+                | EpfAnimationType::BalloonElder
+                | EpfAnimationType::BalloonJoy
+                | EpfAnimationType::BalloonSlick
+                | EpfAnimationType::BalloonScheme
+                | EpfAnimationType::BalloonLaser
+                | EpfAnimationType::BalloonGloom
+                | EpfAnimationType::BalloonAwe
+                | EpfAnimationType::BalloonShadow
+                | EpfAnimationType::BalloonSob
+                | EpfAnimationType::BalloonFire
+                | EpfAnimationType::BalloonDizzy
+                | EpfAnimationType::SymbolRock
+                | EpfAnimationType::SymbolPaper
+                | EpfAnimationType::SymbolScissors
+                | EpfAnimationType::SymbolScramble
+                | EpfAnimationType::SymbolSilence
+                | EpfAnimationType::Mask
+                | EpfAnimationType::Blush
+                | EpfAnimationType::SymbolLove
+                | EpfAnimationType::SymbolSweat
+                | EpfAnimationType::SymbolMusic
+                | EpfAnimationType::SymbolAngry
+        )
+    }
 }
 
 #[derive(Clone, Encode, Decode)]
@@ -310,6 +381,123 @@ impl EpfImage {
                     EpfAnimationType::SummonerCast,
                     AnimationDirection::Towards,
                     8..12,
+                ),
+            ],
+            "emot" => vec![
+                (EpfAnimationType::Smile, AnimationDirection::Towards, 0..1),
+                (EpfAnimationType::Cry, AnimationDirection::Towards, 1..2),
+                (EpfAnimationType::Sad, AnimationDirection::Towards, 2..3),
+                (EpfAnimationType::Wink, AnimationDirection::Towards, 3..4),
+                (EpfAnimationType::Stunned, AnimationDirection::Towards, 4..5),
+                (EpfAnimationType::Raz, AnimationDirection::Towards, 5..6),
+                (
+                    EpfAnimationType::Surprise,
+                    AnimationDirection::Towards,
+                    6..7,
+                ),
+                (EpfAnimationType::Sleepy, AnimationDirection::Towards, 7..9),
+                (EpfAnimationType::Yawn, AnimationDirection::Towards, 9..11),
+                (
+                    EpfAnimationType::SymbolRock,
+                    AnimationDirection::Towards,
+                    11..12,
+                ),
+                (
+                    EpfAnimationType::SymbolScissors,
+                    AnimationDirection::Towards,
+                    12..13,
+                ),
+                (
+                    EpfAnimationType::SymbolPaper,
+                    AnimationDirection::Towards,
+                    13..14,
+                ),
+                (
+                    EpfAnimationType::SymbolScramble,
+                    AnimationDirection::Towards,
+                    14..15,
+                ),
+                (
+                    EpfAnimationType::SymbolSilence,
+                    AnimationDirection::Towards,
+                    15..18,
+                ),
+                (EpfAnimationType::Mask, AnimationDirection::Towards, 18..19),
+                (EpfAnimationType::Blush, AnimationDirection::Towards, 19..20),
+                (
+                    EpfAnimationType::SymbolLove,
+                    AnimationDirection::Towards,
+                    20..21,
+                ),
+                (
+                    EpfAnimationType::SymbolSweat,
+                    AnimationDirection::Towards,
+                    21..22,
+                ),
+                (
+                    EpfAnimationType::SymbolMusic,
+                    AnimationDirection::Towards,
+                    22..23,
+                ),
+                (
+                    EpfAnimationType::SymbolAngry,
+                    AnimationDirection::Towards,
+                    23..24,
+                ),
+                (
+                    EpfAnimationType::BalloonElder,
+                    AnimationDirection::Towards,
+                    24..25,
+                ),
+                (
+                    EpfAnimationType::BalloonJoy,
+                    AnimationDirection::Towards,
+                    25..26,
+                ),
+                (
+                    EpfAnimationType::BalloonSlick,
+                    AnimationDirection::Towards,
+                    26..27,
+                ),
+                (
+                    EpfAnimationType::BalloonScheme,
+                    AnimationDirection::Towards,
+                    27..28,
+                ),
+                (
+                    EpfAnimationType::BalloonLaser,
+                    AnimationDirection::Towards,
+                    28..29,
+                ),
+                (
+                    EpfAnimationType::BalloonGloom,
+                    AnimationDirection::Towards,
+                    29..30,
+                ),
+                (
+                    EpfAnimationType::BalloonAwe,
+                    AnimationDirection::Towards,
+                    30..31,
+                ),
+                (
+                    EpfAnimationType::BalloonShadow,
+                    AnimationDirection::Towards,
+                    31..32,
+                ),
+                (
+                    EpfAnimationType::BalloonSob,
+                    AnimationDirection::Towards,
+                    32..35,
+                ),
+                (
+                    EpfAnimationType::BalloonFire,
+                    AnimationDirection::Towards,
+                    35..38,
+                ),
+                (
+                    EpfAnimationType::BalloonDizzy,
+                    AnimationDirection::Towards,
+                    38..42,
                 ),
             ],
             "05" => vec![], // TODO: Seems like another walk ? For mounts and stuff maybe?

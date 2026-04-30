@@ -92,8 +92,7 @@ pub fn play_sound(
                         }
 
                         match audio.music_track.play(
-                            data.loop_region(0.0..)
-                                .with_settings(StaticSoundSettings::new()),
+                            data.with_settings(StaticSoundSettings::new().loop_region(0.0..)),
                         ) {
                             Ok(handle) => {
                                 audio.music = Some(handle);

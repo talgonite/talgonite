@@ -10,19 +10,19 @@ formats.workspace = true
 rendering.workspace = true
 packets.workspace = true
 
-bevy = { version = "0.17", default-features = false }
-wgpu = "27.0"
+bevy = { version = "0.18", default-features = false }
+wgpu = "28"
 smol = "2.0"
 crossbeam-channel = "0.5"
-i-slint-core = "=1.15.0"
-slint = { version = "1.15.0", default-features = false, features = [
+i-slint-core = "=1.16.1"
+slint = { version = "1.16.1", default-features = false, features = [
     "backend-default",
     "compat-1-2",
-    "unstable-wgpu-27",
-    "renderer-femtovg-wgpu",
+    "unstable-wgpu-28",
+    "renderer-skia",
 ] }
 bincode = { version = "2.0", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 
 [build-dependencies]
-slint-build = "1.15.0"
+slint-build = "1.16.1"

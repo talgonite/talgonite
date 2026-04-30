@@ -1,10 +1,19 @@
 use bevy::prelude::Resource;
+use game_ui::{CoreToUi, LoginError};
 
 pub use game_types::{
     CharacterPreview, CustomHotBarSlot, CustomHotBars, KeyBindings, SavedCredential,
     SavedCredentialPublic, ServerEntry, XRaySize,
 };
 use std::collections::HashMap;
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+pub struct HotbarData {
+    #[serde(flatten)]
+    pub bars: CustomHotBars,
+    #[serde(default)]
+    pub current_panel: i32,
+}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct AudioSettings {
@@ -16,6 +25,12 @@ pub struct AudioSettings {
 pub struct GraphicsSettings {
     pub xray_size: XRaySize,
     pub scale: f32,
+    #[serde(default = "default_true")]
+    pub high_quality_scaling: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -33,7 +48,7 @@ pub struct Settings {
     #[serde(skip)]
     pub saved_credentials: Vec<SavedCredential>,
     #[serde(skip)]
-    pub hotbars: HashMap<String, CustomHotBars>,
+    pub hotbars: HashMap<String, HotbarData>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -44,7 +59,8 @@ pub struct CharacterProfile {
     pub last_used: u64,
     #[serde(default, deserialize_with = "game_types::deserialize_preview_lossy")]
     pub preview: Option<CharacterPreview>,
-    pub hotbars: CustomHotBars,
+    #[serde(default)]
+    pub hotbars: HotbarData,
 }
 
 impl Default for Settings {
@@ -57,6 +73,7 @@ impl Default for Settings {
             graphics: GraphicsSettings {
                 xray_size: XRaySize::Medium,
                 scale: 1.0,
+                high_quality_scaling: true,
             },
             gameplay: GameplaySettings {
                 current_server_id: Some(1),
@@ -78,12 +95,51 @@ impl Settings {
         let key = format!("{}:{}", server_id, username);
         self.hotbars
             .get(&key)
-            .cloned()
+            .map(|data| data.bars.clone())
             .unwrap_or_else(CustomHotBars::new)
     }
 
     pub fn set_hotbars(&mut self, server_id: u32, username: &str, hotbars: CustomHotBars) {
         let key = format!("{}:{}", server_id, username);
-        self.hotbars.insert(key, hotbars);
+        self.hotbars.entry(key).or_default().bars = hotbars;
+    }
+
+    pub fn get_current_hotbar_panel(&self, server_id: u32, username: &str) -> i32 {
+        let key = format!("{}:{}", server_id, username);
+        self.hotbars.get(&key).map(|data| data.current_panel).unwrap_or(0)
+    }
+
+    pub fn set_current_hotbar_panel(&mut self, server_id: u32, username: &str, panel: i32) {
+        let key = format!("{}:{}", server_id, username);
+        self.hotbars.entry(key).or_default().current_panel = panel;
+    }
+
+    pub fn to_sync_message(&self) -> CoreToUi {
+        CoreToUi::SettingsSync {
+            xray_size: self.graphics.xray_size as u8,
+            sfx_volume: self.audio.sfx_volume,
+            music_volume: self.audio.music_volume,
+            scale: self.graphics.scale,
+            key_bindings: (&self.key_bindings).into(),
+        }
+    }
+
+    pub fn to_snapshot_message(&self, login_error: Option<LoginError>) -> CoreToUi {
+        CoreToUi::Snapshot {
+            servers: self.servers.clone(),
+            current_server_id: self.gameplay.current_server_id,
+            logins: self
+                .saved_credentials
+                .iter()
+                .map(|c| SavedCredentialPublic {
+                    id: c.id.clone(),
+                    server_id: c.server_id,
+                    username: c.username.clone(),
+                    last_used: c.last_used,
+                    preview: c.preview.clone(),
+                })
+                .collect(),
+            login_error,
+        }
     }
 }

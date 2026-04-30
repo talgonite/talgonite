@@ -139,7 +139,7 @@ impl PlayerPalettes {
         let palette_prefix = key.prefix_for_palette(key.sprite_id);
         let palette_y = *self.info.get(&palette_prefix).unwrap_or(&0);
 
-        let palette_index = if key.slot == PlayerPieceType::Body {
+        let palette_index = if matches!(key.slot, PlayerPieceType::Body | PlayerPieceType::Face | PlayerPieceType::Emote) {
             dye_color as u16
         } else {
             match self.table.get(&key.slot.prefix(key.sprite_id)) {
@@ -149,7 +149,7 @@ impl PlayerPalettes {
         };
 
         let v_coord = ((palette_y + palette_index as u32) as f32 + 0.5) / self.count as f32;
-        let dye_param = if key.slot == PlayerPieceType::Body {
+        let dye_param = if matches!(key.slot, PlayerPieceType::Body | PlayerPieceType::Face | PlayerPieceType::Emote) {
             -1.
         } else {
             dye_color as f32 / 256.

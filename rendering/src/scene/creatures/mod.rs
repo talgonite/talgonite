@@ -13,6 +13,7 @@ use wgpu;
 use crate::{
     instance::{InstanceFlag, SharedInstanceBatch},
     make_quad,
+    scene::utils::calculate_tile_z,
 };
 use crate::{
     scene::{
@@ -26,7 +27,7 @@ use formats::game_files::ArxArchive;
 type Archive = ArxArchive;
 
 const ATLAS_WIDTH: usize = 2048;
-const ATLAS_HEIGHT: usize = 2048;
+const ATLAS_HEIGHT: usize = 4096;
 const VERTEX_WIDTH: usize = 512;
 const VERTEX_HEIGHT: usize = 512;
 
@@ -38,6 +39,7 @@ pub struct CreatureAssetStore {
 
 pub struct CreatureBatch {
     pub(crate) instances: SharedInstanceBatch,
+    handles: std::sync::Mutex<FxHashMap<usize, u16>>,
 }
 
 impl CreatureAssetStore {
@@ -100,7 +102,22 @@ impl CreatureBatch {
 
         Self {
             instances: creature_batch,
+            handles: std::sync::Mutex::new(FxHashMap::default()),
         }
+    }
+
+    pub fn clear(&self) {
+        self.instances.clear();
+        self.handles.lock().unwrap().clear();
+    }
+
+    pub fn clear_and_unload(&self, store: &mut CreatureAssetStore) {
+        let mut handles = self.handles.lock().unwrap();
+        for sprite_id in handles.values() {
+            store.unload_sprite(*sprite_id);
+        }
+        handles.clear();
+        self.instances.clear();
     }
 
     pub fn add_creature(
@@ -171,11 +188,14 @@ impl CreatureBatch {
             .add(queue, instance)
             .ok_or_else(|| anyhow::anyhow!("Failed to add creature instance"))?;
 
+        let handle = CreateInstanceHandle {
+            index: instance_index,
+            sprite_id,
+        };
+        self.handles.lock().unwrap().insert(handle.index, handle.sprite_id);
+
         Ok(AddCreatureResult {
-            handle: CreateInstanceHandle {
-                index: instance_index,
-                sprite_id,
-            },
+            handle,
             animations: loaded_sprite.mpf_file.animations.clone(),
         })
     }
@@ -188,6 +208,8 @@ impl CreatureBatch {
     ) {
         self.instances.remove(queue, handle.index);
         store.unload_sprite(handle.sprite_id);
+
+        self.handles.lock().unwrap().remove(&handle.index);
     }
 
     pub fn update_creature(
@@ -267,7 +289,7 @@ fn get_instance_for_frame(
     Ok(Instance::with_texture_atlas(
         (get_isometric_coordinate(position.x, position.y)
             - Vec2::new(offset_x, (frame_detail.center_y - frame_detail.top) as f32))
-        .extend((position.x + position.y) / 65536.0 - 0.000001),
+        .extend(calculate_tile_z(position.x, position.y, 0.21)),
         Vec2::new(
             first_frame.rectangle.min.x as f32 / ATLAS_WIDTH as f32,
             first_frame.rectangle.min.y as f32 / ATLAS_HEIGHT as f32,

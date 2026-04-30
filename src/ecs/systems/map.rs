@@ -16,25 +16,39 @@ pub fn map_system(
     renderer: Option<Res<RendererState>>,
     mut camera: Option<ResMut<Camera>>,
     settings: Res<crate::settings::Settings>,
-    mut map_renderer_state: Option<ResMut<MapRendererState>>,
-    mut map_collision: Option<ResMut<crate::ecs::collision::MapCollisionData>>,
+    mut door_queue: ResMut<MapDoorQueue>,
+    mut tile_counters: ResMut<crate::resources::ItemTileCounters>,
 ) {
     let mut local_map_renderer: Option<MapRenderer> = None;
+    // Track if we cleared the map this frame - if so, don't skip SetInfo even if
+    // the old GameMap entity still appears in queries (despawn is deferred)
+    let mut cleared_this_frame = false;
 
     for event in map_events.read() {
         match event {
             MapEvent::Clear => {
-                handle_map_clear(&mut commands, &scoped_q, &mut local_map_renderer);
+                handle_map_clear(
+                    &mut commands,
+                    &scoped_q,
+                    &mut local_map_renderer,
+                    &mut tile_counters,
+                );
+                door_queue.pending.clear();
+                cleared_this_frame = true;
             }
             MapEvent::SetInfo(map_info, map_bytes) => {
                 // Check if we're already on this map (happens during refresh)
-                if let Some(current_map) = map_entities.iter().next() {
-                    if current_map.map_id == map_info.map_id {
-                        info!(
-                            "Skipping SetInfo for map_id {} - already on this map (likely refresh)",
-                            map_info.map_id
-                        );
-                        continue;
+                // Skip this check if we just cleared the map this frame, since the
+                // old GameMap entity is still visible due to deferred despawning
+                if !cleared_this_frame {
+                    if let Some(current_map) = map_entities.iter().next() {
+                        if current_map.map_id == map_info.map_id {
+                            info!(
+                                "Skipping SetInfo for map_id {} - already on this map (likely refresh)",
+                                map_info.map_id
+                            );
+                            continue;
+                        }
                     }
                 }
 
@@ -51,17 +65,7 @@ pub fn map_system(
                 handle_light_level(camera.as_deref_mut(), renderer.as_deref(), kind);
             }
             MapEvent::SetDoors(door_data) => {
-                handle_doors(
-                    renderer.as_deref(),
-                    local_map_renderer.as_mut(),
-                    map_renderer_state.as_deref_mut(),
-                    door_data,
-                );
-                if let Some(map_collision) = map_collision.as_deref_mut() {
-                    for door in &door_data.doors {
-                        map_collision.set_door(door.x, door.y, door.closed);
-                    }
-                }
+                door_queue.pending.extend(door_data.doors.clone());
             }
         }
     }
@@ -75,6 +79,7 @@ fn handle_map_clear(
     commands: &mut Commands,
     scoped_q: &Query<Entity, With<MapScoped>>,
     local_map_renderer: &mut Option<MapRenderer>,
+    tile_counters: &mut crate::resources::ItemTileCounters,
 ) {
     info!("Map change pending: clearing current map entities");
     let mut count = 0;
@@ -85,6 +90,7 @@ fn handle_map_clear(
     info!("Despawned {} MapScoped entities", count);
     commands.remove_resource::<MapRendererState>();
     commands.remove_resource::<crate::ecs::collision::MapCollisionData>();
+    tile_counters.counters.clear();
     *local_map_renderer = None;
 }
 
@@ -118,6 +124,7 @@ fn handle_map_set_info(
         map_bytes,
         map_info.width,
         map_info.height,
+        &prepared_map.wall_heights,
     );
     commands.insert_resource(map_collision);
 
@@ -173,44 +180,35 @@ fn handle_light_level(
     }
 }
 
-fn handle_doors(
-    renderer: Option<&RendererState>,
-    local_map_renderer: Option<&mut MapRenderer>,
-    map_renderer_state: Option<&mut MapRendererState>,
-    door_data: &packets::server::Door,
+pub fn handle_doors(
+    renderer: Option<Res<RendererState>>,
+    mut map_renderer_state: Option<ResMut<MapRendererState>>,
+    mut map_collision: Option<ResMut<crate::ecs::collision::MapCollisionData>>,
+    mut door_queue: ResMut<MapDoorQueue>,
 ) {
-    let Some(renderer) = renderer else {
+    let (Some(renderer), Some(map_state), Some(map_collision)) = (
+        renderer.as_deref(),
+        map_renderer_state.as_deref_mut(),
+        map_collision.as_deref_mut(),
+    ) else {
         return;
     };
 
-    if let Some(map_renderer) = local_map_renderer {
-        for door in &door_data.doors {
-            tracing::debug!(
-                "Setting door state at ({}, {}): closed={} (local)",
-                door.x,
-                door.y,
-                door.closed
-            );
-            map_renderer.set_wall_toggle_state(&renderer.queue, door.x, door.y, door.closed);
-        }
-    } else if let Some(map_state) = map_renderer_state {
-        for door in &door_data.doors {
-            tracing::debug!(
-                "Setting door state at ({}, {}): closed={} (resource)",
-                door.x,
-                door.y,
-                door.closed
-            );
-            map_state.map_renderer.set_wall_toggle_state(
-                &renderer.queue,
-                door.x,
-                door.y,
-                door.closed,
-            );
-        }
-    } else {
-        tracing::warn!("Received SetDoors but no map renderer available (local or resource)");
+    if door_queue.pending.is_empty() {
+        return;
     }
+
+    for door in &door_queue.pending {
+        map_state.map_renderer.set_wall_toggle_state(
+            &renderer.queue,
+            door.x,
+            door.y,
+            door.closed,
+        );
+        map_collision.set_door(door.x, door.y, door.closed);
+    }
+
+    door_queue.pending.clear();
 }
 
 /// Updates map tile animations each frame.

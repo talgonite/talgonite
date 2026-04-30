@@ -11,6 +11,7 @@ use std::io::Read;
 pub enum WorldListColor {
     Guilded = 84,
     NotSure = 88,
+    Unknown = 144,
     WithinLevelRange = 151,
     White = 255,
 }

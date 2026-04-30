@@ -1,10 +1,16 @@
-use crate::TryFromBytes;
+use crate::{TryFromBytes, types::Direction};
 use byteorder::{BigEndian, ReadBytesExt};
 use std::io::Cursor;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+pub enum ClientWalkResponseArgs {
+    Rejected,
+    Accepted(Direction),
+}
+
+#[derive(Debug, Clone)]
 pub struct ClientWalkResponse {
-    pub direction: u8,
+    pub args: ClientWalkResponseArgs,
     pub from: (u16, u16),
 }
 
@@ -18,6 +24,12 @@ impl TryFromBytes for ClientWalkResponse {
             (x, y)
         };
 
-        Ok(ClientWalkResponse { direction, from })
+        Ok(ClientWalkResponse {
+            args: match Direction::try_from(direction) {
+                Ok(dir) => ClientWalkResponseArgs::Accepted(dir),
+                Err(_) => ClientWalkResponseArgs::Rejected,
+            },
+            from,
+        })
     }
 }

@@ -11,6 +11,57 @@ pub struct PlayerAttributes {
     pub max_mp: u32,
 }
 
+#[derive(Resource, Clone, Debug)]
+pub struct StorageConfig {
+    pub root: std::path::PathBuf,
+}
+
+impl StorageConfig {
+    pub fn new(root: std::path::PathBuf) -> Self {
+        Self { root }
+    }
+
+    pub fn data_arx_path(&self) -> std::path::PathBuf {
+        self.root.join("data.arx")
+    }
+
+    pub fn settings_path(&self) -> std::path::PathBuf {
+        self.root.join("settings.toml")
+    }
+
+    pub fn server_dir(&self, server_id: u32) -> std::path::PathBuf {
+        let path = self.root.join("servers").join(server_id.to_string());
+        let _ = std::fs::create_dir_all(&path);
+        path
+    }
+
+    pub fn server_characters_dir(&self, server_id: u32) -> std::path::PathBuf {
+        let path = self.server_dir(server_id).join("characters");
+        let _ = std::fs::create_dir_all(&path);
+        path
+    }
+
+    pub fn server_maps_dir(&self, server_id: u32) -> std::path::PathBuf {
+        let path = self.server_dir(server_id).join("maps");
+        let _ = std::fs::create_dir_all(&path);
+        path
+    }
+
+    pub fn server_metafile_dir(&self, server_id: u32) -> std::path::PathBuf {
+        let path = self.server_dir(server_id).join("metafile");
+        let _ = std::fs::create_dir_all(&path);
+        path
+    }
+
+    pub fn server_character_settings_path(&self, server_id: u32, username: &str) -> std::path::PathBuf {
+        self.server_characters_dir(server_id).join(format!("{}.toml", username))
+    }
+
+    pub fn server_map_path(&self, server_id: u32, map_id: u16) -> std::path::PathBuf {
+        self.server_maps_dir(server_id).join(format!("lod{:03}.map", map_id))
+    }
+}
+
 #[derive(Resource)]
 pub struct RendererState {
     pub device: wgpu::Device,
@@ -56,6 +107,22 @@ pub struct ItemAssetStoreState {
 #[derive(Resource)]
 pub struct ItemBatchState {
     pub batch: items::ItemBatch,
+}
+
+/// Per-tile spawn order counters for item z-ordering.
+/// Map-scoped: auto-cleared when map changes via Bevy resource removal.
+#[derive(Resource, Default)]
+pub struct ItemTileCounters {
+    pub counters: std::collections::HashMap<(u16, u16), u8>,
+}
+
+impl ItemTileCounters {
+    pub fn next_order(&mut self, x: u16, y: u16) -> u8 {
+        let counter = self.counters.entry((x, y)).or_insert(0);
+        let order = *counter;
+        *counter = counter.wrapping_add(1);
+        order
+    }
 }
 
 #[derive(Resource)]
@@ -105,12 +172,19 @@ pub struct ZoomState {
     pub render_size: (u32, u32),
     pub camera_zoom: f32,
     pub is_pixel_perfect: bool,
+    pub high_quality_scaling: bool,
 }
 
 impl ZoomState {
     const TARGET_RENDER_HEIGHT: u32 = 600;
 
-    pub fn new(display_w: u32, display_h: u32, dpi_scale: f32, zoom: f32) -> Self {
+    pub fn new(
+        display_w: u32,
+        display_h: u32,
+        dpi_scale: f32,
+        zoom: f32,
+        high_quality_scaling: bool,
+    ) -> Self {
         let initial_zoom = if zoom == 1.0 {
             Self::compute_initial_zoom(display_h)
         } else {
@@ -124,6 +198,7 @@ impl ZoomState {
             render_size: (display_w, display_h),
             camera_zoom: 1.0,
             is_pixel_perfect: true,
+            high_quality_scaling,
         };
         state.recalculate();
         state
@@ -149,8 +224,27 @@ impl ZoomState {
         self.dpi_scale = scale;
     }
 
+    pub fn set_high_quality_scaling(&mut self, enabled: bool) {
+        self.high_quality_scaling = enabled;
+        self.recalculate();
+    }
+
     pub fn cursor_to_render_scale(&self) -> f32 {
-        self.dpi_scale / self.user_zoom.max(1.0)
+        if self.high_quality_scaling {
+            self.dpi_scale
+        } else {
+            self.dpi_scale / self.user_zoom.max(1.0)
+        }
+    }
+
+    pub fn display_scale(&self) -> f32 {
+        if self.high_quality_scaling {
+            1.0
+        } else if self.is_pixel_perfect {
+            self.user_zoom
+        } else {
+            1.0
+        }
     }
 
     fn recalculate(&mut self) {
@@ -158,7 +252,11 @@ impl ZoomState {
 
         const MIN_RENDER_DIM: u32 = 320;
 
-        if zoom < 1.0 {
+        if self.high_quality_scaling {
+            self.render_size = self.display_size;
+            self.camera_zoom = zoom;
+            self.is_pixel_perfect = true; // Always native, so no interest in "blowing up" pixel-perfectly
+        } else if zoom < 1.0 {
             self.render_size = self.display_size;
             self.camera_zoom = zoom;
             self.is_pixel_perfect = false;

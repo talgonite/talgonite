@@ -11,6 +11,7 @@ import { CancelDrag, DragDropItem } from "drag_drop.slint";
 import { Theme } from "../theme.slint";
 import { HorizontalBox, VerticalBox } from "std-widgets.slint";
 import { Icon } from "./icon.slint";
+import { PlatformState } from "../platform_state.slint";
 
 component HotBarSlotView inherits Rectangle {
     in property <SlotPanelType> panel-type;
@@ -56,7 +57,7 @@ component HotBarSlotView inherits Rectangle {
             }
         ]
     }
-    if key-num <= 12: Text {
+    if key-num <= 12 && !PlatformState.is-android: Text {
         text: key-num < 9 ? key-num + 1 : (key-num == 9 ? "0" : (key-num == 10 ? "-" : "="));
         font-size: 9px;
         color: #808080;
@@ -69,8 +70,13 @@ component HotBarSlotView inherits Rectangle {
         draggable: slot > 0;
         slot-index: slot;
         panel-type: panel-type;
+        clicked => {
+            if PlatformState.is-android && slot > 0 {
+                GameState.use-action(panel-type, slot);
+            }
+        }
         double-clicked => {
-            if slot > 0 {
+            if !PlatformState.is-android && slot > 0 {
                 GameState.use-action(panel-type, slot);
             }
         }
@@ -97,9 +103,10 @@ component HotBarSlotView inherits Rectangle {
     ]
 }
 
-component InventorySlots inherits HorizontalLayout {
+component InventorySlots inherits GridLayout {
     spacing: 4px;
     for idx in 12: HotBarSlotView {
+        row: PlatformState.is-android ? idx / 6 : 0;
         key-num: idx;
         panel-type: SlotPanelType.item;
         slot: GameState.inventory[idx].slot;
@@ -109,9 +116,10 @@ component InventorySlots inherits HorizontalLayout {
     }
 }
 
-component SpellSlots inherits HorizontalLayout {
+component SpellSlots inherits GridLayout {
     spacing: 4px;
     for idx in 12: HotBarSlotView {
+        row: PlatformState.is-android ? idx / 6 : 0;
         key-num: idx;
         panel-type: SlotPanelType.spell;
         slot: GameState.spells[idx].slot;
@@ -120,9 +128,10 @@ component SpellSlots inherits HorizontalLayout {
     }
 }
 
-component SkillSlots inherits HorizontalLayout {
+component SkillSlots inherits GridLayout {
     spacing: 4px;
     for idx in 12: HotBarSlotView {
+        row: PlatformState.is-android ? idx / 6 : 0;
         key-num: idx;
         panel-type: SlotPanelType.skill;
         slot: GameState.skills[idx].slot;
@@ -133,10 +142,11 @@ component SkillSlots inherits HorizontalLayout {
     }
 }
 
-component CustomHotBarSlots inherits HorizontalLayout {
+component CustomHotBarSlots inherits GridLayout {
     in property <int> offset: 0;
     spacing: 4px;
     for idx in 12: HotBarSlotView {
+        row: PlatformState.is-android ? idx / 6 : 0;
         key-num: idx;
         panel-type: SlotPanelType.hotbar;
         slot: offset + idx;
@@ -149,8 +159,8 @@ component CustomHotBarSlots inherits HorizontalLayout {
 }
 
 export component HotBar inherits Rectangle {
-    width: 596px;
-    height: 50px;
+    width: PlatformState.is-android ? 316px : 596px;
+    height: PlatformState.is-android ? 104px : 50px;
 
     // Subtle fading background
     Rectangle {
@@ -166,11 +176,11 @@ export component HotBar inherits Rectangle {
 
         // Mode selector buttons - minimal dots
         VerticalLayout {
-            spacing: 1px;
+            spacing: PlatformState.is-android ? 2px : 1px;
             alignment: center;
             for i in 6: Rectangle {
                 width: 16px;
-                height: 6px;
+                height: PlatformState.is-android ? 10px : 6px;
                 background: {
                     if GameState.current-hotbar-panel == i {
                         @linear-gradient(90deg, #FFC040 0%, #FF8040 100%)
@@ -189,6 +199,13 @@ export component HotBar inherits Rectangle {
                         GameState.set-hotbar-panel(i);
                     }
                 }
+            }
+
+            if PlatformState.is-android: Text {
+                text: "\u{270E}";
+                font-size: 14px;
+                color: #808080;
+                stroke: #00000080;
             }
         }
 

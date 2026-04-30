@@ -1,35 +1,11 @@
 use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
-use tracing::info;
+use tracing::debug;
 
 use crate::game_files::GameFiles;
+use crate::metafile_store::MetafileStore;
 
 pub struct SlintAssetLoader {
     item_palette_table: rangemap::RangeMap<u16, u16>,
-}
-
-fn get_portrait_file(sprite_id: u16) -> Option<&'static str> {
-    match sprite_id {
-        24 => Some("npc/npcbase/hof.0.ktx2"),
-        27 => Some("npc/npcbase/knight1.0.ktx2"),
-        29 => Some("npc/npcbase/knight1.0.ktx2"),
-        30 => Some("npc/npcbase/buls.0.ktx2"),
-        34 => Some("npc/npcbase/seba.0.ktx2"),
-        35 => Some("npc/npcbase/mage.0.ktx2"),
-        37 => Some("npc/npcbase/black.0.ktx2"),
-        39 => Some("npc/npcbase/setoa.0.ktx2"),
-        40 => Some("npc/npcbase/ia.0.ktx2"),
-        42 => Some("npc/npcbase/white.0.ktx2"),
-        56 => Some("npc/npcbase/bank.0.ktx2"),
-        57 => Some("npc/npcbase/helper.0.ktx2"),
-        60 => Some("npc/npcbase/seaus.0.ktx2"),
-        61 => Some("npc/npcbase/shaman.0.ktx2"),
-        64 => Some("npc/npcbase/girl.0.ktx2"),
-        93 => Some("npc/npcbase/man1.0.ktx2"),
-        94 => Some("npc/npcbase/spskill.0.ktx2"),
-        163 => Some("npc/npcbase/rho.0.ktx2"),
-        516 => Some("npc/npcbase/inn.0.ktx2"),
-        _ => None,
-    }
 }
 
 impl SlintAssetLoader {
@@ -65,26 +41,39 @@ impl SlintAssetLoader {
     pub fn load_npc_portrait(
         &self,
         game_files: &GameFiles,
+        metafile_store: &MetafileStore,
         sprite_id: u16,
+        npc_name: Option<&str>,
     ) -> Result<Image, String> {
-        if let Some(filename) = get_portrait_file(sprite_id) {
-            let bytes = game_files
-                .get_file(filename)
-                .ok_or_else(|| format!("File not found: {}", filename))?;
-            let (w, h, data) =
-                rendering::texture::Texture::load_ktx2(&bytes).map_err(|e| e.to_string())?;
-            let mut pixel_buffer = SharedPixelBuffer::<Rgba8Pixel>::new(w, h);
-            pixel_buffer
-                .make_mut_slice()
-                .copy_from_slice(bytemuck::cast_slice(&data));
-            info!("NPC portrait {} loaded from file {}", sprite_id, filename);
-            return Ok(Image::from_rgba8(pixel_buffer));
-        }
+        if let Some(npc_name) = npc_name {
+            if let Some(meta) = metafile_store.get_metafile_data("NPCIllust") {
+                if let Some(entry) = meta.entries.iter().find(|e| e.name == npc_name) {
+                    if let Some(spf_name) = entry.fields.first() {
+                        let filename = spf_name.to_lowercase().replace(".spf", ".0.ktx2");
+                        let full_path = format!("npc/npcbase/{}", filename);
 
-        info!(
-            "NPC sprite {} not found in portrait map, falling back to MPF",
-            sprite_id
-        );
+                        if let Some(bytes) = game_files.get_file(&full_path) {
+                            let (w, h, data) = rendering::texture::Texture::load_ktx2(&bytes)
+                                .map_err(|e| e.to_string())?;
+                            let mut pixel_buffer = SharedPixelBuffer::<Rgba8Pixel>::new(w, h);
+                            pixel_buffer
+                                .make_mut_slice()
+                                .copy_from_slice(bytemuck::cast_slice(&data));
+                            debug!(
+                                "NPC portrait {} (name: {}) loaded from metafile path {}",
+                                sprite_id, npc_name, full_path
+                            );
+                            return Ok(Image::from_rgba8(pixel_buffer));
+                        }
+                    }
+                }
+            }
+
+            debug!(
+                "NPC {} not found in portrait map, falling back to MPF",
+                npc_name
+            );
+        }
 
         let mpf_path = format!("hades/mns{:03}.mpf.bin", sprite_id);
         let mpf_bytes = game_files

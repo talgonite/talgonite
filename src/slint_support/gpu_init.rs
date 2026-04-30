@@ -51,15 +51,16 @@ pub fn initialize_gpu_world(
         scale_factor: window.scale_factor(),
     });
     world.insert_resource(Camera { camera });
-    let initial_zoom = world
+    let (initial_zoom, high_quality_scaling) = world
         .get_resource::<crate::settings_types::Settings>()
-        .map(|s| s.graphics.scale)
-        .unwrap_or(1.0);
+        .map(|s| (s.graphics.scale, s.graphics.high_quality_scaling))
+        .unwrap_or((1.0, true));
     world.insert_resource(ZoomState::new(
         size.width,
         size.height,
         window.scale_factor(),
         initial_zoom,
+        high_quality_scaling,
     ));
     // Initialize frame channels & an empty pool (textures allocated lazily after notifier knows desired size)
     if !world.contains_resource::<FrameChannels>() {

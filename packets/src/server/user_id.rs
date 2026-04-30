@@ -16,10 +16,14 @@ impl TryFromBytes for UserId {
         let direction = cursor.read_u8()?;
         let _ = cursor.read_u8()?; //LI: what is this for?
         let base_class = cursor.read_u8()?;
-        let _ = cursor.read_u8()?; //LI: what is this for?
-        let _ = cursor.read_u8()?; //LI: what is this for?
-        let _ = cursor.read_u8()?; //LI: what is this for?;
+        // let _ = cursor.read_u8()?; //LI: what is this for?
+        // let _ = cursor.read_u8()?; //LI: what is this for?
+        // let _ = cursor.read_u8()?; //LI: what is this for?;
 
-        Ok(UserId { id, direction, base_class })
+        Ok(UserId {
+            id,
+            direction,
+            base_class,
+        })
     }
 }

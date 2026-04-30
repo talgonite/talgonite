@@ -4,7 +4,9 @@ use crossbeam_channel::Sender;
 use slint::ComponentHandle;
 
 use crate::webui::ipc::{UiToCore, WorldListFilter};
-use crate::{DragDropState, GameState, MainWindow, NpcDialogState, SlotPanelType, SocialStatus, SocialStatusState};
+use crate::{
+    ContextMenuState, DragDropState, GameState, MainWindow, NpcDialogState, SlotPanelType, SocialStatus, SocialStatusState,
+};
 
 /// Convert Slint SlotPanelType to game types.
 fn slint_to_game_panel(panel: SlotPanelType) -> game_types::SlotPanelType {
@@ -37,11 +39,12 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
 
     // NPC Dialog callbacks
     let npc_dialog = slint_app.global::<NpcDialogState>();
+    let context_menu = slint_app.global::<ContextMenuState>();
 
     // Menu select (option selection)
     {
         let tx = tx.clone();
-        npc_dialog.on_select_option(move |id, name: slint::SharedString| {
+        npc_dialog.on_select_option_request(move |id, name: slint::SharedString| {
             let _ = tx.send(UiToCore::MenuSelect {
                 id,
                 name: name.to_string(),
@@ -52,14 +55,7 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
     // Close dialog
     {
         let tx = tx.clone();
-        let slint_app_weak = slint_app.as_weak();
-        npc_dialog.on_close(move || {
-            // Hide the dialog immediately in UI
-            if let Some(app) = slint_app_weak.upgrade() {
-                let npc = app.global::<NpcDialogState>();
-                npc.set_visible(false);
-                npc.set_text_entry_visible(false);
-            }
+        npc_dialog.on_close_request(move || {
             let _ = tx.send(UiToCore::MenuClose);
         });
     }
@@ -67,12 +63,7 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
     // Text entry submission
     {
         let tx = tx.clone();
-        let slint_app_weak = slint_app.as_weak();
-        npc_dialog.on_submit_text(move |text: slint::SharedString| {
-            if let Some(app) = slint_app_weak.upgrade() {
-                let npc = app.global::<NpcDialogState>();
-                npc.set_text_entry_visible(false);
-            }
+        npc_dialog.on_submit_text_request(move |text: slint::SharedString| {
             let _ = tx.send(UiToCore::MenuSelect {
                 id: 0,
                 name: text.to_string(),
@@ -87,6 +78,20 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
             if tx.send(UiToCore::Unequip { slot: slot as u8 }).is_err() {
                 tracing::error!("Failed to send Unequip message");
             }
+        });
+    }
+
+    {
+        let tx = tx.clone();
+        context_menu.on_item_selected_request(move |id| {
+            let _ = tx.send(UiToCore::WorldContextMenuSelect { id });
+        });
+    }
+
+    {
+        let tx = tx.clone();
+        context_menu.on_close_request(move || {
+            let _ = tx.send(UiToCore::WorldContextMenuClose);
         });
     }
 
@@ -184,6 +189,53 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
             {
                 tracing::error!("Failed to send ChatSubmit (whisper) message");
             }
+        });
+    }
+
+    // Toggle groupable
+    {
+        let tx = tx.clone();
+        game_state.on_toggle_groupable(move || {
+            let _ = tx.send(UiToCore::ToggleGroupable);
+        });
+    }
+
+    // === Group callbacks ===
+    {
+        let tx = tx.clone();
+        game_state.on_send_group_invite(move |name: slint::SharedString| {
+            let _ = tx.send(UiToCore::SendGroupInvite {
+                name: name.to_string(),
+            });
+        });
+    }
+    {
+        let tx = tx.clone();
+        game_state.on_respond_group_invite(move |accept, source_name: slint::SharedString| {
+            let _ = tx.send(UiToCore::RespondGroupInvite {
+                accept,
+                source_name: source_name.to_string(),
+            });
+        });
+    }
+    {
+        let tx = tx.clone();
+        game_state.on_kick_group_member(move |name: slint::SharedString| {
+            let _ = tx.send(UiToCore::KickGroupMember {
+                name: name.to_string(),
+            });
+        });
+    }
+    {
+        let tx = tx.clone();
+        game_state.on_leave_group(move || {
+            let _ = tx.send(UiToCore::LeaveGroup);
+        });
+    }
+    {
+        let tx = tx.clone();
+        game_state.on_request_self_profile(move || {
+            let _ = tx.send(UiToCore::RequestSelfProfile);
         });
     }
 

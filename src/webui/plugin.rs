@@ -16,23 +16,44 @@ use packets::server::display_menu::DisplayMenuPayload;
 use packets::types::{EntityType, MenuType};
 
 use crate::app_state::AppState;
-use crate::events::{AbilityEvent, ChatEvent, InventoryEvent, SessionEvent};
+use crate::events::{
+    AbilityEvent, ChatEvent, InteractionIntentAction, InteractionIntentEvent,
+    InteractionTargetKind, InventoryEvent, SessionEvent, WorldContextMenuEntry,
+};
 use crate::render_plugin::game::WebUi;
+use crate::rich_text::RichText;
+use crate::slint_plugin::ShowSelfProfileEvent;
 use rendering::scene::utils::screen_to_iso_tile;
 
 use super::keyring;
 use super::settings::{SavedCredential, SavedCredentialPublic, ServerEntry, SettingsFile};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ActiveWindowType {
+    #[default]
+    None,
+    Dialog,
+    Menu,
+    Info,
+}
+
 #[derive(Resource, Default)]
 pub struct ActiveMenuContext {
+    pub window_type: ActiveWindowType,
     pub entity_type: Option<EntityType>,
     pub entity_id: u32,
     /// For shop menus and text entry, this is the pursuit_id to send back
     /// For text (list) menus, this is 0 (pursuit_id comes from the selected option)
-    pub pursuit_id: u16,
+    pub pursuit_id: Option<u16>,
     pub menu_type: Option<MenuType>,
     pub args: String,
     pub dialog_id: Option<u16>,
+}
+
+#[derive(Resource, Default, Debug, Clone)]
+pub struct ActiveWorldContextMenu {
+    pub title: String,
+    pub entries: Vec<WorldContextMenuEntry>,
 }
 
 #[derive(Message)]
@@ -52,10 +73,11 @@ impl Plugin for UiBridgePlugin {
             .init_resource::<WorldListState>()
             .init_resource::<EquipmentState>()
             .init_resource::<PlayerProfileState>()
+            .init_resource::<GroupState>()
             .init_resource::<crate::ecs::hotbar::HotbarState>()
             .init_resource::<crate::ecs::hotbar::HotbarPanelState>()
             .init_resource::<ActiveMenuContext>()
-            .add_message::<LoginResultEvt>()
+            .init_resource::<ActiveWorldContextMenu>()
             .init_resource::<CursorPosition>()
             .init_resource::<ButtonInput<KeyCode>>()
             .init_resource::<ButtonInput<MouseButton>>()
@@ -100,22 +122,8 @@ fn emit_snapshot_on_state_change(
 ) {
     let current = *app_state.get();
     if prev.map(|p| p != current).unwrap_or(true) {
-        let logins_public: Vec<SavedCredentialPublic> =
-            settings.saved_credentials.iter().map(to_public).collect();
-
-        writer.write(UiOutbound(CoreToUi::Snapshot {
-            servers: settings.servers.clone(),
-            current_server_id: settings.gameplay.current_server_id,
-            logins: logins_public,
-            login_error: None,
-        }));
-        writer.write(UiOutbound(CoreToUi::SettingsSync {
-            xray_size: settings.graphics.xray_size as u8,
-            sfx_volume: settings.audio.sfx_volume,
-            music_volume: settings.audio.music_volume,
-            scale: settings.graphics.scale,
-            key_bindings: (&settings.key_bindings).into(),
-        }));
+        writer.write(UiOutbound(settings.to_snapshot_message(None)));
+        writer.write(UiOutbound(settings.to_sync_message()));
         *prev = Some(current);
     }
 }
@@ -162,6 +170,21 @@ struct InputBindingResources<'w> {
     unified_bindings: ResMut<'w, crate::input::UnifiedInputBindings>,
 }
 
+#[derive(bevy::ecs::system::SystemParam)]
+struct WorldContextResources<'w, 's> {
+    world_context_menu: ResMut<'w, ActiveWorldContextMenu>,
+    interaction_intents: MessageWriter<'w, InteractionIntentEvent>,
+    profile_events: MessageWriter<'w, ShowSelfProfileEvent>,
+    entity_ids: Query<
+        'w,
+        's,
+        (
+            &'static crate::ecs::components::EntityId,
+            Option<&'static crate::ecs::components::LocalPlayer>,
+        ),
+    >,
+}
+
 fn handle_ui_inbound_ingame(
     mut inbound: MessageReader<UiInbound>,
     mut outbound: MessageWriter<UiOutbound>,
@@ -172,11 +195,13 @@ fn handle_ui_inbound_ingame(
     mut next_state: ResMut<NextState<AppState>>,
     outbox: Res<crate::network::PacketOutbox>,
     ui_state: UiStateResources,
-    menu_ctx: Res<ActiveMenuContext>,
+    mut menu_ctx: ResMut<ActiveMenuContext>,
     bindings: InputBindingResources,
     hotbar_res: HotbarResources,
     interaction_res: InteractionResources,
     mut local_social_status: ResMut<crate::ecs::social_status::LocalSocialStatus>,
+    mut group_state: ResMut<GroupState>,
+    mut world_context: WorldContextResources,
 ) {
     let mut hotbar_state = hotbar_res.hotbar_state;
     let mut hotbar_panel_state = hotbar_res.hotbar_panel_state;
@@ -192,6 +217,87 @@ fn handle_ui_inbound_ingame(
             UiToCore::InputKeyboard { .. } | UiToCore::InputPointer { .. } => {
                 // Handled by handle_input_bridge
             }
+            UiToCore::WorldContextMenuSelect { id } => {
+                let selected = world_context
+                    .world_context_menu
+                    .entries
+                    .iter()
+                    .find(|entry| entry.id == *id)
+                    .cloned();
+
+                world_context.world_context_menu.entries.clear();
+                world_context.world_context_menu.title.clear();
+                outbound.write(UiOutbound(CoreToUi::HideWorldContextMenu));
+
+                let Some(selected) = selected else {
+                    continue;
+                };
+
+                match selected.action {
+                    crate::events::WorldContextAction::WalkToTile { tile_x, tile_y } => {
+                        world_context.interaction_intents.write(InteractionIntentEvent {
+                            source: crate::events::ClickSource::AndroidLongPress,
+                            target_kind: InteractionTargetKind::Ground,
+                            target_entity: None,
+                            tile_x,
+                            tile_y,
+                            action: InteractionIntentAction::WalkToTile,
+                        });
+                    }
+                    crate::events::WorldContextAction::ApproachActor {
+                        entity,
+                        tile_x,
+                        tile_y,
+                    } => {
+                        world_context.interaction_intents.write(InteractionIntentEvent {
+                            source: crate::events::ClickSource::AndroidLongPress,
+                            target_kind: InteractionTargetKind::Actor,
+                            target_entity: Some(entity),
+                            tile_x,
+                            tile_y,
+                            action: InteractionIntentAction::ApproachAndFace,
+                        });
+                    }
+                    crate::events::WorldContextAction::ViewProfile { entity, is_self } => {
+                        if is_self {
+                            world_context
+                                .profile_events
+                                .write(ShowSelfProfileEvent::SelfRequested);
+                            outbox.send(&packets::client::SelfProfileRequest {});
+                        } else if let Ok((entity_id, _)) = world_context.entity_ids.get(entity) {
+                            world_context
+                                .profile_events
+                                .write(ShowSelfProfileEvent::OtherRequested);
+                            outbox.send(&packets::client::Click::TargetEntity(entity_id.id));
+                        }
+                    }
+                    crate::events::WorldContextAction::PickUpItem { tile_x, tile_y } => {
+                        outbox.send(&packets::client::Pickup {
+                            destination_slot: 0,
+                            source_point: (tile_x.max(0) as u16, tile_y.max(0) as u16),
+                        });
+                    }
+                    crate::events::WorldContextAction::SpeakToNpc { entity } => {
+                        if let Ok((entity_id, _)) = world_context.entity_ids.get(entity) {
+                            outbox.send(&packets::client::Click::TargetEntity(entity_id.id));
+                        }
+                    }
+                    crate::events::WorldContextAction::InteractWalls { walls } => {
+                        for (tile_x, tile_y, is_right) in walls {
+                            outbox.send(&packets::client::Click::TargetWall {
+                                x: tile_x.max(0) as u16,
+                                y: tile_y.max(0) as u16,
+                                is_right,
+                            });
+                        }
+                    }
+                }
+            }
+            UiToCore::WorldContextMenuClose => {
+                world_context.world_context_menu.entries.clear();
+                world_context.world_context_menu.title.clear();
+                outbound.write(UiOutbound(CoreToUi::HideWorldContextMenu));
+            }
             UiToCore::WorldMapClick {
                 map_id,
                 x,
@@ -205,6 +311,12 @@ fn handle_ui_inbound_ingame(
                 });
             }
             UiToCore::MenuSelect { id, name } => {
+                if menu_ctx.window_type == ActiveWindowType::Info {
+                    menu_ctx.window_type = ActiveWindowType::None;
+                    outbound.write(UiOutbound(CoreToUi::DisplayMenuClose));
+                    continue;
+                }
+
                 if let Some(dialog_id) = menu_ctx.dialog_id {
                     if let Some(entity_type) = menu_ctx.entity_type {
                         let mut final_dialog_id = *id;
@@ -224,7 +336,7 @@ fn handle_ui_inbound_ingame(
                         outbox.send(&packets::client::DialogInteraction {
                             entity_type,
                             entity_id: menu_ctx.entity_id,
-                            pursuit_id: menu_ctx.pursuit_id,
+                            pursuit_id: menu_ctx.pursuit_id.unwrap_or(0),
                             dialog_id: final_dialog_id as u16,
                             args,
                         });
@@ -232,50 +344,40 @@ fn handle_ui_inbound_ingame(
                     continue;
                 }
 
-                let (pursuit_id, args) = if menu_ctx.pursuit_id > 0 {
-                    let is_slot_interaction = matches!(
-                        menu_ctx.menu_type,
-                        Some(MenuType::ShowPlayerItems)
-                            | Some(MenuType::ShowPlayerSpells)
-                            | Some(MenuType::ShowPlayerSkills)
-                    );
+                let is_slot_interaction = matches!(
+                    menu_ctx.menu_type,
+                    Some(MenuType::ShowPlayerItems)
+                        | Some(MenuType::ShowPlayerSpells)
+                        | Some(MenuType::ShowPlayerSkills)
+                );
 
-                    let args = if is_slot_interaction {
-                        packets::client::MenuInteractionArgs::Slot(*id as u8)
-                    } else {
-                        let mut topics = Vec::new();
-                        if !menu_ctx.args.is_empty() {
-                            topics.push(menu_ctx.args.clone());
-                        }
-                        if !name.is_empty() {
-                            topics.push(name.clone());
-                        }
-                        packets::client::MenuInteractionArgs::Topics(topics)
-                    };
-
-                    (menu_ctx.pursuit_id, args)
+                let args = if is_slot_interaction {
+                    packets::client::MenuInteractionArgs::Slot(*id as u8)
                 } else {
-                    let pursuit_id = *id as u16;
-                    let args = if !menu_ctx.args.is_empty() {
-                        let mut topics = Vec::new();
+                    let mut topics = Vec::new();
+                    if !menu_ctx.args.is_empty() {
                         topics.push(menu_ctx.args.clone());
-                        if !name.is_empty() {
-                            topics.push(name.clone());
-                        }
-                        packets::client::MenuInteractionArgs::Topics(topics)
-                    } else {
+                    }
+                    if !name.is_empty() {
+                        topics.push(name.clone());
+                    }
+
+                    if topics.is_empty() {
                         packets::client::MenuInteractionArgs::Slot(0)
-                    };
-                    (pursuit_id, args)
+                    } else {
+                        packets::client::MenuInteractionArgs::Topics(topics)
+                    }
                 };
 
                 if let Some(entity_type) = menu_ctx.entity_type {
                     outbox.send(&packets::client::MenuInteraction {
                         entity_type,
                         entity_id: menu_ctx.entity_id,
-                        pursuit_id,
+                        pursuit_id: menu_ctx.pursuit_id.unwrap_or(*id as _),
                         args,
                     });
+                } else {
+                    tracing::warn!("MenuSelect with no entity_type in context");
                 }
             }
             UiToCore::MenuClose => {
@@ -284,7 +386,7 @@ fn handle_ui_inbound_ingame(
                         outbox.send(&packets::client::DialogInteraction {
                             entity_type,
                             entity_id: menu_ctx.entity_id,
-                            pursuit_id: menu_ctx.pursuit_id,
+                            pursuit_id: menu_ctx.pursuit_id.unwrap_or(0),
                             dialog_id,
                             args: packets::client::DialogInteractionArgs::None,
                         });
@@ -316,21 +418,8 @@ fn handle_ui_inbound_ingame(
                 }
             }
             UiToCore::RequestSnapshot => {
-                let logins_public: Vec<SavedCredentialPublic> =
-                    settings.saved_credentials.iter().map(to_public).collect();
-                outbound.write(UiOutbound(CoreToUi::Snapshot {
-                    servers: settings.servers.clone(),
-                    current_server_id: settings.gameplay.current_server_id,
-                    logins: logins_public,
-                    login_error: None,
-                }));
-                outbound.write(UiOutbound(CoreToUi::SettingsSync {
-                    xray_size: settings.graphics.xray_size as u8,
-                    sfx_volume: settings.audio.sfx_volume,
-                    music_volume: settings.audio.music_volume,
-                    scale: settings.graphics.scale,
-                    key_bindings: (&settings.key_bindings).into(),
-                }));
+                outbound.write(UiOutbound(settings.to_snapshot_message(None)));
+                outbound.write(UiOutbound(settings.to_sync_message()));
             }
             UiToCore::SettingsChange { xray_size } => {
                 settings.graphics.xray_size = crate::settings_types::XRaySize::from_u8(*xray_size);
@@ -376,6 +465,7 @@ fn handle_ui_inbound_ingame(
                 check_conflict!(settings);
                 check_conflict!(refresh);
                 check_conflict!(basic_attack);
+                check_conflict!(auto_attack_toggle);
                 check_conflict!(hotbar_slot_1);
                 check_conflict!(hotbar_slot_2);
                 check_conflict!(hotbar_slot_3);
@@ -413,6 +503,7 @@ fn handle_ui_inbound_ingame(
                 set_field!(settings);
                 set_field!(refresh);
                 set_field!(basic_attack);
+                set_field!(auto_attack_toggle);
                 set_field!(hotbar_slot_1);
                 set_field!(hotbar_slot_2);
                 set_field!(hotbar_slot_3);
@@ -458,6 +549,7 @@ fn handle_ui_inbound_ingame(
                 clear_field!(settings);
                 clear_field!(refresh);
                 clear_field!(basic_attack);
+                clear_field!(auto_attack_toggle);
                 clear_field!(hotbar_slot_1);
                 clear_field!(hotbar_slot_2);
                 clear_field!(hotbar_slot_3);
@@ -784,6 +876,33 @@ fn handle_ui_inbound_ingame(
                     );
                 }
             },
+            // --- Group actions (opcode 46 / ToggleGroup 47) ---
+            UiToCore::ToggleGroupable => {
+                outbox.send(&packets::client::ToggleGroup);
+                group_state.is_groupable = !group_state.is_groupable;
+            }
+            UiToCore::SendGroupInvite { name } => {
+                outbox.send(&packets::client::GroupInvite::Request { name: name.clone() });
+            }
+            UiToCore::RespondGroupInvite { accept, source_name } => {
+                if *accept {
+                    outbox.send(&packets::client::GroupInvite::Forced {
+                        name: source_name.clone(),
+                    });
+                    outbox.send(&packets::client::SelfProfileRequest {});
+                }
+                group_state.pending_invite = None;
+            }
+            UiToCore::KickGroupMember { name } => {
+                outbox.send(&packets::client::GroupInvite::Request { name: name.clone() });
+            }
+            UiToCore::LeaveGroup => {
+                outbox.send(&packets::client::ToggleGroup);
+                outbox.send(&packets::client::SelfProfileRequest {});
+            }
+            UiToCore::RequestSelfProfile => {
+                outbox.send(&packets::client::SelfProfileRequest {});
+            }
             _ => {}
         }
     }
@@ -794,6 +913,7 @@ fn handle_ui_inbound_login(
     mut outbound: MessageWriter<UiOutbound>,
     mut settings: ResMut<SettingsFile>,
     mut commands: Commands,
+    storage_config: Res<crate::resources::StorageConfig>,
     bindings: InputBindingResources,
 ) {
     let mut input_bindings = bindings.input_bindings;
@@ -807,21 +927,8 @@ fn handle_ui_inbound_login(
             }
             UiToCore::ReturnToMainMenu => {}
             UiToCore::RequestSnapshot => {
-                let logins_public: Vec<SavedCredentialPublic> =
-                    settings.saved_credentials.iter().map(to_public).collect();
-                outbound.write(UiOutbound(CoreToUi::Snapshot {
-                    servers: settings.servers.clone(),
-                    current_server_id: settings.gameplay.current_server_id,
-                    logins: logins_public,
-                    login_error: None,
-                }));
-                outbound.write(UiOutbound(CoreToUi::SettingsSync {
-                    xray_size: settings.graphics.xray_size as u8,
-                    sfx_volume: settings.audio.sfx_volume,
-                    music_volume: settings.audio.music_volume,
-                    scale: settings.graphics.scale,
-                    key_bindings: (&settings.key_bindings).into(),
-                }));
+                outbound.write(UiOutbound(settings.to_snapshot_message(None)));
+                outbound.write(UiOutbound(settings.to_sync_message()));
             }
             UiToCore::LoginSubmit {
                 server_id,
@@ -873,14 +980,7 @@ fn handle_ui_inbound_login(
                         server_id
                     );
                 }
-                let logins_public: Vec<SavedCredentialPublic> =
-                    settings.saved_credentials.iter().map(to_public).collect();
-                outbound.write(UiOutbound(CoreToUi::Snapshot {
-                    servers: settings.servers.clone(),
-                    current_server_id: settings.gameplay.current_server_id,
-                    logins: logins_public,
-                    login_error: None,
-                }));
+                outbound.write(UiOutbound(settings.to_snapshot_message(None)));
             }
             UiToCore::LoginUseSaved { id } => {
                 println!("[webui] LoginUseSaved: id={}", id);
@@ -942,16 +1042,9 @@ fn handle_ui_inbound_login(
                                 "[webui] LoginUseSaved: server {} not found in settings",
                                 server_id
                             );
-                            let logins_public: Vec<SavedCredentialPublic> =
-                                settings.saved_credentials.iter().map(to_public).collect();
-                            outbound.write(UiOutbound(CoreToUi::Snapshot {
-                                servers: settings.servers.clone(),
-                                current_server_id: settings.gameplay.current_server_id,
-                                logins: logins_public,
-                                login_error: Some(LoginError::Network(
-                                    "Server missing".to_string(),
-                                )),
-                            }));
+                            outbound.write(UiOutbound(settings.to_snapshot_message(Some(
+                                LoginError::Network("Server missing".to_string()),
+                            ))));
                             emitted_snapshot = true;
                         }
                     }
@@ -960,16 +1053,9 @@ fn handle_ui_inbound_login(
                             "[webui] LoginUseSaved: keyring missing password for id={} ({}). Prompting user to re-enter.",
                             cred_id, err
                         );
-                        let logins_public: Vec<SavedCredentialPublic> =
-                            settings.saved_credentials.iter().map(to_public).collect();
-                        outbound.write(UiOutbound(CoreToUi::Snapshot {
-                            servers: settings.servers.clone(),
-                            current_server_id: settings.gameplay.current_server_id,
-                            logins: logins_public,
-                            login_error: Some(LoginError::Network(
-                                "Missing saved password".to_string(),
-                            )),
-                        }));
+                        outbound.write(UiOutbound(settings.to_snapshot_message(Some(
+                            LoginError::Network("Missing saved password".to_string()),
+                        ))));
                         emitted_snapshot = true;
                     }
                 }
@@ -986,27 +1072,12 @@ fn handle_ui_inbound_login(
             }
             UiToCore::LoginRemoveSaved { id } => {
                 let _ = keyring::delete_password(id);
-                settings.remove_credential(id);
-
-                let logins_public: Vec<SavedCredentialPublic> =
-                    settings.saved_credentials.iter().map(to_public).collect();
-                outbound.write(UiOutbound(CoreToUi::Snapshot {
-                    servers: settings.servers.clone(),
-                    current_server_id: settings.gameplay.current_server_id,
-                    logins: logins_public,
-                    login_error: None,
-                }));
+                settings.remove_credential(id, &storage_config);
+                outbound.write(UiOutbound(settings.to_snapshot_message(None)));
             }
             UiToCore::ServersChangeCurrent { id } => {
                 settings.gameplay.current_server_id = Some(*id);
-                let logins_public: Vec<SavedCredentialPublic> =
-                    settings.saved_credentials.iter().map(to_public).collect();
-                outbound.write(UiOutbound(CoreToUi::Snapshot {
-                    servers: settings.servers.clone(),
-                    current_server_id: settings.gameplay.current_server_id,
-                    logins: logins_public,
-                    login_error: None,
-                }));
+                outbound.write(UiOutbound(settings.to_snapshot_message(None)));
             }
             UiToCore::ServersAdd { server } => {
                 let new_id = next_id(settings.servers.iter().map(|s| s.id));
@@ -1018,42 +1089,21 @@ fn handle_ui_inbound_login(
                 if settings.gameplay.current_server_id.is_none() {
                     settings.gameplay.current_server_id = Some(new_id);
                 }
-                let logins_public: Vec<SavedCredentialPublic> =
-                    settings.saved_credentials.iter().map(to_public).collect();
-                outbound.write(UiOutbound(CoreToUi::Snapshot {
-                    servers: settings.servers.clone(),
-                    current_server_id: settings.gameplay.current_server_id,
-                    logins: logins_public,
-                    login_error: None,
-                }));
+                outbound.write(UiOutbound(settings.to_snapshot_message(None)));
             }
             UiToCore::ServersEdit { server } => {
                 if let Some(s) = settings.servers.iter_mut().find(|s| s.id == server.id) {
                     s.name = server.name.clone();
                     s.address = server.address.clone();
                 }
-                let logins_public: Vec<SavedCredentialPublic> =
-                    settings.saved_credentials.iter().map(to_public).collect();
-                outbound.write(UiOutbound(CoreToUi::Snapshot {
-                    servers: settings.servers.clone(),
-                    current_server_id: settings.gameplay.current_server_id,
-                    logins: logins_public,
-                    login_error: None,
-                }));
+                outbound.write(UiOutbound(settings.to_snapshot_message(None)));
             }
             UiToCore::ServersRemove { id } => {
                 settings.servers.retain(|s| s.id != *id);
                 if settings.gameplay.current_server_id == Some(*id) {
                     settings.gameplay.current_server_id = settings.servers.first().map(|s| s.id);
                 }
-                let logins_public: Vec<SavedCredentialPublic> =
-                    settings.saved_credentials.iter().map(to_public).collect();
-                outbound.write(UiOutbound(CoreToUi::Snapshot {
-                    servers: settings.servers.clone(),
-                    current_server_id: settings.gameplay.current_server_id,
-                    logins: logins_public,
-                    login_error: None,
-                }));
+                outbound.write(UiOutbound(settings.to_snapshot_message(None)));
             }
             UiToCore::SettingsChange { xray_size } => {
                 settings.graphics.xray_size = crate::settings_types::XRaySize::from_u8(*xray_size);
@@ -1098,6 +1148,7 @@ fn handle_ui_inbound_login(
                 check_conflict!(settings);
                 check_conflict!(refresh);
                 check_conflict!(basic_attack);
+                check_conflict!(auto_attack_toggle);
                 check_conflict!(hotbar_slot_1);
                 check_conflict!(hotbar_slot_2);
                 check_conflict!(hotbar_slot_3);
@@ -1135,6 +1186,7 @@ fn handle_ui_inbound_login(
                 set_field!(settings);
                 set_field!(refresh);
                 set_field!(basic_attack);
+                set_field!(auto_attack_toggle);
                 set_field!(hotbar_slot_1);
                 set_field!(hotbar_slot_2);
                 set_field!(hotbar_slot_3);
@@ -1180,6 +1232,7 @@ fn handle_ui_inbound_login(
                 clear_field!(settings);
                 clear_field!(refresh);
                 clear_field!(basic_attack);
+                clear_field!(auto_attack_toggle);
                 clear_field!(hotbar_slot_1);
                 clear_field!(hotbar_slot_2);
                 clear_field!(hotbar_slot_3);
@@ -1208,9 +1261,20 @@ fn handle_ui_inbound_login(
     }
 }
 
+/// Server sends these when group membership changes; we request SelfProfile so the group panel stays in sync.
+fn is_group_change_system_message(msg: &str) -> bool {
+    let msg = msg.trim();
+    msg.eq_ignore_ascii_case("Group disbanded.")
+        || msg.contains("is joining this group.")
+        || msg.contains("is leaving this group.")
+        || msg.contains("has taken command of the group.")
+}
+
 fn bridge_chat_events(
     mut chat_events: MessageReader<ChatEvent>,
     mut outbound: MessageWriter<UiOutbound>,
+    mut menu_ctx: ResMut<ActiveMenuContext>,
+    outbox: Option<Res<crate::network::PacketOutbox>>,
 ) {
     use packets::server::{PublicMessageType, ServerMessageType};
 
@@ -1218,6 +1282,11 @@ fn bridge_chat_events(
     for evt in chat_events.read() {
         match evt {
             ChatEvent::ServerMessage(pkt) => {
+                if let Some(ref out) = outbox {
+                    if is_group_change_system_message(&pkt.message) {
+                        out.send(&packets::client::SelfProfileRequest {});
+                    }
+                }
                 let (show_in_message_box, show_in_action_bar, color) = match pkt.message_type {
                     ServerMessageType::Whisper => (true, false, Some("#60a5fa".to_string())),
                     ServerMessageType::OrangeBar1
@@ -1229,12 +1298,37 @@ fn bridge_chat_events(
                     }
                     ServerMessageType::GroupChat => (true, false, Some("#9acd32".to_string())),
                     ServerMessageType::GuildChat => (true, false, Some("#808000".to_string())),
-                    ServerMessageType::UserOptions
-                    | ServerMessageType::ScrollWindow
+                    ServerMessageType::ScrollWindow
                     | ServerMessageType::NonScrollWindow
-                    | ServerMessageType::WoodenBoard
-                    | ServerMessageType::ClosePopup
-                    | ServerMessageType::PersistentMessage => {
+                    | ServerMessageType::WoodenBoard => {
+                        let title = match pkt.message_type {
+                            ServerMessageType::WoodenBoard => "Wooden Board",
+                            _ => "Information",
+                        };
+                        menu_ctx.window_type = ActiveWindowType::Info;
+                        menu_ctx.dialog_id = None;
+                        menu_ctx.menu_type = None;
+                        menu_ctx.pursuit_id = None;
+                        menu_ctx.entity_type = None;
+                        menu_ctx.entity_id = 0;
+
+                        outbound.write(UiOutbound(CoreToUi::DisplayMenu {
+                            title: title.to_string(),
+                            text: pkt.message.clone(),
+                            sprite_id: 0,
+                            entry_type: crate::webui::ipc::MenuEntryType::TextOptions,
+                            entries: vec![MenuEntryUi::text_option("Close".to_string(), 0)],
+                        }));
+                        continue;
+                    }
+                    ServerMessageType::ClosePopup => {
+                        if menu_ctx.window_type == ActiveWindowType::Info {
+                            menu_ctx.window_type = ActiveWindowType::None;
+                            outbound.write(UiOutbound(CoreToUi::DisplayMenuClose));
+                        }
+                        continue;
+                    }
+                    ServerMessageType::UserOptions | ServerMessageType::PersistentMessage => {
                         continue;
                     }
                 };
@@ -1285,6 +1379,7 @@ fn bridge_session_events(
     mut profile_state: ResMut<PlayerProfileState>,
     mut show_profile: MessageWriter<crate::slint_plugin::ShowSelfProfileEvent>,
     mut world_list_state: ResMut<WorldListState>,
+    mut group_state: ResMut<GroupState>,
 ) {
     for evt in session_events.read() {
         match evt {
@@ -1295,9 +1390,10 @@ fn bridge_session_events(
             SessionEvent::DisplayDialog(pkt) => {
                 match pkt {
                     packets::server::DisplayDialog::Show { header, payload } => {
+                        menu_ctx.window_type = ActiveWindowType::Dialog;
                         menu_ctx.entity_type = Some(header.entity_type);
                         menu_ctx.entity_id = header.source_id;
-                        menu_ctx.pursuit_id = header.pursuit_id;
+                        menu_ctx.pursuit_id = Some(header.pursuit_id);
                         menu_ctx.dialog_id = Some(header.dialog_id);
                         menu_ctx.menu_type = None;
                         menu_ctx.args.clear();
@@ -1345,7 +1441,6 @@ fn bridge_session_events(
                                 prompt,
                                 sprite_id: header.sprite,
                                 args: String::new(),
-                                pursuit_id: header.pursuit_id,
                                 entries,
                             }));
                         } else {
@@ -1354,12 +1449,12 @@ fn bridge_session_events(
                                 text: header.text.clone(),
                                 sprite_id: header.sprite,
                                 entry_type: crate::webui::ipc::MenuEntryType::TextOptions,
-                                pursuit_id: header.pursuit_id,
                                 entries,
                             }));
                         }
                     }
                     packets::server::DisplayDialog::Close => {
+                        menu_ctx.window_type = ActiveWindowType::None;
                         menu_ctx.dialog_id = None;
                         outbound.write(UiOutbound(CoreToUi::DisplayMenuClose));
                     }
@@ -1376,10 +1471,44 @@ fn bridge_session_events(
                 profile_state.guild_rank = pkt.guild_rank.clone();
                 profile_state.title = pkt.title.clone();
                 profile_state.nation = pkt.nation;
-                profile_state.group_string = pkt.group_string.clone();
+                profile_state.group_string = RichText::parse(&pkt.group_string);
                 profile_state.group_open = pkt.group_open;
-                profile_state.profile_text = pkt.group_string.clone();
+                profile_state.profile_text = RichText::parse(&pkt.group_string);
                 profile_state.legend_marks = pkt.legend_marks.clone();
+                // Parse group_string into member list. Server marks leader with "* " prefix (e.g. "* Tedders").
+                group_state.is_groupable = pkt.group_open;
+                let lines: Vec<String> = RichText::parse(&pkt.group_string)
+                    .to_plain_string()
+                    .lines()
+                    .map(|l| l.trim().to_string())
+                    .filter(|l| !l.is_empty())
+                    .collect();
+                group_state.members = lines
+                    .into_iter()
+                    .filter(|l| {
+                        let s = l.as_str();
+                        if s.eq_ignore_ascii_case("Group members") {
+                            return false;
+                        }
+                        if s.starts_with("Total ") && s["Total ".len()..].trim().parse::<u32>().is_ok() {
+                            return false;
+                        }
+                        if s.starts_with("Spouse:") {
+                            return false;
+                        }
+                        true
+                    })
+                    .map(|l| {
+                        let is_leader = l.trim_start().starts_with("* ");
+                        let name = l
+                            .trim_start()
+                            .strip_prefix("* ")
+                            .unwrap_or(l.trim_start())
+                            .trim()
+                            .to_string();
+                        (name, is_leader)
+                    })
+                    .collect();
                 show_profile.write(crate::slint_plugin::ShowSelfProfileEvent::SelfUpdate);
             }
             SessionEvent::OtherProfile(pkt) => {
@@ -1392,7 +1521,8 @@ fn bridge_session_events(
                 profile_state.title = pkt.title.clone();
                 profile_state.nation = pkt.nation;
                 profile_state.group_open = pkt.group_open;
-                profile_state.profile_text = pkt.profile_text.clone().unwrap_or_default();
+                profile_state.profile_text =
+                    RichText::parse(pkt.profile_text.as_deref().unwrap_or_default());
                 profile_state.social_status = pkt.social_status;
                 profile_state.legend_marks = pkt.legend_marks.clone();
                 profile_state.portrait = pkt.portrait.clone();
@@ -1419,6 +1549,7 @@ fn bridge_session_events(
                 }));
             }
             SessionEvent::DisplayMenu(pkt) => {
+                menu_ctx.window_type = ActiveWindowType::Menu;
                 menu_ctx.entity_type = pkt.header.entity_type.into();
                 menu_ctx.entity_id = pkt.header.source_id;
                 menu_ctx.menu_type = Some(pkt.menu_type);
@@ -1431,14 +1562,14 @@ fn bridge_session_events(
 
                 match &pkt.payload {
                     DisplayMenuPayload::Menu { options } => {
-                        menu_ctx.pursuit_id = 0;
+                        menu_ctx.pursuit_id = None;
                         entries = options
                             .iter()
                             .map(|(text, id)| MenuEntryUi::text_option(text.clone(), *id as i32))
                             .collect();
                     }
                     DisplayMenuPayload::MenuWithArgs { args, options } => {
-                        menu_ctx.pursuit_id = 0;
+                        menu_ctx.pursuit_id = None;
                         menu_ctx.args = args.clone();
                         entries = options
                             .iter()
@@ -1446,7 +1577,7 @@ fn bridge_session_events(
                             .collect();
                     }
                     DisplayMenuPayload::ShowItems { pursuit_id, items } => {
-                        menu_ctx.pursuit_id = *pursuit_id;
+                        menu_ctx.pursuit_id = Some(*pursuit_id);
                         entry_type = crate::webui::ipc::MenuEntryType::Items;
                         entries = items
                             .iter()
@@ -1463,7 +1594,7 @@ fn bridge_session_events(
                             .collect();
                     }
                     DisplayMenuPayload::ShowSpells { pursuit_id, spells } => {
-                        menu_ctx.pursuit_id = *pursuit_id;
+                        menu_ctx.pursuit_id = Some(*pursuit_id);
                         entry_type = crate::webui::ipc::MenuEntryType::Spells;
                         entries = spells
                             .iter()
@@ -1478,7 +1609,7 @@ fn bridge_session_events(
                             .collect();
                     }
                     DisplayMenuPayload::ShowSkills { pursuit_id, skills } => {
-                        menu_ctx.pursuit_id = *pursuit_id;
+                        menu_ctx.pursuit_id = Some(*pursuit_id);
                         entry_type = crate::webui::ipc::MenuEntryType::Skills;
                         entries = skills
                             .iter()
@@ -1493,16 +1624,16 @@ fn bridge_session_events(
                             .collect();
                     }
                     DisplayMenuPayload::TextEntry { pursuit_id } => {
-                        menu_ctx.pursuit_id = *pursuit_id;
+                        menu_ctx.pursuit_id = Some(*pursuit_id);
                         is_text_entry = true;
                     }
                     DisplayMenuPayload::TextEntryWithArgs { args, pursuit_id } => {
-                        menu_ctx.pursuit_id = *pursuit_id;
+                        menu_ctx.pursuit_id = Some(*pursuit_id);
                         menu_ctx.args = args.clone();
                         is_text_entry = true;
                     }
                     DisplayMenuPayload::ShowPlayerItems { pursuit_id, slots } => {
-                        menu_ctx.pursuit_id = *pursuit_id;
+                        menu_ctx.pursuit_id = Some(*pursuit_id);
                         entry_type = crate::webui::ipc::MenuEntryType::Items;
                         entries = slots
                             .iter()
@@ -1520,7 +1651,7 @@ fn bridge_session_events(
                             .collect();
                     }
                     DisplayMenuPayload::ShowPlayerSpells { pursuit_id } => {
-                        menu_ctx.pursuit_id = *pursuit_id;
+                        menu_ctx.pursuit_id = Some(*pursuit_id);
                         entry_type = crate::webui::ipc::MenuEntryType::Spells;
                         entries = ability_state
                             .spells
@@ -1535,7 +1666,7 @@ fn bridge_session_events(
                             .collect();
                     }
                     DisplayMenuPayload::ShowPlayerSkills { pursuit_id } => {
-                        menu_ctx.pursuit_id = *pursuit_id;
+                        menu_ctx.pursuit_id = Some(*pursuit_id);
                         entry_type = crate::webui::ipc::MenuEntryType::Skills;
                         entries = ability_state
                             .skills
@@ -1558,7 +1689,6 @@ fn bridge_session_events(
                         prompt: pkt.header.text.clone(),
                         sprite_id: pkt.header.sprite,
                         args: menu_ctx.args.clone(),
-                        pursuit_id: menu_ctx.pursuit_id,
                         entries,
                     }));
                 } else {
@@ -1567,9 +1697,30 @@ fn bridge_session_events(
                         text: pkt.header.text.clone(),
                         sprite_id: pkt.header.sprite,
                         entry_type,
-                        pursuit_id: menu_ctx.pursuit_id,
                         entries,
                     }));
+                }
+            }
+            SessionEvent::GroupInvite(pkt) => {
+                // Server sent group invite (opcode 99); show invite popup.
+                match pkt {
+                    packets::server::DisplayGroupInvite::Invite {
+                        source_name,
+                        group_box_info,
+                    } => {
+                        group_state.pending_invite = Some(PendingGroupInvite {
+                            source_name: source_name.clone(),
+                            group_name: group_box_info.name.clone(),
+                            group_note: group_box_info.note.clone(),
+                        });
+                    }
+                    packets::server::DisplayGroupInvite::ShowGroupBox { source_name } => {
+                        group_state.pending_invite = Some(PendingGroupInvite {
+                            source_name: source_name.clone(),
+                            group_name: String::new(),
+                            group_note: String::new(),
+                        });
+                    }
                 }
             }
             _ => {}
@@ -1686,8 +1837,9 @@ fn update_world_list_filtered(mut state: ResMut<WorldListState>, mut last_versio
             class: format!("{:?}", m.base_class),
             is_master: m.is_master,
             color: match m.color {
-                packets::server::WorldListColor::Guilded => [1.0, 0.75, 0.25, 1.0],
-                packets::server::WorldListColor::WithinLevelRange => [0.6, 0.6, 1.0, 1.0],
+                packets::server::WorldListColor::Guilded => [1.0, 0.75, 0.25, 1.0], // Gold-ish
+                packets::server::WorldListColor::Unknown => [1.0, 0.596, 0.0, 1.0], // Orange
+                packets::server::WorldListColor::WithinLevelRange => [0.6, 0.6, 1.0, 1.0], // Blue-ish
                 packets::server::WorldListColor::White => [1.0, 1.0, 1.0, 1.0],
                 packets::server::WorldListColor::NotSure => [0.5, 0.5, 0.5, 1.0],
             },
@@ -1715,8 +1867,8 @@ pub struct PlayerProfileState {
     pub title: String,
     pub nation: packets::types::Nation,
     pub group_open: bool,
-    pub group_string: String,
-    pub profile_text: String,
+    pub group_string: RichText,
+    pub profile_text: RichText,
     pub social_status: packets::types::SocialStatus,
     pub legend_marks: Vec<packets::types::LegendMarkInfo>,
     pub portrait: Option<Vec<u8>>,
@@ -1743,6 +1895,28 @@ pub struct WorldListState {
     pub filtered: Vec<WorldListMemberUi>,
     pub filter: WorldListFilter,
     pub version: u32,
+}
+
+// ---------------------------------------------------------------------------
+// Group state (from SelfProfile + DisplayGroupInvite)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default)]
+pub struct PendingGroupInvite {
+    pub source_name: String,
+    pub group_name: String,
+    pub group_note: String,
+}
+
+/// One group member: display name and whether the server marks them as leader (asterisk in SelfProfile).
+pub type GroupMemberEntry = (String, bool);
+
+#[derive(Resource, Default, Debug, Clone)]
+pub struct GroupState {
+    /// (display_name, is_leader_from_server). Leader line in group_string has "* " prefix.
+    pub members: Vec<GroupMemberEntry>,
+    pub is_groupable: bool,
+    pub pending_invite: Option<PendingGroupInvite>,
 }
 
 fn update_skill_cooldowns(
@@ -2016,17 +2190,17 @@ struct LoginTaskInner {
     password: Option<String>,
 }
 
-#[derive(Message)]
-struct LoginResultEvt(
-    Result<(network::DecryptedReceiver, network::EncryptedSender), LoginError>,
-    LoginTaskInner,
+#[derive(Component)]
+struct LoginResultComp(
+    Option<network::DecryptedReceiver>,
+    Option<network::EncryptedSender>,
+    Option<LoginTaskInner>,
 );
 
-fn handle_login_tasks(
-    mut commands: Commands,
-    mut q: Query<(Entity, &mut LoginTaskEntity)>,
-    mut res_evt: MessageWriter<LoginResultEvt>,
-) {
+#[derive(Component)]
+struct LoginErrorComp(LoginError, LoginTaskInner);
+
+fn handle_login_tasks(mut commands: Commands, mut q: Query<(Entity, &mut LoginTaskEntity)>) {
     for (e, mut task_wrap) in &mut q {
         if let Some(res) = future::block_on(future::poll_once(&mut task_wrap.0.task)) {
             println!("[webui] LoginTask completed: success={}.", res.is_ok());
@@ -2041,7 +2215,15 @@ fn handle_login_tasks(
                     password: None,
                 },
             );
-            res_evt.write(LoginResultEvt(res, inner));
+
+            match res {
+                Ok((rx, tx)) => {
+                    commands.spawn(LoginResultComp(Some(rx), Some(tx), Some(inner)));
+                }
+                Err(err) => {
+                    commands.spawn(LoginErrorComp(err, inner));
+                }
+            }
             commands.entity(e).despawn();
         }
     }
@@ -2058,130 +2240,158 @@ fn parse_host_port(address: &str) -> Option<(String, u16)> {
 }
 
 fn handle_login_results(
-    mut events: MessageReader<LoginResultEvt>,
+    mut commands: Commands,
+    mut success_q: Query<(Entity, &mut LoginResultComp)>,
+    mut error_q: Query<(Entity, &mut LoginErrorComp)>,
     mut outbound: MessageWriter<UiOutbound>,
     mut settings: ResMut<SettingsFile>,
     mut next_state: ResMut<NextState<AppState>>,
-    _app_state: Res<State<AppState>>,
-    mut commands: Commands,
 ) {
-    for LoginResultEvt(res, inner) in events.read() {
-        match res {
-            Ok((receiver, sender)) => {
-                println!(
-                    "[webui] LoginResult: success for user {} on server {}",
-                    inner.username, inner.server_id
-                );
-                // Install network manager and spawn background receive task piping into NetEventRx
-                use crate::network::NetworkManager;
-                use crate::session::runtime::{NetBgTask, NetEventRx};
-                commands.insert_resource(NetworkManager::new(sender.clone()));
-                let (tx, rx) = crossbeam_channel::unbounded::<crate::events::NetworkEvent>();
-                commands.insert_resource(NetEventRx(rx));
+    for (e, mut res) in &mut success_q {
+        let (receiver, sender, inner) = {
+            let LoginResultComp(rx, tx, inner) = &mut *res;
+            (rx.take(), tx.take(), inner.take())
+        };
 
-                // Spawn the background receiver task
-                let mut rx_loop = receiver.clone();
-                let tx_for_task = tx.clone();
-                let task = IoTaskPool::get().spawn(async move {
-                    loop {
-                        match rx_loop.receive().await {
-                            Ok((packet_id, packet_data)) => {
-                                match packets::server::Codes::try_from(packet_id) {
-                                    Ok(code) => {
-                                        let _ = tx_for_task.send(
-                                            crate::events::NetworkEvent::Packet(code, packet_data),
-                                        );
-                                    }
-                                    Err(_) => (),
-                                }
-                            }
-                            Err(_) => {
-                                let _ = tx_for_task.send(crate::events::NetworkEvent::Disconnected);
-                                break;
-                            }
+        if receiver.is_none() || sender.is_none() || inner.is_none() {
+            continue;
+        }
+        let receiver: network::DecryptedReceiver = receiver.unwrap();
+        let sender: network::EncryptedSender = sender.unwrap();
+        let inner: LoginTaskInner = inner.unwrap();
+
+        commands.entity(e).despawn();
+
+        println!(
+            "[webui] LoginResult: success for user {} on server {}",
+            inner.username, inner.server_id
+        );
+        // Spawn the background receiver task piping into NetEventRx
+        use crate::session::runtime::{NetBgTask, NetEventRx};
+        let (tx, rx) = crossbeam_channel::unbounded::<crate::events::NetworkEvent>();
+        commands.insert_resource(NetEventRx(rx));
+
+        let (outbox_tx, outbox_rx) = async_channel::unbounded::<Vec<u8>>();
+        commands.insert_resource(crate::network::PacketOutbox(outbox_tx.clone()));
+
+        let tx_for_task = tx.clone();
+        let mut rx_loop = receiver;
+
+        let reader_task = IoTaskPool::get().spawn(async move {
+            loop {
+                match rx_loop.receive().await {
+                    Ok((packet_id, packet_data)) => {
+                        use packets::server;
+                        if let Ok(code) = server::Codes::try_from(packet_id) {
+                            let _ = tx_for_task
+                                .send(crate::events::NetworkEvent::Packet(code, packet_data));
                         }
                     }
-                });
-                commands.spawn(NetBgTask(task));
-                // Emit connected event to seed tick timers
-                let _ = tx.send(crate::events::NetworkEvent::Connected);
-                // On success, if remember was requested, persist cred and password
-                if inner.remember {
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_millis() as u64)
-                        .unwrap_or(0);
-                    if let Some(pw) = &inner.password {
-                        let _ = keyring::set_password(&inner.cred_id, pw);
-                    }
-                    // Upsert saved credential record
-                    if let Some(existing) = settings
-                        .saved_credentials
-                        .iter_mut()
-                        .find(|c| c.id == inner.cred_id)
-                    {
-                        existing.last_used = now;
-                        existing.username = inner.username.clone();
-                        existing.server_id = inner.server_id;
-                    } else {
-                        settings.saved_credentials.push(SavedCredential {
-                            id: inner.cred_id.clone(),
-                            server_id: inner.server_id,
-                            username: inner.username.clone(),
-                            last_used: now,
-                            preview: None,
-                        });
+                    Err(_) => {
+                        let _ = tx_for_task.send(crate::events::NetworkEvent::Disconnected);
+                        break;
                     }
                 }
-                let server_url = settings
-                    .servers
-                    .iter()
-                    .find(|s| s.id == inner.server_id)
-                    .map(|s| s.address.clone())
-                    .unwrap_or_default();
-
-                commands.insert_resource(crate::CurrentSession {
-                    username: inner.username.clone(),
-                    server_id: inner.server_id,
-                    server_url,
-                });
-
-                let hotbars = settings.get_hotbars(inner.server_id, &inner.username);
-                let mut hotbar_state = crate::ecs::hotbar::HotbarState::new();
-                hotbar_state.config = hotbars;
-                commands.insert_resource(hotbar_state);
-                commands.insert_resource(crate::ecs::hotbar::HotbarPanelState::default());
-
-                next_state.set(AppState::InGame);
-                outbound.write(UiOutbound(CoreToUi::EnteredGame));
             }
-            Err(code) => {
-                println!(
-                    "[webui] LoginResult: failed with code {:?} for user {} on server {}",
-                    code, inner.username, inner.server_id
-                );
-                // Login failed: keep user on the current screen (login) and emit error
-                let logins_public: Vec<SavedCredentialPublic> =
-                    settings.saved_credentials.iter().map(to_public).collect();
-                outbound.write(UiOutbound(CoreToUi::Snapshot {
-                    servers: settings.servers.clone(),
-                    current_server_id: settings.gameplay.current_server_id,
-                    logins: logins_public,
-                    login_error: Some(code.clone()),
-                }));
+        });
+
+        // Spawn the background writer task on the IoTaskPool
+        let mut tx_loop = sender;
+        let writer_task = IoTaskPool::get().spawn(async move {
+            while let Ok(packet) = outbox_rx.recv().await {
+                if let Err(_) = tx_loop.send(&packet).await {
+                    break;
+                }
+                while let Ok(extra_packet) = outbox_rx.try_recv() {
+                    if let Err(_) = tx_loop.send(&extra_packet).await {
+                        return;
+                    }
+                }
+                let _ = tx_loop.flush().await;
+            }
+        });
+
+        commands.spawn(NetBgTask(reader_task));
+        commands.spawn(NetBgTask(writer_task));
+
+        // Emit connected event to seed tick timers
+        let _ = tx.send(crate::events::NetworkEvent::Connected);
+        // On success, if remember was requested, persist cred and password
+        if inner.remember {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            if let Some(pw) = &inner.password {
+                let _ = keyring::set_password(&inner.cred_id, pw);
+            }
+            // Upsert saved credential record
+            if let Some(existing) = settings
+                .saved_credentials
+                .iter_mut()
+                .find(|c| c.id == inner.cred_id)
+            {
+                existing.last_used = now;
+                existing.username = inner.username.clone();
+                existing.server_id = inner.server_id;
+            } else {
+                settings.saved_credentials.push(SavedCredential {
+                    id: inner.cred_id.clone(),
+                    server_id: inner.server_id,
+                    username: inner.username.clone(),
+                    last_used: now,
+                    preview: None,
+                });
             }
         }
+        let server_url = settings
+            .servers
+            .iter()
+            .find(|s| s.id == inner.server_id)
+            .map(|s| s.address.clone())
+            .unwrap_or_default();
+
+        commands.insert_resource(crate::CurrentSession {
+            username: inner.username.clone(),
+            server_id: inner.server_id,
+            server_url,
+        });
+
+        let hotbars = settings.get_hotbars(inner.server_id, &inner.username);
+        let mut hotbar_state = crate::ecs::hotbar::HotbarState::new();
+        hotbar_state.config = hotbars;
+        commands.insert_resource(hotbar_state);
+
+        // Load the saved hotbar panel selection
+        let saved_panel = settings.get_current_hotbar_panel(inner.server_id, &inner.username);
+        let mut hotbar_panel_state = crate::ecs::hotbar::HotbarPanelState::default();
+        hotbar_panel_state.current_panel = crate::ecs::hotbar::HotbarPanel::from_u8(saved_panel as u8);
+        commands.insert_resource(hotbar_panel_state);
+
+        next_state.set(AppState::InGame);
+        outbound.write(UiOutbound(CoreToUi::EnteredGame));
+    }
+
+    for (e, err) in &mut error_q {
+        println!(
+            "[webui] LoginResult: failed with code {:?} for user {} on server {}",
+            err.0, err.1.username, err.1.server_id
+        );
+        // Login failed: keep user on the current screen (login) and emit error
+        let logins_public: Vec<SavedCredentialPublic> =
+            settings.saved_credentials.iter().map(to_public).collect();
+        outbound.write(UiOutbound(CoreToUi::Snapshot {
+            servers: settings.servers.clone(),
+            current_server_id: settings.gameplay.current_server_id,
+            logins: logins_public,
+            login_error: Some(err.0.clone()),
+        }));
+        commands.entity(e).despawn();
     }
 }
 
 fn sync_settings_to_ui(settings: Res<SettingsFile>, mut outbound: MessageWriter<UiOutbound>) {
     if settings.is_changed() {
-        outbound.write(UiOutbound(CoreToUi::SettingsSync {
-            xray_size: settings.graphics.xray_size as u8,
-            sfx_volume: settings.audio.sfx_volume,
-            music_volume: settings.audio.music_volume,
-            scale: settings.graphics.scale,
-            key_bindings: (&settings.key_bindings).into(),
-        }));
+        outbound.write(UiOutbound(settings.to_sync_message()));
     }
 }

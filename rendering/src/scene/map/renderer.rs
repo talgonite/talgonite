@@ -1,5 +1,8 @@
 use crate::{
-    Instance, InstanceBatch, instance::InstanceFlag, make_quad, scene::map::door_data::DOOR_DATA,
+    Instance, InstanceBatch,
+    instance::InstanceFlag,
+    make_quad,
+    scene::{map::door_data::DOOR_DATA, utils::calculate_tile_z},
 };
 use etagere::Allocation;
 use glam::Vec2;
@@ -36,6 +39,7 @@ pub struct PreparedMap {
     pub palette_texture_data: Vec<u8>,
     pub wall_palette_data: Vec<u8>,
     pub wall_map_buf: Vec<u8>,
+    pub wall_heights: HashMap<u16, u16>,
     pub animations: Vec<WorldAnimationInstanceData>,
     pub wall_toggle_animations: HashMap<(u8, u8), AnimationInstanceData>,
     pub wall_toggle_tracker: HashMap<(u16, usize), ((u8, u8), Vec<Instance>)>,
@@ -217,7 +221,7 @@ impl MapRenderer {
             let tilemap_x = tile_id - (tilemap_y * TILEMAP_COLUMNS);
             let coord = FloorTile::get_position(x as f32, y as f32);
             Instance {
-                position: coord.extend(-0.75),
+                position: coord.extend(0.0),
                 tex_min: Vec2::new(
                     tilemap_x as f32 * TILEMAP_TILE_WIDTH,
                     tilemap_y as f32 * TILEMAP_TILE_HEIGHT,
@@ -361,6 +365,7 @@ impl MapRenderer {
         );
 
         let mut allocated: HashMap<u16, (etagere::Allocation, Vec<Instance>)> = HashMap::new();
+        let mut wall_heights: HashMap<u16, u16> = HashMap::new();
 
         {
             for wall in required_wall_ids {
@@ -368,6 +373,7 @@ impl MapRenderer {
 
                 let reader = ktx2::Reader::new(bytes).unwrap();
                 let info = reader.header();
+                wall_heights.insert(wall, info.pixel_height as u16);
                 let rounded_height = (info.pixel_height as u32 + 63) & !63;
                 let a = atlas
                     .allocate(etagere::size2(28, rounded_height as i32))
@@ -395,7 +401,7 @@ impl MapRenderer {
             let coord = wall.side.get_position(x, y, height as f32);
             let palette_offset = *wall_palette_table.get(&wall.palette_index()).unwrap_or(&0);
             Instance {
-                position: coord.extend((x as f32 + y as f32) / 65536.0),
+                position: coord.extend(calculate_tile_z(x, y, 0.98)),
                 tex_min: Vec2::new(
                     a.rectangle.min.x as f32 / WALL_ATLAS_WIDTH as f32,
                     a.rectangle.min.y as f32 / WALL_ATLAS_HEIGHT as f32,
@@ -543,6 +549,7 @@ impl MapRenderer {
             palette_texture_data,
             wall_palette_data,
             wall_map_buf,
+            wall_heights,
             animations,
             wall_toggle_animations: HashMap::new(),
             wall_toggle_tracker,

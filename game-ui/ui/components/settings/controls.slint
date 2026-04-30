@@ -106,6 +106,30 @@ export component ControlsTab inherits VerticalBox {
         }
 
         SectionHeader {
+            title: "World Interaction";
+        }
+
+        // picks up an item in front of or underneath you
+        KeyBindingRow {
+            action-label: "Item Pickup";
+            current-key: SettingsState.key-item-pickup-below;
+            current-key-2: SettingsState.key-item-pickup-below-2;
+            action-id: "item_pickup_below";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        Rectangle {
+            height: Theme.spacing-small;
+        }
+
+        SectionHeader {
             title: "Combat";
         }
 
@@ -114,6 +138,21 @@ export component ControlsTab inherits VerticalBox {
             current-key: SettingsState.key-basic-attack;
             current-key-2: SettingsState.key-basic-attack-2;
             action-id: "basic_attack";
+            is-rebinding: SettingsState.rebinding-action == self.action-id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(self.action-id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(self.action-id, idx);
+            }
+        }
+
+        KeyBindingRow {
+            action-label: "Auto Attack Toggle";
+            current-key: SettingsState.key-auto-attack-toggle;
+            current-key-2: SettingsState.key-auto-attack-toggle-2;
+            action-id: "auto_attack_toggle";
             is-rebinding: SettingsState.rebinding-action == self.action-id;
             rebinding-index: SettingsState.rebinding-index;
             start-rebind(idx) => {

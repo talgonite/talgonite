@@ -8,200 +8,260 @@ use crate::{
 };
 use bevy::prelude::*;
 use formats::{epf::EpfAnimationType, mpf::MpfAnimationType};
-use packets::{client, server::Sound, types::BodyAnimationKind};
+use packets::{
+    client,
+    server::{ClientWalkResponseArgs, Sound},
+    types::BodyAnimationKind,
+};
 
 /// Handles local player movement from input events.
 /// Performs collision detection against walls and other entities.
 pub fn player_movement_system(
     mut player_actions: MessageReader<PlayerAction>,
-    mut entity_events: MessageReader<EntityEvent>,
     map_query: Query<&GameMap>,
-    mut player_query: Query<(Entity, &mut Position, &mut Direction), With<LocalPlayer>>,
-    entity_positions: Query<&Position, (Or<(With<NPC>, With<Player>)>, Without<LocalPlayer>)>,
+    mut player_query: Query<
+        (
+            Entity,
+            &mut Position,
+            &mut Direction,
+            &mut UnconfirmedWalks,
+            &mut UnconfirmedTurns,
+            Option<&MovementTween>,
+        ),
+        With<LocalPlayer>,
+    >,
+    entity_positions: Query<
+        (&Position, Option<&MovementTween>),
+        (Or<(With<NPC>, With<Player>)>, Without<LocalPlayer>),
+    >,
     mut commands: Commands,
     collision_table: Option<Res<WallCollisionTable>>,
     map_collision: Option<Res<MapCollisionData>>,
     outbox: Option<Res<crate::network::PacketOutbox>>,
 ) {
+    let Ok((entity, mut position, mut facing, mut unconfirmed, mut unconfirmed_turns, tween)) = player_query.single_mut()
+    else {
+        return;
+    };
+    let Ok(map) = map_query.single() else {
+        return;
+    };
+
     // Handle walk requests from input
     for event in player_actions.read() {
         match event {
-            PlayerAction::Walk { direction, source: _ } => {
-                if handle_walk_request(
+            PlayerAction::Walk {
+                direction,
+                source: _,
+            } => {
+                if let Some(start_pos) = handle_walk_request(
+                    entity,
                     *direction,
-                    &map_query,
-                    &mut player_query,
+                    map,
+                    &mut position,
+                    &mut facing,
+                    tween,
                     &entity_positions,
                     &mut commands,
                     collision_table.as_deref(),
                     map_collision.as_deref(),
                 ) {
+                    unconfirmed.pending.push_back(UnconfirmedStep {
+                        direction: *direction,
+                        expected_from: start_pos,
+                    });
+
                     if let Some(outbox) = &outbox {
                         outbox.send(&client::ClientWalk {
-                            direction: *direction,
+                            direction: (*direction).into(),
                             step_count: 1,
                         });
                     }
                 }
             }
-            PlayerAction::Turn { direction, source: _ } => {
+            PlayerAction::Turn {
+                direction,
+                source: _,
+            } => {
+                if *facing != *direction {
+                    *facing = *direction;
+                }
+                unconfirmed_turns.pending.push_back(UnconfirmedTurn {
+                    direction: *direction,
+                });
+
                 if let Some(outbox) = &outbox {
                     outbox.send(&client::Turn {
-                        direction: *direction,
+                        direction: (*direction).into(),
                     });
                 }
             }
-        }
-    }
-
-    // Handle authoritative position updates from server
-    for event in entity_events.read() {
-        if let EntityEvent::PlayerLocation(location) = event {
-            for (entity, mut position, _dir) in player_query.iter_mut() {
-                position.x = location.x as f32;
-                position.y = location.y as f32;
-                commands.entity(entity).remove::<MovementTween>();
+            PlayerAction::ItemPickupBelow => {
+                // Handled by its own system; ignore here to keep match exhaustive
+            }
+            PlayerAction::BasicAttack | PlayerAction::ToggleAutoAttack => {
+                // Handled by auto attack system
             }
         }
     }
 }
 
 fn handle_walk_request(
-    direction: u8,
-    map_query: &Query<&GameMap>,
-    player_query: &mut Query<(Entity, &mut Position, &mut Direction), With<LocalPlayer>>,
-    entity_positions: &Query<&Position, (Or<(With<NPC>, With<Player>)>, Without<LocalPlayer>)>,
+    entity: Entity,
+    direction: Direction,
+    map: &GameMap,
+    position: &mut Position,
+    facing: &mut Direction,
+    tween: Option<&MovementTween>,
+    entity_positions: &Query<
+        (&Position, Option<&MovementTween>),
+        (Or<(With<NPC>, With<Player>)>, Without<LocalPlayer>),
+    >,
     commands: &mut Commands,
     collision_table: Option<&WallCollisionTable>,
     map_collision: Option<&MapCollisionData>,
-) -> bool {
-    let Ok((entity, position, mut facing)) = player_query.single_mut() else {
-        return false;
-    };
+) -> Option<Vec2> {
+    let delta = direction.vec2_delta();
 
-    let Ok(map) = map_query.single() else {
-        return false;
-    };
-
-    let (dx, dy) = match direction {
-        0 => (0, -1), // up
-        1 => (1, 0),  // right
-        2 => (0, 1),  // down
-        3 => (-1, 0), // left
-        _ => return false,
-    };
-
-    let new_dir = Direction::from(direction);
-    if *facing != new_dir {
-        *facing = new_dir;
+    if *facing != direction {
+        *facing = direction;
     }
 
-    let start_x = position.x;
-    let start_y = position.y;
-    let target_x = (start_x as i16 + dx).max(0).min(map.width as i16 - 1) as f32;
-    let target_y = (start_y as i16 + dy).max(0).min(map.height as i16 - 1) as f32;
+    let start_pos = tween.map(|t| t.end).unwrap_or_else(|| position.to_vec2());
+
+    let target_pos = (start_pos + delta).clamp(
+        Vec2::ZERO,
+        Vec2::new(map.width as f32 - 1.0, map.height as f32 - 1.0),
+    );
 
     // Check wall collision at target tile
-    let target_x_int = target_x as u8;
-    let target_y_int = target_y as u8;
+    let target_tile = target_pos.as_uvec2();
 
     if !crate::ecs::collision::can_walk_to(
-        target_x_int,
-        target_y_int,
+        target_tile.x as u8,
+        target_tile.y as u8,
         collision_table,
         map_collision,
     ) {
-        return false;
+        return None;
     }
 
     // Check entity collision (other players and NPCs)
-    let is_tile_occupied = entity_positions
-        .iter()
-        .any(|pos| (pos.x - target_x).abs() < 0.5 && (pos.y - target_y).abs() < 0.5);
+    let is_tile_occupied = entity_positions.iter().any(|(pos, movement)| {
+        occupied_tile(pos, movement) == (target_tile.x as u8, target_tile.y as u8)
+    });
     if is_tile_occupied {
-        return false;
+        return None;
     }
 
     // Skip creating a zero-length tween if clamped (edge of map / no movement)
-    if (target_x - start_x).abs() < f32::EPSILON && (target_y - start_y).abs() < f32::EPSILON {
-        return false;
+    if start_pos.distance_squared(target_pos) < f32::EPSILON {
+        return None;
     }
 
-    commands.entity(entity).insert(AnimationBundle::new(
-        AnimationMode::OneShot,
-        AnimationType::Player(EpfAnimationType::Walk),
-        0.10,
-        5,
+    commands.entity(entity).insert((
+        AnimationBundle::new(
+            AnimationMode::OneShot,
+            AnimationType::Player(EpfAnimationType::Walk),
+            0.10,
+            5,
+        ),
+        MovementTween {
+            start: start_pos,
+            end: target_pos,
+            elapsed: 0.0,
+            duration: 0.5,
+        },
     ));
 
-    commands.entity(entity).insert(MovementTween {
-        start_x,
-        start_y,
-        end_x: target_x,
-        end_y: target_y,
-        elapsed: 0.0,
-        duration: 0.5,
-    });
-
-    true
+    Some(start_pos)
 }
 
 /// Handles creature movement events from the server.
 pub fn entity_motion_system(
     mut commands: Commands,
     mut entity_events: MessageReader<EntityEvent>,
-    mut moved_query: Query<(Entity, &mut Direction, &EntityId, &CreatureInstance)>,
+    mut moved_query: Query<
+        (
+            Entity,
+            &mut Direction,
+            &EntityId,
+            Option<&CreatureInstance>,
+            Option<&Player>,
+        ),
+        Without<LocalPlayer>,
+    >,
 ) {
     for event in entity_events.read() {
         match event {
             EntityEvent::Walk(evt) => {
-                for (entity, mut direction, entity_id, instance) in moved_query.iter_mut() {
+                let mut found = false;
+                for (entity, mut direction, entity_id, instance, player) in moved_query.iter_mut() {
                     if entity_id.id != evt.source_id {
                         continue;
                     }
 
-                    let (dx, dy) = match evt.direction {
-                        0 => (0, -1),
-                        1 => (1, 0),
-                        2 => (0, 1),
-                        3 => (-1, 0),
-                        _ => continue,
-                    };
+                    let delta = Direction::from(evt.direction).vec2_delta();
 
                     let new_dir = Direction::from(evt.direction);
                     if *direction != new_dir {
                         *direction = new_dir;
                     }
 
+                    let start_pos = Vec2::new(evt.old_point.0 as f32, evt.old_point.1 as f32);
+                    let end_pos = start_pos + delta;
+
                     commands.entity(entity).insert(MovementTween {
-                        start_x: evt.old_point.0 as f32,
-                        start_y: evt.old_point.1 as f32,
-                        end_x: (evt.old_point.0 as i32 + dx) as f32,
-                        end_y: (evt.old_point.1 as i32 + dy) as f32,
+                        start: start_pos,
+                        end: end_pos,
                         elapsed: 0.0,
                         duration: 0.5,
                     });
 
-                    if let Some(walk) = instance.instance.get_animation(MpfAnimationType::Walk) {
-                        if let Some(standing) =
-                            instance.instance.get_animation(MpfAnimationType::Standing)
+                    if let Some(instance) = instance {
+                        if let Some(walk) = instance.instance.get_animation(MpfAnimationType::Walk)
                         {
-                            commands.entity(entity).insert(AnimationBundle::new(
-                                AnimationMode::OneShotThenLoop {
-                                    loop_anim: AnimationType::Creature(MpfAnimationType::Standing),
-                                    loop_frame_count: standing.frame_count as usize,
-                                    loop_frame_duration: 0.5,
-                                },
-                                AnimationType::Creature(MpfAnimationType::Walk),
-                                0.125,
-                                walk.frame_count as usize,
-                            ));
+                            if let Some(standing) =
+                                instance.instance.get_animation(MpfAnimationType::Standing)
+                            {
+                                commands.entity(entity).insert(AnimationBundle::new(
+                                    AnimationMode::OneShotThenLoop {
+                                        loop_anim: AnimationType::Creature(
+                                            MpfAnimationType::Standing,
+                                        ),
+                                        loop_frame_count: standing.frame_count as usize,
+                                        loop_frame_duration: 0.5,
+                                    },
+                                    AnimationType::Creature(MpfAnimationType::Walk),
+                                    0.125,
+                                    walk.frame_count as usize,
+                                ));
+                            }
                         }
+                    } else if let Some(_player) = player {
+                        commands.entity(entity).insert(AnimationBundle::new(
+                            AnimationMode::OneShot,
+                            AnimationType::Player(EpfAnimationType::Walk),
+                            0.10,
+                            5,
+                        ));
                     }
+
+                    found = true;
+                    break;
+                }
+
+                if !found {
+                    tracing::warn!(
+                        "EntityEvent::Walk: No entity found with source_id {} (target: {:?}, dir: {})",
+                        evt.source_id,
+                        evt.old_point,
+                        evt.direction
+                    );
                 }
             }
             EntityEvent::Turn(turn) => {
-                for (_, mut direction, entity_id, _) in moved_query.iter_mut() {
+                for (_, mut direction, entity_id, _, _) in moved_query.iter_mut() {
                     if entity_id.id == turn.source_id {
                         let new_dir = Direction::from(turn.direction);
                         if *direction != new_dir {
@@ -257,6 +317,42 @@ pub fn player_animation_start_system(
                 BodyAnimationKind::RoundHouseKick => (EpfAnimationType::LongKickAttack, 4),
                 BodyAnimationKind::Stab => (EpfAnimationType::StabAttack, 2),
                 BodyAnimationKind::DoubleStab => (EpfAnimationType::DoubleStabAttack, 2),
+                // Emote set 1
+                BodyAnimationKind::Smile => (EpfAnimationType::Smile, 1),
+                BodyAnimationKind::Cry => (EpfAnimationType::Cry, 1),
+                BodyAnimationKind::Frown => (EpfAnimationType::Sad, 1),
+                BodyAnimationKind::Wink => (EpfAnimationType::Wink, 1),
+                BodyAnimationKind::Surprise => (EpfAnimationType::Stunned, 1),
+                BodyAnimationKind::Tongue => (EpfAnimationType::Raz, 1),
+                BodyAnimationKind::Pleasant => (EpfAnimationType::Surprise, 1),
+                BodyAnimationKind::Snore => (EpfAnimationType::Sleepy, 2),
+                BodyAnimationKind::Mouth => (EpfAnimationType::Yawn, 2),
+                BodyAnimationKind::BlowKiss => (EpfAnimationType::BlowKiss, 2),
+                BodyAnimationKind::Wave => (EpfAnimationType::Wave, 2),
+                // Emote set 2
+                BodyAnimationKind::Silly => (EpfAnimationType::BalloonElder, 1),
+                BodyAnimationKind::Cute => (EpfAnimationType::BalloonJoy, 1),
+                BodyAnimationKind::Yelling => (EpfAnimationType::BalloonSlick, 1),
+                BodyAnimationKind::Mischievous => (EpfAnimationType::BalloonScheme, 1),
+                BodyAnimationKind::Evil => (EpfAnimationType::BalloonLaser, 1),
+                BodyAnimationKind::Horror => (EpfAnimationType::BalloonGloom, 1),
+                BodyAnimationKind::PuppyDog => (EpfAnimationType::BalloonAwe, 1),
+                BodyAnimationKind::StoneFaced => (EpfAnimationType::BalloonShadow, 1),
+                BodyAnimationKind::Tears => (EpfAnimationType::BalloonSob, 3),
+                BodyAnimationKind::FiredUp => (EpfAnimationType::BalloonFire, 3),
+                BodyAnimationKind::Confused => (EpfAnimationType::BalloonDizzy, 3),
+                // Emote set 3
+                BodyAnimationKind::RockOn => (EpfAnimationType::SymbolRock, 1),
+                BodyAnimationKind::Peace => (EpfAnimationType::SymbolScissors, 1),
+                BodyAnimationKind::Stop => (EpfAnimationType::SymbolPaper, 1),
+                BodyAnimationKind::Ouch => (EpfAnimationType::SymbolScramble, 1),
+                BodyAnimationKind::Impatient => (EpfAnimationType::SymbolSilence, 3),
+                BodyAnimationKind::Shock => (EpfAnimationType::Mask, 1),
+                BodyAnimationKind::Pleasure => (EpfAnimationType::Blush, 1),
+                BodyAnimationKind::Love => (EpfAnimationType::SymbolLove, 1),
+                BodyAnimationKind::SweatDrop => (EpfAnimationType::SymbolSweat, 1),
+                BodyAnimationKind::Whistle => (EpfAnimationType::SymbolMusic, 1),
+                BodyAnimationKind::Irritation => (EpfAnimationType::SymbolAngry, 1),
                 _ => {
                     tracing::info!("Unhandled BodyAnimationKind: {:?}", anim.kind);
                     continue;
@@ -283,7 +379,7 @@ pub fn player_animation_start_system(
                     }
                 }
 
-                if !armor_supports {
+                if !anim_type.is_emote() && !armor_supports {
                     tracing::debug!(
                         "Skipping animation {:?} for player ID {} - armor does not support it",
                         anim_type,
@@ -293,11 +389,6 @@ pub fn player_animation_start_system(
                 }
             }
 
-            tracing::info!(
-                "Starting animation {:?} for player ID {}",
-                anim,
-                entity_id.id
-            );
             commands.entity(entity).insert(AnimationBundle::new(
                 AnimationMode::OneShot,
                 AnimationType::Player(anim_type),
@@ -328,11 +419,6 @@ pub fn player_animation_start_system(
             };
 
             let idle_anim = instance.instance.get_animation(MpfAnimationType::Standing);
-            tracing::info!(
-                "Starting animation {:?} for NPC ID {}",
-                anim_type,
-                entity_id.id
-            );
             commands.entity(entity).insert(AnimationBundle::new(
                 match idle_anim {
                     Some(idle) => AnimationMode::OneShotThenLoop {
@@ -359,19 +445,149 @@ pub fn movement_tween_system(
 ) {
     for (entity, mut pos, mut tween) in query.iter_mut() {
         tween.elapsed += time.delta().as_secs_f32();
-        let raw_t = (tween.elapsed / tween.duration).clamp(0.0, 1.0);
+        let t = (tween.elapsed / tween.duration).clamp(0.0, 1.0);
 
-        // Linear interpolation for constant walking speed
-        let t = raw_t;
-
-        pos.x = tween.start_x + (tween.end_x - tween.start_x) * t;
-        pos.y = tween.start_y + (tween.end_y - tween.start_y) * t;
+        *pos = tween.start.lerp(tween.end, t).into();
 
         if tween.elapsed >= tween.duration {
-            // Land exactly on the intended tile (eliminate FP drift)
-            pos.x = tween.end_x;
-            pos.y = tween.end_y;
+            *pos = tween.end.into();
             commands.entity(entity).remove::<MovementTween>();
+        }
+    }
+}
+
+/// Handles movement reconciliation for the local player.
+/// Snaps back on rejection and replays unconfirmed steps.
+pub fn player_reconciliation_system(
+    mut entity_events: MessageReader<EntityEvent>,
+    mut map_events: MessageReader<crate::events::MapEvent>,
+    mut player_query: Query<
+        (
+            Entity,
+            &EntityId,
+            &mut Position,
+            &mut Direction,
+            &mut UnconfirmedWalks,
+            &mut UnconfirmedTurns,
+            Option<&mut MovementTween>,
+        ),
+        With<LocalPlayer>,
+    >,
+    mut commands: Commands,
+) {
+    let Ok((entity, entity_id, mut position, mut direction, mut unconfirmed, mut unconfirmed_turns, mut active_tween)) = player_query.single_mut()
+    else {
+        return;
+    };
+
+    // Purge on map change
+    for event in map_events.read() {
+        if let crate::events::MapEvent::Clear = event {
+            unconfirmed.pending.clear();
+            unconfirmed.recent_deltas.clear();
+            unconfirmed_turns.pending.clear();
+        }
+    }
+
+    for event in entity_events.read() {
+        match event {
+            EntityEvent::PlayerLocation(location) => {
+                position.x = location.x as f32;
+                position.y = location.y as f32;
+                unconfirmed.pending.clear();
+                unconfirmed.recent_deltas.clear();
+                unconfirmed_turns.pending.clear();
+                commands.entity(entity).remove::<MovementTween>();
+            }
+            EntityEvent::PlayerWalkResponse(response) => {
+                let confirmed_step = unconfirmed.pending.pop_front();
+
+                if let ClientWalkResponseArgs::Accepted(_) = response.args {
+                    if let Some(step) = confirmed_step {
+                        let response_from =
+                            Vec2::new(response.from.0 as f32, response.from.1 as f32);
+                        let drift = response_from - step.expected_from;
+
+                        if drift.length_squared() > 1e-6 {
+                            unconfirmed.recent_deltas.push_back(drift);
+                            if unconfirmed.recent_deltas.len() > 3 {
+                                unconfirmed.recent_deltas.pop_front();
+                            }
+
+                            if unconfirmed.recent_deltas.len() >= 2 {
+                                let first = unconfirmed.recent_deltas[0];
+                                if unconfirmed
+                                    .recent_deltas
+                                    .iter()
+                                    .all(|&d| d.distance_squared(first) < 1e-6)
+                                {
+                                    *position += first;
+
+                                    if let Some(ref mut tween) = active_tween {
+                                        tween.start += first;
+                                        tween.end += first;
+                                    }
+
+                                    for pending in &mut unconfirmed.pending {
+                                        pending.expected_from += first;
+                                    }
+
+                                    unconfirmed.recent_deltas.clear();
+                                }
+                            }
+                        } else {
+                            unconfirmed.recent_deltas.clear();
+                        }
+                    }
+                }
+
+                if let ClientWalkResponseArgs::Rejected = response.args {
+                    unconfirmed.recent_deltas.clear();
+
+                    // Snap to server's "from" position (state before the rejected step)
+                    let mut current_pos = Vec2::new(response.from.0 as f32, response.from.1 as f32);
+                    *position = current_pos.into();
+
+                    // Replay unconfirmed steps
+                    let count = unconfirmed.pending.len();
+                    for (idx, step) in unconfirmed.pending.iter_mut().enumerate() {
+                        let delta = step.direction.vec2_delta();
+                        step.expected_from = current_pos;
+
+                        if idx < count - 1 {
+                            // Teleport for intermediate steps
+                            current_pos += delta;
+                        } else if let Some(ref mut active_tween) = active_tween {
+                            // Final step: update tween
+                            active_tween.start = current_pos;
+                            active_tween.end = current_pos + delta;
+                        } else {
+                            // Final step: snap
+                            current_pos += delta;
+                        }
+                    }
+
+                    if active_tween.is_none() {
+                        *position = current_pos.into();
+                    }
+
+                    if unconfirmed.pending.is_empty() {
+                        commands.entity(entity).remove::<MovementTween>();
+                    }
+                }
+            }
+            EntityEvent::Turn(turn) => {
+                if turn.source_id == entity_id.id {
+                    let new_dir = Direction::from(turn.direction);
+                    let predicted = unconfirmed_turns.pending.pop_front();
+
+                    if predicted.map(|p| p.direction) != Some(new_dir) {
+                        *direction = new_dir;
+                        unconfirmed_turns.pending.clear();
+                    }
+                }
+            }
+            _ => {}
         }
     }
 }

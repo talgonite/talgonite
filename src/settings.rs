@@ -1,12 +1,10 @@
 pub use crate::settings_types::*;
-use crate::storage_dir;
 use bevy::prelude::*;
 use std::fs;
 use tracing::{error, info};
 
 impl Settings {
-    pub fn load() -> Self {
-        let root = storage_dir();
+    pub fn load_from_root(root: &std::path::Path) -> Self {
         let path = root.join("settings.toml");
         let mut settings = if path.exists() {
             match fs::read_to_string(&path) {
@@ -28,37 +26,22 @@ impl Settings {
         } else {
             info!("Creating default settings at {:?}", path);
             let default_settings = Settings::default();
-            default_settings.save();
+            // Create a temporary config for the initial save if necessary, 
+            // but we can just use the path version for internal load.
+            let default_content = toml::to_string_pretty(&default_settings).unwrap();
+            let _ = fs::write(&path, default_content);
             default_settings
         };
 
-        // Load profiles
-        let profiles_dir = root.join("profiles");
-        if profiles_dir.exists() {
-            if let Ok(server_dirs) = fs::read_dir(profiles_dir) {
+        // Load profiles from servers/{server_id}/characters/
+        let servers_dir = root.join("servers");
+        if servers_dir.exists() {
+            if let Ok(server_dirs) = fs::read_dir(servers_dir) {
                 for server_dir in server_dirs.flatten() {
                     if server_dir.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                        if let Ok(char_files) = fs::read_dir(server_dir.path()) {
-                            for char_file in char_files.flatten() {
-                                if char_file.path().extension().and_then(|s| s.to_str())
-                                    == Some("toml")
-                                {
-                                    if let Ok(content) = fs::read_to_string(char_file.path()) {
-                                        if let Ok(profile) =
-                                            toml::from_str::<CharacterProfile>(&content)
-                                        {
-                                            settings.saved_credentials.push(SavedCredential {
-                                                id: profile.id.clone(),
-                                                server_id: profile.server_id,
-                                                username: profile.username.clone(),
-                                                last_used: profile.last_used,
-                                                preview: profile.preview,
-                                            });
-                                            settings.hotbars.insert(profile.id, profile.hotbars);
-                                        }
-                                    }
-                                }
-                            }
+                        let characters_dir = server_dir.path().join("characters");
+                        if characters_dir.exists() {
+                            load_profiles_from_dir(&characters_dir, &mut settings);
                         }
                     }
                 }
@@ -68,9 +51,13 @@ impl Settings {
         settings
     }
 
-    pub fn save(&self) {
-        let root = storage_dir();
-        let path = root.join("settings.toml");
+    pub fn save_to_root(&self, config: &crate::resources::StorageConfig) {
+        let root = &config.root;
+        if let Err(e) = fs::create_dir_all(root) {
+            error!("Failed to create storage directory {:?}: {}", root, e);
+            return;
+        }
+        let path = config.settings_path();
 
         // Save global settings
         match toml::to_string_pretty(self) {
@@ -87,18 +74,21 @@ impl Settings {
         // Save profiles
         for cred in &self.saved_credentials {
             let hotbars = self.get_hotbars(cred.server_id, &cred.username);
+            let current_hotbar_panel = self.get_current_hotbar_panel(cred.server_id, &cred.username);
             let profile = CharacterProfile {
                 id: cred.id.clone(),
                 server_id: cred.server_id,
                 username: cred.username.clone(),
                 last_used: cred.last_used,
                 preview: cred.preview.clone(),
-                hotbars,
+                hotbars: HotbarData {
+                    bars: hotbars,
+                    current_panel: current_hotbar_panel,
+                },
             };
 
-            let profiles_dir = root.join("profiles").join(cred.server_id.to_string());
-            let _ = fs::create_dir_all(&profiles_dir);
-            let profile_path = profiles_dir.join(format!("{}.toml", cred.username));
+            let profile_path = config.server_characters_dir(cred.server_id)
+                .join(format!("{}.toml", cred.username));
 
             match toml::to_string_pretty(&profile) {
                 Ok(content) => {
@@ -111,13 +101,10 @@ impl Settings {
         }
     }
 
-    pub fn remove_credential(&mut self, id: &str) {
+    pub fn remove_credential(&mut self, id: &str, config: &crate::resources::StorageConfig) {
         if let Some(idx) = self.saved_credentials.iter().position(|c| c.id == id) {
             let cred = self.saved_credentials.remove(idx);
-            let root = storage_dir();
-            let profile_path = root
-                .join("profiles")
-                .join(cred.server_id.to_string())
+            let profile_path = config.server_characters_dir(cred.server_id)
                 .join(format!("{}.toml", cred.username));
             if profile_path.exists() {
                 let _ = fs::remove_file(profile_path);
@@ -158,7 +145,12 @@ struct SettingsSaveTimer(Timer);
 
 impl Plugin for SettingsPlugin {
     fn build(&self, app: &mut App) {
-        let settings = Settings::load();
+        let storage_config = app
+            .world()
+            .get_resource::<crate::resources::StorageConfig>()
+            .expect("StorageConfig resource missing during SettingsPlugin::build");
+
+        let settings = Settings::load_from_root(&storage_config.root);
         app.insert_resource(settings);
         app.insert_resource(SettingsSaveTimer(Timer::from_seconds(1.0, TimerMode::Once)));
         app.add_systems(Update, save_settings_on_change);
@@ -167,6 +159,7 @@ impl Plugin for SettingsPlugin {
 
 fn save_settings_on_change(
     settings: Res<Settings>,
+    storage_config: Res<crate::resources::StorageConfig>,
     mut timer: ResMut<SettingsSaveTimer>,
     time: Res<Time>,
 ) {
@@ -177,6 +170,27 @@ fn save_settings_on_change(
     timer.0.tick(time.delta());
 
     if timer.0.just_finished() {
-        settings.save();
+        settings.save_to_root(&storage_config);
+    }
+}
+
+fn load_profiles_from_dir(dir: &std::path::Path, settings: &mut Settings) {
+    if let Ok(char_files) = fs::read_dir(dir) {
+        for char_file in char_files.flatten() {
+            if char_file.path().extension().and_then(|s| s.to_str()) == Some("toml") {
+                if let Ok(content) = fs::read_to_string(char_file.path()) {
+                    if let Ok(profile) = toml::from_str::<CharacterProfile>(&content) {
+                        settings.saved_credentials.push(SavedCredential {
+                            id: profile.id.clone(),
+                            server_id: profile.server_id,
+                            username: profile.username.clone(),
+                            last_used: profile.last_used,
+                            preview: profile.preview,
+                        });
+                        settings.hotbars.insert(profile.id, profile.hotbars);
+                    }
+                }
+            }
+        }
     }
 }

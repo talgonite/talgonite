@@ -122,6 +122,25 @@ pub enum UiToCore {
     SetSocialStatus {
         status: u8,
     },
+    ToggleGroupable,
+    SendGroupInvite {
+        name: String,
+    },
+    RespondGroupInvite {
+        accept: bool,
+        source_name: String,
+    },
+    KickGroupMember {
+        name: String,
+    },
+    /// Local player leaves the group (do not use for kicking others).
+    LeaveGroup,
+    /// Request fresh self profile (e.g. when opening group panel so group list is up to date).
+    RequestSelfProfile,
+    WorldContextMenuSelect {
+        id: i32,
+    },
+    WorldContextMenuClose,
 }
 
 /// A menu entry that can be a text option or an item with sprite
@@ -136,6 +155,12 @@ pub struct MenuEntryUi {
     pub color: u8,
     /// Cost in gold (0 = not a shop item)
     pub cost: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct WorldContextMenuEntryUi {
+    pub id: i32,
+    pub text: String,
 }
 
 impl MenuEntryUi {
@@ -208,10 +233,17 @@ pub enum CoreToUi {
         sprite_id: u16,
         /// What type of content - determines how icons are loaded
         entry_type: MenuEntryType,
-        /// Pursuit ID for shop responses (0 for text menus)
-        pursuit_id: u16,
         entries: Vec<MenuEntryUi>,
     },
+    ShowWorldContextMenu {
+        title: String,
+        x: f32,
+        y: f32,
+        anchor_width: f32,
+        anchor_height: f32,
+        entries: Vec<WorldContextMenuEntryUi>,
+    },
+    HideWorldContextMenu,
     /// Close any open menu/dialog
     DisplayMenuClose,
     /// Text entry dialog (e.g., quantity input)
@@ -222,7 +254,6 @@ pub enum CoreToUi {
         sprite_id: u16,
         /// Context arg (e.g., item name)
         args: String,
-        pursuit_id: u16,
         entries: Vec<MenuEntryUi>,
     },
     SettingsSync {
@@ -246,6 +277,7 @@ pub struct KeyBindingsUi {
     pub settings: [String; 2],
     pub refresh: [String; 2],
     pub basic_attack: [String; 2],
+    pub auto_attack_toggle: [String; 2],
     pub hotbar_slot_1: [String; 2],
     pub hotbar_slot_2: [String; 2],
     pub hotbar_slot_3: [String; 2],
@@ -279,6 +311,7 @@ impl From<&KeyBindings> for KeyBindingsUi {
             settings: kb.settings.0.clone(),
             refresh: kb.refresh.0.clone(),
             basic_attack: kb.basic_attack.0.clone(),
+            auto_attack_toggle: kb.auto_attack_toggle.0.clone(),
             hotbar_slot_1: kb.hotbar_slot_1.0.clone(),
             hotbar_slot_2: kb.hotbar_slot_2.0.clone(),
             hotbar_slot_3: kb.hotbar_slot_3.0.clone(),
