@@ -1,3 +1,15 @@
+export struct GroupMember {
+    name: string,
+    is-leader: bool,
+}
+
+export struct GroupInviteNotification {
+    visible: bool,
+    source-name: string,
+    group-name: string,
+    group-note: string,
+}
+
 export struct WorldMapNode {
     text: string,
     map_id: int,
@@ -15,6 +27,11 @@ export struct MenuEntry {
     cost: int,
 }
 
+export struct ContextMenuEntry {
+    id: int,
+    text: string,
+}
+
 export struct InventoryItem {
     slot: int,
     name: string,
@@ -22,9 +39,7 @@ export struct InventoryItem {
     quantity: int,
 }
 
-export struct Cooldown {
-    time_left: duration,
-    total: duration}
+export struct Cooldown { time_left: duration, total: duration}
 
 export struct HotbarEntry {
     name: string,
@@ -83,12 +98,16 @@ export struct WorldLabel {
     world_x: float,
     world_y: float,
     y_offset: float,
-    color_r: float,
-    color_g: float,
-    color_b: float,
-    color_a: float,
-    is_speech: bool,
+    color: brush,
     health_percent: int,
+}
+
+export struct SpeechBubble {
+    entity_id: int,
+    text: styled-text,
+    world_x: float,
+    world_y: float,
+    y_offset: float,
 }
 
 export struct WorldListMemberUi {
@@ -113,7 +132,7 @@ export struct NpcDialogData {
 }
 
 export struct ChatMessage {
-    text: string,
+    text: styled-text,
     color: brush,
 }
 
@@ -202,7 +221,11 @@ export global GameState {
     // display_scale is how much the render texture is scaled up for display
     // (display_size / render_size, typically user_zoom for pixel-perfect rendering)
     in-out property <float> display_scale: 1;
+    in-out property <string> responsive-mode: "normal";
+    in-out property <bool> responsive-compact: false;
+    in-out property <bool> responsive-wide: false;
     in-out property <[WorldLabel]> world_labels: [];
+    in-out property <[SpeechBubble]> speech_bubbles: [];
     in-out property <[ChatMessage]> chat-messages: [];
     in-out property <[string]> action-bar-messages: [];
     in-out property <int> action-bar-update-counter: 0;
@@ -237,6 +260,11 @@ export global GameState {
         group-requests-enabled: true,
     };
     in-out property <int> current-hotbar-panel: 0;
+    in-out property <bool> show-group: false;
+    in-out property <bool> is-groupable: false;
+    in-out property <bool> is-group-leader: false;
+    in-out property <[GroupMember]> group-members: [];
+    in-out property <GroupInviteNotification> group-invite: { visible: false, source-name: "", group-name: "", group-note: "" };
     callback world-map-click(int, int, int, int);
     callback set-hotbar-panel(int);
     callback send-chat(string);
@@ -245,8 +273,14 @@ export global GameState {
     callback refresh-world-list();
     callback set-world-list-filter(string, bool, string); // class, master_only, search
 
-    // Use action on slot: panel type, slot index
     callback use-action(SlotPanelType, int);
+    // Group: invite/kick (Request 02), accept (Forced 03 + inviter name), leave (ToggleGroup 0x2F), refresh
+    callback toggle-groupable();
+    callback send-group-invite(string);
+    callback respond-group-invite(bool, string);
+    callback kick-group-member(string);
+    callback leave-group();
+    callback request-self-profile();
 }
 
 export global PopupState {
@@ -266,6 +300,44 @@ export global PopupState {
     }
     public function hide() {
         root.visible = false;
+    }
+}
+
+export global ContextMenuState {
+    in-out property <string> title: "";
+    in-out property <[ContextMenuEntry]> items: [];
+    in-out property <bool> visible: false;
+    in-out property <length> x: 0px;
+    in-out property <length> y: 0px;
+    in-out property <length> anchor-width: 0px;
+    in-out property <length> anchor-height: 0px;
+    callback item-selected-request(int);
+    callback close-request();
+
+    public function show(title: string, items: [ContextMenuEntry], x: length, y: length, w: length, h: length) {
+        root.title = title;
+        root.items = items;
+        root.x = x;
+        root.y = y;
+        root.anchor-width = w;
+        root.anchor-height = h;
+        root.visible = true;
+    }
+
+    public function select-item(id: int) {
+        root.visible = false;
+        item-selected-request(id);
+    }
+
+    public function close() {
+        root.visible = false;
+        close-request();
+    }
+
+    public function hide() {
+        root.visible = false;
+        root.title = "";
+        root.items = [];
     }
 }
 

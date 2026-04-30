@@ -1,3 +1,6 @@
+//! Opcode 47 (0x2F). No payload.
+//! Used for: toggling "accepting invites" and for leaving the current group (leader or not).
+
 use crate::ToBytes;
 
 use super::Codes;

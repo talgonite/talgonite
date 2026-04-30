@@ -119,6 +119,25 @@ pub enum UiToCore {
     SetWorldListFilter {
         filter: WorldListFilter,
     },
+    ToggleGroupable,
+    SendGroupInvite {
+        name: String,
+    },
+    RespondGroupInvite {
+        accept: bool,
+        source_name: String,
+    },
+    KickGroupMember {
+        name: String,
+    },
+    /// Local player leaves the group (do not use for kicking others).
+    LeaveGroup,
+    /// Request fresh self profile (e.g. when opening group panel so group list is up to date).
+    RequestSelfProfile,
+    WorldContextMenuSelect {
+        id: i32,
+    },
+    WorldContextMenuClose,
 }
 
 /// A menu entry that can be a text option or an item with sprite
@@ -133,6 +152,12 @@ pub struct MenuEntryUi {
     pub color: u8,
     /// Cost in gold (0 = not a shop item)
     pub cost: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct WorldContextMenuEntryUi {
+    pub id: i32,
+    pub text: String,
 }
 
 impl MenuEntryUi {
@@ -207,6 +232,15 @@ pub enum CoreToUi {
         entry_type: MenuEntryType,
         entries: Vec<MenuEntryUi>,
     },
+    ShowWorldContextMenu {
+        title: String,
+        x: f32,
+        y: f32,
+        anchor_width: f32,
+        anchor_height: f32,
+        entries: Vec<WorldContextMenuEntryUi>,
+    },
+    HideWorldContextMenu,
     /// Close any open menu/dialog
     DisplayMenuClose,
     /// Text entry dialog (e.g., quantity input)

@@ -403,8 +403,18 @@ fn draw_frame(
 
     render_hardware.queue.submit([encoder.finish()]);
 
-    // Send the just-rendered back buffer to UI as front buffer
-    let _ = channels.front_buffer_tx.try_send(back);
+    // Publish only the newest completed frame; recycle any unpublished older one.
+    let mut latest_front_buffer = channels
+        .latest_front_buffer
+        .lock()
+        .expect("latest front buffer mutex poisoned");
+    if let Some(stale_texture) = latest_front_buffer.replace(back) {
+        let _ = channels
+            .control_tx
+            .try_send(ControlMessage::ReleaseFrontBufferTexture {
+                texture: stale_texture,
+            });
+    }
 }
 
 /// Track which entity currently has a hover label so we can remove it when hover changes.

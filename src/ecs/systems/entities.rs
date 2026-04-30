@@ -59,7 +59,7 @@ pub fn spawn_entities_system(
                     if ent_id.id == *id {
                         commands
                             .entity(entity)
-                            .insert((LocalPlayer, CameraTarget, UnconfirmedWalks::default()));
+                            .insert((LocalPlayer, CameraTarget, UnconfirmedWalks::default(), UnconfirmedTurns::default()));
                         break;
                     }
                 }
@@ -69,7 +69,8 @@ pub fn spawn_entities_system(
             | SessionEvent::DisplayDialog(_)
             | SessionEvent::SelfProfile(_)
             | SessionEvent::OtherProfile(_)
-            | SessionEvent::WorldList(_) => {}
+            | SessionEvent::WorldList(_)
+            | SessionEvent::GroupInvite(_) => {}
         }
     }
 
@@ -264,7 +265,7 @@ fn spawn_display_player(
 
     let is_local = Some(player.id) == local_id;
     if is_local {
-        player_entity.insert((LocalPlayer, CameraTarget, UnconfirmedWalks::default()));
+        player_entity.insert((LocalPlayer, CameraTarget, UnconfirmedWalks::default(), UnconfirmedTurns::default()));
     } else {
         player_entity.insert(HoverName::new(player.name.clone()));
     }

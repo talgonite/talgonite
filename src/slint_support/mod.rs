@@ -20,6 +20,30 @@ use std::rc::Rc;
 use crate::MainWindow;
 use state_bridge::{SlintUiChannels, SlintWindow};
 
+fn current_platform_name() -> &'static str {
+    if cfg!(target_os = "android") {
+        "android"
+    } else if cfg!(target_os = "windows") {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else if cfg!(target_os = "linux") {
+        "linux"
+    } else {
+        "unknown"
+    }
+}
+
+fn apply_platform_state(window: &crate::MainWindow) {
+    let platform_state = slint::ComponentHandle::global::<crate::PlatformState>(window);
+
+    platform_state.set_platform_name(slint::SharedString::from(current_platform_name()));
+    platform_state.set_is_windows(cfg!(target_os = "windows"));
+    platform_state.set_is_macos(cfg!(target_os = "macos"));
+    platform_state.set_is_linux(cfg!(target_os = "linux"));
+    platform_state.set_is_android(cfg!(target_os = "android"));
+}
+
 /// Marker that GPU + surface + scene/camera are ready for systems.
 #[derive(Resource, Default)]
 pub struct SlintGpuReady(pub bool);
@@ -47,6 +71,7 @@ pub fn attach_slint_ui(mut app: App) -> MainWindow {
     app.cleanup();
 
     let slint_app = MainWindow::new().unwrap();
+    apply_platform_state(&slint_app);
 
     // Set up input event queues
     let key_event_queue = input_bridge::new_shared_queue();
@@ -163,7 +188,8 @@ pub fn attach_slint_ui(mut app: App) -> MainWindow {
         std::time::Duration::from_millis(100),
         move || {
             if let Some(app_rc) = app_weak.upgrade() {
-                if last_update_for_timer.borrow().elapsed() >= std::time::Duration::from_millis(100) {
+                if last_update_for_timer.borrow().elapsed() >= std::time::Duration::from_millis(100)
+                {
                     if let Ok(mut app) = app_rc.try_borrow_mut() {
                         app.update();
                         *last_update_for_timer.borrow_mut() = std::time::Instant::now();

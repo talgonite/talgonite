@@ -124,6 +124,26 @@ fn empty_model<T: Clone + 'static>() -> slint::ModelRc<T> {
     slint::ModelRc::new(slint::VecModel::from(Vec::<T>::new()))
 }
 
+fn responsive_mode_for(render_size: (u32, u32)) -> &'static str {
+    let (width, height) = render_size;
+
+    if width <= 1024 || height <= 640 {
+        "compact"
+    } else if width >= 1600 && height >= 900 {
+        "wide"
+    } else {
+        "normal"
+    }
+}
+
+fn sync_responsive_state(game_state: &crate::GameState, render_size: (u32, u32)) {
+    let mode = responsive_mode_for(render_size);
+
+    game_state.set_responsive_mode(slint::SharedString::from(mode));
+    game_state.set_responsive_compact(mode == "compact");
+    game_state.set_responsive_wide(mode == "wide");
+}
+
 fn reset_game_state_for_main_menu(window: &crate::MainWindow) {
     let game_state = slint::ComponentHandle::global::<crate::GameState>(window);
 
@@ -146,8 +166,10 @@ fn reset_game_state_for_main_menu(window: &crate::MainWindow) {
     game_state.set_viewport_width(0.0);
     game_state.set_viewport_height(0.0);
     game_state.set_display_scale(1.0);
+    sync_responsive_state(&game_state, (0, 0));
 
     game_state.set_world_labels(empty_model());
+    game_state.set_speech_bubbles(empty_model());
     game_state.set_chat_messages(empty_model());
     game_state.set_action_bar_messages(empty_model());
     game_state.set_action_bar_update_counter(0);
@@ -180,6 +202,13 @@ fn reset_game_state_for_main_menu(window: &crate::MainWindow) {
     game_state.set_profile(profile);
 
     game_state.set_current_hotbar_panel(0);
+
+    // Reset group state
+    game_state.set_show_group(false);
+    game_state.set_is_groupable(false);
+    game_state.set_is_group_leader(false);
+    game_state.set_group_members(empty_model());
+    game_state.set_group_invite(crate::GroupInviteNotification::default());
 }
 
 pub fn apply_core_to_slint(
@@ -412,14 +441,16 @@ pub fn apply_core_to_slint(
                             .unwrap_or("#d0d0d0");
                         let color = parse_color_hex(color_str);
 
+                        let rich_text = crate::rich_text::RichText::parse(entry.text.as_str());
                         chat_messages.push(crate::ChatMessage {
-                            text: slint::SharedString::from(entry.text.as_str()),
+                            text: rich_text.to_slint_styled_text(),
                             color,
                         });
                     }
 
                     if entry.show_in_action_bar {
-                        action_bar_messages.push(slint::SharedString::from(entry.text.as_str()));
+                        let rich_text = crate::rich_text::RichText::parse(entry.text.as_str());
+                        action_bar_messages.push(slint::SharedString::from(rich_text.to_plain_string().as_str()));
                         while action_bar_messages.len() > 4 {
                             action_bar_messages.remove(0);
                         }
@@ -529,6 +560,36 @@ pub fn apply_core_to_slint(
                     text_entry_prompt: slint::SharedString::default(),
                     text_entry_args: slint::SharedString::default(),
                 });
+            }
+            crate::webui::ipc::CoreToUi::ShowWorldContextMenu {
+                title,
+                x,
+                y,
+                anchor_width,
+                anchor_height,
+                entries,
+            } => {
+                let context_menu =
+                    slint::ComponentHandle::global::<crate::ContextMenuState>(&strong);
+                let slint_entries: Vec<crate::ContextMenuEntry> = entries
+                    .iter()
+                    .map(|entry| crate::ContextMenuEntry {
+                        id: entry.id,
+                        text: slint::SharedString::from(entry.text.as_str()),
+                    })
+                    .collect();
+
+                context_menu.invoke_show(
+                    slint::SharedString::from(title.as_str()),
+                    slint::ModelRc::new(slint::VecModel::from(slint_entries)),
+                    *x,
+                    *y,
+                    *anchor_width,
+                    *anchor_height,
+                );
+            }
+            crate::webui::ipc::CoreToUi::HideWorldContextMenu => {
+                slint::ComponentHandle::global::<crate::ContextMenuState>(&strong).invoke_hide();
             }
             crate::webui::ipc::CoreToUi::DisplayMenuClose => {
                 slint::ComponentHandle::global::<crate::NpcDialogState>(&strong).invoke_reset();
@@ -834,9 +895,11 @@ pub fn sync_world_labels_to_slint(
     game_state.set_viewport_height(zoom_state.render_size.1 as f32);
 
     game_state.set_display_scale(zoom_state.display_scale());
+    sync_responsive_state(&game_state, zoom_state.render_size);
 
     // Collect all label types from all entities
     let mut slint_labels: Vec<crate::WorldLabel> = Vec::new();
+    let mut slint_speech_bubbles: Vec<crate::SpeechBubble> = Vec::new();
     for (entity, pos, hover_label, speech_bubble, chant_label, health_bar) in entities_query.iter()
     {
         let world_pos = rendering::scene::get_isometric_coordinate(pos.x, pos.y);
@@ -845,53 +908,59 @@ pub fn sync_world_labels_to_slint(
 
         // Helper to push a label and assign HP once per entity
         let mut push_v_label =
-            |label: crate::ecs::components::WorldLabel,
-             slint_labels: &mut Vec<crate::WorldLabel>| {
+            |label: crate::ecs::components::WorldLabel| {
                 let mut final_hp = -1;
                 if !hp_assigned && hp >= 0 {
                     final_hp = hp;
                     hp_assigned = true;
                 }
 
-                slint_labels.push(crate::WorldLabel {
-                    entity_id: entity.index().index() as i32,
-                    text: slint::SharedString::from(label.text.as_str()),
-                    world_x: world_pos.x,
-                    world_y: world_pos.y,
-                    y_offset: label.y_offset,
-                    color_r: label.color.x,
-                    color_g: label.color.y,
-                    color_b: label.color.z,
-                    color_a: label.color.w,
-                    is_speech: label.is_speech,
-                    health_percent: final_hp,
-                });
+                if label.is_speech {
+                    slint_speech_bubbles.push(crate::SpeechBubble {
+                        entity_id: entity.index().index() as i32,
+                        text: crate::rich_text::RichText::parse(label.text.as_str()).to_slint_styled_text(),
+                        world_x: world_pos.x,
+                        world_y: world_pos.y,
+                        y_offset: label.y_offset,
+                    });
+                } else {
+                    slint_labels.push(crate::WorldLabel {
+                        entity_id: entity.index().index() as i32,
+                        text: slint::SharedString::from(label.text.as_str()),
+                        world_x: world_pos.x,
+                        world_y: world_pos.y,
+                        y_offset: label.y_offset,
+                        color: slint::Color::from_argb_f32(
+                            label.color.w,
+                            label.color.x,
+                            label.color.y,
+                            label.color.z,
+                        ).into(),
+                        health_percent: final_hp,
+                    });
+                }
             };
 
         if let Some(hover) = hover_label {
-            push_v_label(hover.to_world_label(), &mut slint_labels);
+            push_v_label(hover.to_world_label());
         }
 
         if let Some(bubble) = speech_bubble {
-            push_v_label(bubble.to_world_label(), &mut slint_labels);
+            push_v_label(bubble.to_world_label());
         }
 
         if let Some(chant) = chant_label {
-            push_v_label(chant.to_world_label(), &mut slint_labels);
+            push_v_label(chant.to_world_label());
         }
 
         if !hp_assigned && hp >= 0 {
             slint_labels.push(crate::WorldLabel {
                 entity_id: entity.index().index() as i32,
-                text: slint::SharedString::default(),
+                text: Default::default(),
                 world_x: world_pos.x,
                 world_y: world_pos.y,
                 y_offset: -40.0,
-                color_r: 1.0,
-                color_g: 1.0,
-                color_b: 1.0,
-                color_a: 1.0,
-                is_speech: false,
+                color: slint::Color::from_argb_f32(1.0, 1.0, 1.0, 1.0).into(),
                 health_percent: hp,
             });
         }
@@ -899,6 +968,8 @@ pub fn sync_world_labels_to_slint(
 
     let model = slint::VecModel::from(slint_labels);
     game_state.set_world_labels(slint::ModelRc::new(model));
+    let bubble_model = slint::VecModel::from(slint_speech_bubbles);
+    game_state.set_speech_bubbles(slint::ModelRc::new(bubble_model));
 }
 
 pub fn sync_map_name_to_slint(
@@ -915,6 +986,109 @@ pub fn sync_map_name_to_slint(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Group state → Slint
+// ---------------------------------------------------------------------------
+
+/// Sync GroupState to Slint: local player first (position 1 = Leave), and whether we are the server-designated leader (can Kick).
+pub fn sync_group_to_slint(
+    group_state: Res<crate::webui::plugin::GroupState>,
+    local_player_query: Query<&crate::ecs::components::Player, With<crate::ecs::components::LocalPlayer>>,
+    win: Res<SlintWindow>,
+) {
+    if !group_state.is_changed() {
+        return;
+    }
+    let Some(strong) = win.0.upgrade() else {
+        return;
+    };
+    let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
+
+    game_state.set_is_groupable(group_state.is_groupable);
+
+    let local_name = local_player_query.iter().next().map(|p| p.name.as_str());
+    let mut ordered: Vec<(String, bool)> = group_state.members.clone();
+    if let Some(local) = local_name {
+        if let Some(idx) = ordered.iter().position(|(name, _)| name == local) {
+            let entry = ordered.remove(idx);
+            ordered.insert(0, entry);
+        }
+    }
+
+    let is_group_leader = local_name
+        .and_then(|local| {
+            group_state
+                .members
+                .iter()
+                .find(|(_, is_leader)| *is_leader)
+                .filter(|(name, _)| name == local)
+                .map(|_| ())
+        })
+        .is_some();
+    game_state.set_is_group_leader(is_group_leader);
+
+    let members: Vec<crate::GroupMember> = ordered
+        .iter()
+        .enumerate()
+        .map(|(i, (name, _))| crate::GroupMember {
+            name: slint::SharedString::from(name.as_str()),
+            is_leader: i == 0,
+        })
+        .collect();
+    game_state.set_group_members(slint::ModelRc::new(slint::VecModel::from(members)));
+
+    if let Some(invite) = &group_state.pending_invite {
+        game_state.set_group_invite(crate::GroupInviteNotification {
+            visible: true,
+            source_name: slint::SharedString::from(invite.source_name.as_str()),
+            group_name: slint::SharedString::from(invite.group_name.as_str()),
+            group_note: slint::SharedString::from(invite.group_note.as_str()),
+        });
+    } else {
+        let mut gi = game_state.get_group_invite();
+        if gi.visible {
+            gi.visible = false;
+            game_state.set_group_invite(gi);
+        }
+    }
+}
+
+pub fn sync_settings_to_slint(
+    win: Res<SlintWindow>,
+    settings: Res<crate::settings_types::Settings>,
+) {
+    if !settings.is_changed() {
+        return;
+    }
+
+    let Some(strong) = win.0.upgrade() else {
+        return;
+    };
+
+    let settings_state = slint::ComponentHandle::global::<crate::SettingsState>(&strong);
+
+    // Sync settings to slint
+    settings_state.set_music_volume(settings.audio.music_volume);
+    settings_state.set_sfx_volume(settings.audio.sfx_volume);
+    settings_state.set_scale(settings.graphics.scale);
+}
+
+pub fn show_installer_ui(win: Res<SlintWindow>) {
+    let Some(strong) = win.0.upgrade() else {
+        return;
+    };
+    let installer_state = slint::ComponentHandle::global::<crate::InstallerState>(&strong);
+    installer_state.set_is_installing(true);
+}
+
+pub fn hide_installer_ui(win: Res<SlintWindow>) {
+    let Some(strong) = win.0.upgrade() else {
+        return;
+    };
+    let installer_state = slint::ComponentHandle::global::<crate::InstallerState>(&strong);
+    installer_state.set_is_installing(false);
+}
+
 pub fn sync_installer_to_slint(
     mut events: MessageReader<crate::plugins::installer::InstallerProgressEvent>,
     win: Res<SlintWindow>,
@@ -928,14 +1102,6 @@ pub fn sync_installer_to_slint(
         installer_state.set_progress(evt.percent);
         if let Some(msg) = &evt.message {
             installer_state.set_message(slint::SharedString::from(msg.as_str()));
-        }
-
-        // Auto-show/hide based on progress
-        if evt.percent < 1.0 {
-            installer_state.set_is_installing(true);
-        } else {
-            // Give a little time to see the 100% or just hide it
-            installer_state.set_is_installing(false);
         }
     }
 }

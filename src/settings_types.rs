@@ -7,6 +7,14 @@ pub use game_types::{
 };
 use std::collections::HashMap;
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+pub struct HotbarData {
+    #[serde(flatten)]
+    pub bars: CustomHotBars,
+    #[serde(default)]
+    pub current_panel: i32,
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct AudioSettings {
     pub music_volume: f32,
@@ -40,7 +48,7 @@ pub struct Settings {
     #[serde(skip)]
     pub saved_credentials: Vec<SavedCredential>,
     #[serde(skip)]
-    pub hotbars: HashMap<String, CustomHotBars>,
+    pub hotbars: HashMap<String, HotbarData>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -51,7 +59,8 @@ pub struct CharacterProfile {
     pub last_used: u64,
     #[serde(default, deserialize_with = "game_types::deserialize_preview_lossy")]
     pub preview: Option<CharacterPreview>,
-    pub hotbars: CustomHotBars,
+    #[serde(default)]
+    pub hotbars: HotbarData,
 }
 
 impl Default for Settings {
@@ -86,13 +95,23 @@ impl Settings {
         let key = format!("{}:{}", server_id, username);
         self.hotbars
             .get(&key)
-            .cloned()
+            .map(|data| data.bars.clone())
             .unwrap_or_else(CustomHotBars::new)
     }
 
     pub fn set_hotbars(&mut self, server_id: u32, username: &str, hotbars: CustomHotBars) {
         let key = format!("{}:{}", server_id, username);
-        self.hotbars.insert(key, hotbars);
+        self.hotbars.entry(key).or_default().bars = hotbars;
+    }
+
+    pub fn get_current_hotbar_panel(&self, server_id: u32, username: &str) -> i32 {
+        let key = format!("{}:{}", server_id, username);
+        self.hotbars.get(&key).map(|data| data.current_panel).unwrap_or(0)
+    }
+
+    pub fn set_current_hotbar_panel(&mut self, server_id: u32, username: &str, panel: i32) {
+        let key = format!("{}:{}", server_id, username);
+        self.hotbars.entry(key).or_default().current_panel = panel;
     }
 
     pub fn to_sync_message(&self) -> CoreToUi {

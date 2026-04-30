@@ -25,17 +25,21 @@ pub fn player_movement_system(
             &mut Position,
             &mut Direction,
             &mut UnconfirmedWalks,
+            &mut UnconfirmedTurns,
             Option<&MovementTween>,
         ),
         With<LocalPlayer>,
     >,
-    entity_positions: Query<&Position, (Or<(With<NPC>, With<Player>)>, Without<LocalPlayer>)>,
+    entity_positions: Query<
+        (&Position, Option<&MovementTween>),
+        (Or<(With<NPC>, With<Player>)>, Without<LocalPlayer>),
+    >,
     mut commands: Commands,
     collision_table: Option<Res<WallCollisionTable>>,
     map_collision: Option<Res<MapCollisionData>>,
     outbox: Option<Res<crate::network::PacketOutbox>>,
 ) {
-    let Ok((entity, mut position, mut facing, mut unconfirmed, tween)) = player_query.single_mut()
+    let Ok((entity, mut position, mut facing, mut unconfirmed, mut unconfirmed_turns, tween)) = player_query.single_mut()
     else {
         return;
     };
@@ -79,6 +83,13 @@ pub fn player_movement_system(
                 direction,
                 source: _,
             } => {
+                if *facing != *direction {
+                    *facing = *direction;
+                }
+                unconfirmed_turns.pending.push_back(UnconfirmedTurn {
+                    direction: *direction,
+                });
+
                 if let Some(outbox) = &outbox {
                     outbox.send(&client::Turn {
                         direction: (*direction).into(),
@@ -102,7 +113,10 @@ fn handle_walk_request(
     position: &mut Position,
     facing: &mut Direction,
     tween: Option<&MovementTween>,
-    entity_positions: &Query<&Position, (Or<(With<NPC>, With<Player>)>, Without<LocalPlayer>)>,
+    entity_positions: &Query<
+        (&Position, Option<&MovementTween>),
+        (Or<(With<NPC>, With<Player>)>, Without<LocalPlayer>),
+    >,
     commands: &mut Commands,
     collision_table: Option<&WallCollisionTable>,
     map_collision: Option<&MapCollisionData>,
@@ -133,9 +147,9 @@ fn handle_walk_request(
     }
 
     // Check entity collision (other players and NPCs)
-    let is_tile_occupied = entity_positions
-        .iter()
-        .any(|pos| pos.to_vec2().distance_squared(target_pos) < 0.25);
+    let is_tile_occupied = entity_positions.iter().any(|(pos, movement)| {
+        occupied_tile(pos, movement) == (target_tile.x as u8, target_tile.y as u8)
+    });
     if is_tile_occupied {
         return None;
     }
@@ -450,15 +464,18 @@ pub fn player_reconciliation_system(
     mut player_query: Query<
         (
             Entity,
+            &EntityId,
             &mut Position,
+            &mut Direction,
             &mut UnconfirmedWalks,
+            &mut UnconfirmedTurns,
             Option<&mut MovementTween>,
         ),
         With<LocalPlayer>,
     >,
     mut commands: Commands,
 ) {
-    let Ok((entity, mut position, mut unconfirmed, mut active_tween)) = player_query.single_mut()
+    let Ok((entity, entity_id, mut position, mut direction, mut unconfirmed, mut unconfirmed_turns, mut active_tween)) = player_query.single_mut()
     else {
         return;
     };
@@ -468,6 +485,7 @@ pub fn player_reconciliation_system(
         if let crate::events::MapEvent::Clear = event {
             unconfirmed.pending.clear();
             unconfirmed.recent_deltas.clear();
+            unconfirmed_turns.pending.clear();
         }
     }
 
@@ -478,6 +496,7 @@ pub fn player_reconciliation_system(
                 position.y = location.y as f32;
                 unconfirmed.pending.clear();
                 unconfirmed.recent_deltas.clear();
+                unconfirmed_turns.pending.clear();
                 commands.entity(entity).remove::<MovementTween>();
             }
             EntityEvent::PlayerWalkResponse(response) => {
@@ -554,6 +573,17 @@ pub fn player_reconciliation_system(
 
                     if unconfirmed.pending.is_empty() {
                         commands.entity(entity).remove::<MovementTween>();
+                    }
+                }
+            }
+            EntityEvent::Turn(turn) => {
+                if turn.source_id == entity_id.id {
+                    let new_dir = Direction::from(turn.direction);
+                    let predicted = unconfirmed_turns.pending.pop_front();
+
+                    if predicted.map(|p| p.direction) != Some(new_dir) {
+                        *direction = new_dir;
+                        unconfirmed_turns.pending.clear();
                     }
                 }
             }

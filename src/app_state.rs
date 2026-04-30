@@ -17,19 +17,43 @@ use crate::{MapRendererState, network::PacketOutbox};
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
 pub enum AppState {
     #[default]
+    CheckingFiles,
     Installing,
     MainMenu,
     InGame,
 }
 
-pub fn setup_game_files(mut commands: Commands, existing: Option<Res<GameFiles>>) {
+pub fn setup_game_files(
+    mut commands: Commands,
+    existing: Option<Res<GameFiles>>,
+    storage_config: Res<crate::resources::StorageConfig>,
+    state: Res<State<AppState>>,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
     if existing.is_some() {
+        if *state.get() == AppState::CheckingFiles {
+            next_state.set(AppState::MainMenu);
+        }
         return;
     }
 
-    let game_files = GameFiles::new();
+    let path = storage_config.data_arx_path();
+    if !path.exists() {
+        if *state.get() != AppState::Installing {
+            tracing::warn!("data.arx not found at {:?}, switching to Installing state", path);
+            next_state.set(AppState::Installing);
+        }
+        return;
+    }
+
+    tracing::info!("data.arx found, initializing GameFiles");
+    let game_files = GameFiles::from_root(&storage_config.root);
     commands.insert_resource(SlintAssetLoaderRes(SlintAssetLoader::new(&game_files)));
     commands.insert_resource(game_files);
+
+    if *state.get() == AppState::CheckingFiles || *state.get() == AppState::Installing {
+        next_state.set(AppState::MainMenu);
+    }
 }
 
 pub fn cleanup_game_files(mut commands: Commands) {

@@ -1,0 +1,54 @@
+name: Android Build
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust
+        run: |
+          rustup target add aarch64-linux-android
+          cargo install cargo-apk2
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r25b
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libudev-dev \
+            libdbus-1-dev \
+            pkg-config
+
+      - name: Build APK
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+          cargo apk2 build --release --lib --target aarch64-linux-android
+          # Rename for consistency with dist convention
+          mv target/release/apk/talgonite.apk target/release/apk/talgonite-aarch64-linux-android.apk
+          # Generate checksum
+          cd target/release/apk
+          sha256sum talgonite-aarch64-linux-android.apk > talgonite-aarch64-linux-android.apk.sha256
+
+      - name: Upload artifacts for dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-android
+          path: |
+            target/release/apk/talgonite-aarch64-linux-android.apk
+            target/release/apk/talgonite-aarch64-linux-android.apk.sha256

@@ -1,50 +1,14 @@
 #![windows_subsystem = "windows"]
 
-use bevy::prelude::*;
-use slint::ComponentHandle;
-
-use talgonite::{render_plugin::GameRenderPlugin, session, slint_plugin, webui};
-
-mod plugins {
-    pub use talgonite::plugins::*;
-}
-
 fn main() {
-    #[cfg(target_os = "windows")]
-    unsafe {
-        use windows_sys::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
-        AttachConsole(ATTACH_PARENT_PROCESS);
+    #[cfg(target_os = "android")]
+    panic!("Desktop main() called on Android");
+
+    #[cfg(not(target_os = "android"))]
+    {
+        let mut path = dirs::data_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+        path.push("Talgonite");
+        let _ = std::fs::create_dir_all(&path);
+        talgonite_lib::main_with_storage(path);
     }
-
-    // Configure tracing to respect RUST_LOG if set, otherwise default to debug for our crate.
-    // This ensures newly added debug! instrumentation is visible during troubleshooting.
-    tracing_subscriber::fmt().with_target(false).try_init().ok();
-    tracing::info!("Tracing initialized (debug enabled by default)");
-
-    let mut app = App::new();
-    app.add_message::<webui::plugin::UiOutbound>()
-        .add_plugins(MinimalPlugins)
-        .add_plugins(bevy::input::InputPlugin)
-        .add_plugins((
-            talgonite::CorePlugin,
-            GameRenderPlugin,
-            session::runtime::SessionRuntimePlugin,
-            plugins::installer::InstallerPlugin,
-            plugins::mouse_interaction::MouseInteractionPlugin,
-            webui::plugin::UiBridgePlugin,
-            slint_plugin::SlintBridgePlugin,
-        ))
-        .insert_resource(talgonite::audio::Audio::default());
-
-    // Attach Slint UI and hand off control of the rendering notifier to the plugin.
-    let slint_app = slint_plugin::attach_slint_ui(app);
-
-    let result = slint_app.run();
-    
-    // Explicitly drop slint_app to trigger cleanup of Bevy App before main exits.
-    // This prevents "threads should not terminate unexpectedly" panics on shutdown
-    // by ensuring TaskPool threads are joined before the process termination begins.
-    drop(slint_app);
-
-    result.unwrap();
 }

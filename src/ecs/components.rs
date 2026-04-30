@@ -40,6 +40,14 @@ impl From<Position> for Vec2 {
     }
 }
 
+pub fn occupied_tile(position: &Position, tween: Option<&MovementTween>) -> (u8, u8) {
+    let tile = tween
+        .map(|movement| movement.end)
+        .unwrap_or_else(|| position.to_vec2());
+
+    (tile.x.round() as u8, tile.y.round() as u8)
+}
+
 impl std::ops::AddAssign<Vec2> for Position {
     fn add_assign(&mut self, rhs: Vec2) {
         self.x += rhs.x;
@@ -65,6 +73,7 @@ pub enum PathTarget {
 #[derive(Component, Debug)]
 pub struct PathfindingState {
     pub target: PathTarget,
+    pub face_after: Option<(u8, u8)>,
     pub retry_timer: Option<Timer>,
 }
 
@@ -137,6 +146,16 @@ pub struct UnconfirmedStep {
 pub struct UnconfirmedWalks {
     pub pending: VecDeque<UnconfirmedStep>,
     pub recent_deltas: VecDeque<Vec2>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct UnconfirmedTurn {
+    pub direction: Direction,
+}
+
+#[derive(Component, Default)]
+pub struct UnconfirmedTurns {
+    pub pending: VecDeque<UnconfirmedTurn>,
 }
 
 #[derive(Component)]

@@ -4,7 +4,7 @@ import { VerticalBox } from "std-widgets.slint";
 
 export component GameSidebar inherits Rectangle {
     width: 64px;
-    height: 160px;
+    height: 212px;
     Rectangle {
         width: parent.width;
         height: parent.height + 30px;
@@ -115,6 +115,42 @@ export component GameSidebar inherits Rectangle {
                         GameState.show-spells = false;
                         GameState.world-list-loading = true;
                         GameState.refresh-world-list();
+                    }
+                }
+            }
+        }
+
+        group-btn := Rectangle {
+            width: 48px;
+            height: 48px;
+            background: GameState.show-group ? Theme.accent-subtle : Theme.surface-muted;
+            border-radius: Theme.radius-small;
+            border-width: 1px;
+            border-color: GameState.show-group ? Theme.accent : Theme.border-muted;
+            Image {
+                source: @image-url("../icons/group.svg");
+                width: 28px;
+                height: 28px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                colorize: GameState.show-group ? Theme.accent : Theme.foreground-muted;
+            }
+
+            states [
+                hover when group-btn-touch.has-hover: {
+                    background: Theme.surface-secondary;
+                    border-color: Theme.accent-muted;
+                }
+            ]
+            group-btn-touch := TouchArea {
+                clicked => {
+                    GameState.show-group = !GameState.show-group;
+                    if (GameState.show-group) {
+                        GameState.show-inventory = false;
+                        GameState.show-skills = false;
+                        GameState.show-spells = false;
+                        GameState.show-world-list = false;
+                        GameState.request-self-profile();
                     }
                 }
             }

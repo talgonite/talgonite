@@ -1,0 +1,64 @@
+import { Theme } from "../theme.slint";
+import { ContextMenuState } from "../game_state.slint";
+
+export component WorldContextMenuOverlay inherits Rectangle {
+    in property <length> screen-width;
+    in property <length> screen-height;
+    background: transparent;
+
+    TouchArea {
+        width: parent.width;
+        height: parent.height;
+        clicked => {
+            ContextMenuState.close();
+        }
+    }
+
+    panel := Rectangle {
+        background: Theme.surface-modal;
+        border-color: Theme.border-accent;
+        border-width: 1px;
+        border-radius: Theme.radius-small;
+        drop-shadow-blur: 12px;
+        drop-shadow-color: Theme.overlay-strong;
+        x: Math.max(8px, Math.min(ContextMenuState.x + ContextMenuState.anchor-width / 2 - self.width / 2, screen-width - self.width - 8px));
+        y: (ContextMenuState.y + ContextMenuState.anchor-height + self.height + 12px > screen-height) ? (ContextMenuState.y - self.height - 8px) : (ContextMenuState.y + ContextMenuState.anchor-height + 8px);
+        width: Math.max(180px, content.preferred-width + 20px);
+        height: content.preferred-height + 20px;
+
+        content := VerticalLayout {
+            padding: 10px;
+            spacing: 6px;
+
+            if (ContextMenuState.title != ""): Text {
+                text: ContextMenuState.title;
+                color: Theme.foreground;
+                font-size: Theme.font-size-large;
+                font-weight: 700;
+                horizontal-alignment: center;
+            }
+
+            for entry in ContextMenuState.items: Rectangle {
+                height: 34px;
+                border-radius: Theme.radius-small;
+                background: row-touch.pressed ? Theme.accent-subtle : row-touch.has-hover ? Theme.surface-secondary : #00000000;
+
+                Text {
+                    x: 10px;
+                    y: (parent.height - self.height) / 2;
+                    text: entry.text;
+                    color: Theme.foreground;
+                    font-size: Theme.font-size-medium;
+                }
+
+                row-touch := TouchArea {
+                    width: parent.width;
+                    height: parent.height;
+                    clicked => {
+                        ContextMenuState.select-item(entry.id);
+                    }
+                }
+            }
+        }
+    }
+}

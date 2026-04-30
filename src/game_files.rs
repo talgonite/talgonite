@@ -1,8 +1,6 @@
 use bevy::prelude::*;
 use formats::game_files::GameFiles as FormatGameFiles;
 
-use crate::storage_dir;
-
 // Bevy-specific wrapper around the shared GameFiles
 #[derive(Resource)]
 pub struct GameFiles {
@@ -10,8 +8,8 @@ pub struct GameFiles {
 }
 
 impl GameFiles {
-    pub fn new() -> Self {
-        let mut path = storage_dir();
+    pub fn from_root(root: &std::path::Path) -> Self {
+        let mut path = root.to_path_buf();
         path.push("data.arx");
 
         let inner = FormatGameFiles::new(path.to_str().expect("invalid path"));

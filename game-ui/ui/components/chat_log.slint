@@ -57,11 +57,11 @@ export component ChatLog inherits Rectangle {
             vertical-scrollbar-policy: always-on;
             chat-box := VerticalLayout {
                 spacing: 2px;
-                for message in GameState.chat-messages: Text {
+
+                for message in GameState.chat-messages: StyledText {
                     text: message.text;
-                    color: message.color;
-                    font-size: 11px;
-                    wrap: word-wrap;
+                    default-color: message.color;
+                    default-font-size: 11px;
                 }
             }
 

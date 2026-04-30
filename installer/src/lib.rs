@@ -82,7 +82,19 @@ pub fn install(output: &Path, progress: Option<Arc<dyn InstallProgress>>) -> any
         ExeReader::File(file)
     } else {
         debug!("Streaming DarkAges741single.exe from {}", INSTALLER_URL);
-        let response = reqwest::blocking::get(INSTALLER_URL)?;
+        
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .build()?;
+
+        let response = client.get(INSTALLER_URL).send()
+            .map_err(|e| anyhow::anyhow!("Download request failed: {}", e))?;
+        
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!("Download failed with status: {} (URL: {})", response.status(), INSTALLER_URL));
+        }
+
         ExeReader::Http(response)
     };
 

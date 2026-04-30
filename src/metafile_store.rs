@@ -15,6 +15,7 @@ fn crc32(data: &[u8]) -> u32 {
 
 #[derive(Resource)]
 pub struct MetafileStore {
+    config: Option<crate::resources::StorageConfig>,
     server_id: Option<u32>,
     metafiles: HashMap<String, MetaFile>,
 }
@@ -22,21 +23,25 @@ pub struct MetafileStore {
 impl MetafileStore {
     pub fn new() -> Self {
         Self {
+            config: None,
             server_id: None,
             metafiles: HashMap::new(),
         }
     }
 
-    pub fn set_server(&mut self, server_id: u32) {
-        if self.server_id == Some(server_id) {
+    pub fn set_server(&mut self, config: &crate::resources::StorageConfig, server_id: u32) {
+        if self.server_id == Some(server_id) && self.config.as_ref().map(|c| &c.root) == Some(&config.root) {
             return;
         }
+        self.config = Some(config.clone());
         self.server_id = Some(server_id);
         self.reload_all();
     }
 
     fn base_path(&self) -> Option<PathBuf> {
-        self.server_id.map(crate::server_metafile_dir)
+        let config = self.config.as_ref()?;
+        let server_id = self.server_id?;
+        Some(config.server_metafile_dir(server_id))
     }
 
     pub fn reload_all(&mut self) {

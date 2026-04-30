@@ -16,9 +16,13 @@ use packets::server::display_menu::DisplayMenuPayload;
 use packets::types::{EntityType, MenuType};
 
 use crate::app_state::AppState;
-use crate::events::{AbilityEvent, ChatEvent, InventoryEvent, SessionEvent};
+use crate::events::{
+    AbilityEvent, ChatEvent, InteractionIntentAction, InteractionIntentEvent,
+    InteractionTargetKind, InventoryEvent, SessionEvent, WorldContextMenuEntry,
+};
 use crate::render_plugin::game::WebUi;
 use crate::rich_text::RichText;
+use crate::slint_plugin::ShowSelfProfileEvent;
 use rendering::scene::utils::screen_to_iso_tile;
 
 use super::keyring;
@@ -46,6 +50,12 @@ pub struct ActiveMenuContext {
     pub dialog_id: Option<u16>,
 }
 
+#[derive(Resource, Default, Debug, Clone)]
+pub struct ActiveWorldContextMenu {
+    pub title: String,
+    pub entries: Vec<WorldContextMenuEntry>,
+}
+
 #[derive(Message)]
 pub struct UiInbound(pub UiToCore);
 
@@ -63,9 +73,11 @@ impl Plugin for UiBridgePlugin {
             .init_resource::<WorldListState>()
             .init_resource::<EquipmentState>()
             .init_resource::<PlayerProfileState>()
+            .init_resource::<GroupState>()
             .init_resource::<crate::ecs::hotbar::HotbarState>()
             .init_resource::<crate::ecs::hotbar::HotbarPanelState>()
             .init_resource::<ActiveMenuContext>()
+            .init_resource::<ActiveWorldContextMenu>()
             .init_resource::<CursorPosition>()
             .init_resource::<ButtonInput<KeyCode>>()
             .init_resource::<ButtonInput<MouseButton>>()
@@ -158,6 +170,21 @@ struct InputBindingResources<'w> {
     unified_bindings: ResMut<'w, crate::input::UnifiedInputBindings>,
 }
 
+#[derive(bevy::ecs::system::SystemParam)]
+struct WorldContextResources<'w, 's> {
+    world_context_menu: ResMut<'w, ActiveWorldContextMenu>,
+    interaction_intents: MessageWriter<'w, InteractionIntentEvent>,
+    profile_events: MessageWriter<'w, ShowSelfProfileEvent>,
+    entity_ids: Query<
+        'w,
+        's,
+        (
+            &'static crate::ecs::components::EntityId,
+            Option<&'static crate::ecs::components::LocalPlayer>,
+        ),
+    >,
+}
+
 fn handle_ui_inbound_ingame(
     mut inbound: MessageReader<UiInbound>,
     mut outbound: MessageWriter<UiOutbound>,
@@ -172,6 +199,8 @@ fn handle_ui_inbound_ingame(
     bindings: InputBindingResources,
     hotbar_res: HotbarResources,
     interaction_res: InteractionResources,
+    mut group_state: ResMut<GroupState>,
+    mut world_context: WorldContextResources,
 ) {
     let mut hotbar_state = hotbar_res.hotbar_state;
     let mut hotbar_panel_state = hotbar_res.hotbar_panel_state;
@@ -186,6 +215,87 @@ fn handle_ui_inbound_ingame(
         match msg {
             UiToCore::InputKeyboard { .. } | UiToCore::InputPointer { .. } => {
                 // Handled by handle_input_bridge
+            }
+            UiToCore::WorldContextMenuSelect { id } => {
+                let selected = world_context
+                    .world_context_menu
+                    .entries
+                    .iter()
+                    .find(|entry| entry.id == *id)
+                    .cloned();
+
+                world_context.world_context_menu.entries.clear();
+                world_context.world_context_menu.title.clear();
+                outbound.write(UiOutbound(CoreToUi::HideWorldContextMenu));
+
+                let Some(selected) = selected else {
+                    continue;
+                };
+
+                match selected.action {
+                    crate::events::WorldContextAction::WalkToTile { tile_x, tile_y } => {
+                        world_context.interaction_intents.write(InteractionIntentEvent {
+                            source: crate::events::ClickSource::AndroidLongPress,
+                            target_kind: InteractionTargetKind::Ground,
+                            target_entity: None,
+                            tile_x,
+                            tile_y,
+                            action: InteractionIntentAction::WalkToTile,
+                        });
+                    }
+                    crate::events::WorldContextAction::ApproachActor {
+                        entity,
+                        tile_x,
+                        tile_y,
+                    } => {
+                        world_context.interaction_intents.write(InteractionIntentEvent {
+                            source: crate::events::ClickSource::AndroidLongPress,
+                            target_kind: InteractionTargetKind::Actor,
+                            target_entity: Some(entity),
+                            tile_x,
+                            tile_y,
+                            action: InteractionIntentAction::ApproachAndFace,
+                        });
+                    }
+                    crate::events::WorldContextAction::ViewProfile { entity, is_self } => {
+                        if is_self {
+                            world_context
+                                .profile_events
+                                .write(ShowSelfProfileEvent::SelfRequested);
+                            outbox.send(&packets::client::SelfProfileRequest {});
+                        } else if let Ok((entity_id, _)) = world_context.entity_ids.get(entity) {
+                            world_context
+                                .profile_events
+                                .write(ShowSelfProfileEvent::OtherRequested);
+                            outbox.send(&packets::client::Click::TargetEntity(entity_id.id));
+                        }
+                    }
+                    crate::events::WorldContextAction::PickUpItem { tile_x, tile_y } => {
+                        outbox.send(&packets::client::Pickup {
+                            destination_slot: 0,
+                            source_point: (tile_x.max(0) as u16, tile_y.max(0) as u16),
+                        });
+                    }
+                    crate::events::WorldContextAction::SpeakToNpc { entity } => {
+                        if let Ok((entity_id, _)) = world_context.entity_ids.get(entity) {
+                            outbox.send(&packets::client::Click::TargetEntity(entity_id.id));
+                        }
+                    }
+                    crate::events::WorldContextAction::InteractWalls { walls } => {
+                        for (tile_x, tile_y, is_right) in walls {
+                            outbox.send(&packets::client::Click::TargetWall {
+                                x: tile_x.max(0) as u16,
+                                y: tile_y.max(0) as u16,
+                                is_right,
+                            });
+                        }
+                    }
+                }
+            }
+            UiToCore::WorldContextMenuClose => {
+                world_context.world_context_menu.entries.clear();
+                world_context.world_context_menu.title.clear();
+                outbound.write(UiOutbound(CoreToUi::HideWorldContextMenu));
             }
             UiToCore::WorldMapClick {
                 map_id,
@@ -757,6 +867,33 @@ fn handle_ui_inbound_ingame(
                     );
                 }
             },
+            // --- Group actions (opcode 46 / ToggleGroup 47) ---
+            UiToCore::ToggleGroupable => {
+                outbox.send(&packets::client::ToggleGroup);
+                group_state.is_groupable = !group_state.is_groupable;
+            }
+            UiToCore::SendGroupInvite { name } => {
+                outbox.send(&packets::client::GroupInvite::Request { name: name.clone() });
+            }
+            UiToCore::RespondGroupInvite { accept, source_name } => {
+                if *accept {
+                    outbox.send(&packets::client::GroupInvite::Forced {
+                        name: source_name.clone(),
+                    });
+                    outbox.send(&packets::client::SelfProfileRequest {});
+                }
+                group_state.pending_invite = None;
+            }
+            UiToCore::KickGroupMember { name } => {
+                outbox.send(&packets::client::GroupInvite::Request { name: name.clone() });
+            }
+            UiToCore::LeaveGroup => {
+                outbox.send(&packets::client::ToggleGroup);
+                outbox.send(&packets::client::SelfProfileRequest {});
+            }
+            UiToCore::RequestSelfProfile => {
+                outbox.send(&packets::client::SelfProfileRequest {});
+            }
             _ => {}
         }
     }
@@ -767,6 +904,7 @@ fn handle_ui_inbound_login(
     mut outbound: MessageWriter<UiOutbound>,
     mut settings: ResMut<SettingsFile>,
     mut commands: Commands,
+    storage_config: Res<crate::resources::StorageConfig>,
     bindings: InputBindingResources,
 ) {
     let mut input_bindings = bindings.input_bindings;
@@ -925,7 +1063,7 @@ fn handle_ui_inbound_login(
             }
             UiToCore::LoginRemoveSaved { id } => {
                 let _ = keyring::delete_password(id);
-                settings.remove_credential(id);
+                settings.remove_credential(id, &storage_config);
                 outbound.write(UiOutbound(settings.to_snapshot_message(None)));
             }
             UiToCore::ServersChangeCurrent { id } => {
@@ -1114,10 +1252,20 @@ fn handle_ui_inbound_login(
     }
 }
 
+/// Server sends these when group membership changes; we request SelfProfile so the group panel stays in sync.
+fn is_group_change_system_message(msg: &str) -> bool {
+    let msg = msg.trim();
+    msg.eq_ignore_ascii_case("Group disbanded.")
+        || msg.contains("is joining this group.")
+        || msg.contains("is leaving this group.")
+        || msg.contains("has taken command of the group.")
+}
+
 fn bridge_chat_events(
     mut chat_events: MessageReader<ChatEvent>,
     mut outbound: MessageWriter<UiOutbound>,
     mut menu_ctx: ResMut<ActiveMenuContext>,
+    outbox: Option<Res<crate::network::PacketOutbox>>,
 ) {
     use packets::server::{PublicMessageType, ServerMessageType};
 
@@ -1125,6 +1273,11 @@ fn bridge_chat_events(
     for evt in chat_events.read() {
         match evt {
             ChatEvent::ServerMessage(pkt) => {
+                if let Some(ref out) = outbox {
+                    if is_group_change_system_message(&pkt.message) {
+                        out.send(&packets::client::SelfProfileRequest {});
+                    }
+                }
                 let (show_in_message_box, show_in_action_bar, color) = match pkt.message_type {
                     ServerMessageType::Whisper => (true, false, Some("#60a5fa".to_string())),
                     ServerMessageType::OrangeBar1
@@ -1217,6 +1370,7 @@ fn bridge_session_events(
     mut profile_state: ResMut<PlayerProfileState>,
     mut show_profile: MessageWriter<crate::slint_plugin::ShowSelfProfileEvent>,
     mut world_list_state: ResMut<WorldListState>,
+    mut group_state: ResMut<GroupState>,
 ) {
     for evt in session_events.read() {
         match evt {
@@ -1312,6 +1466,40 @@ fn bridge_session_events(
                 profile_state.group_open = pkt.group_open;
                 profile_state.profile_text = RichText::parse(&pkt.group_string);
                 profile_state.legend_marks = pkt.legend_marks.clone();
+                // Parse group_string into member list. Server marks leader with "* " prefix (e.g. "* Tedders").
+                group_state.is_groupable = pkt.group_open;
+                let lines: Vec<String> = RichText::parse(&pkt.group_string)
+                    .to_plain_string()
+                    .lines()
+                    .map(|l| l.trim().to_string())
+                    .filter(|l| !l.is_empty())
+                    .collect();
+                group_state.members = lines
+                    .into_iter()
+                    .filter(|l| {
+                        let s = l.as_str();
+                        if s.eq_ignore_ascii_case("Group members") {
+                            return false;
+                        }
+                        if s.starts_with("Total ") && s["Total ".len()..].trim().parse::<u32>().is_ok() {
+                            return false;
+                        }
+                        if s.starts_with("Spouse:") {
+                            return false;
+                        }
+                        true
+                    })
+                    .map(|l| {
+                        let is_leader = l.trim_start().starts_with("* ");
+                        let name = l
+                            .trim_start()
+                            .strip_prefix("* ")
+                            .unwrap_or(l.trim_start())
+                            .trim()
+                            .to_string();
+                        (name, is_leader)
+                    })
+                    .collect();
                 show_profile.write(crate::slint_plugin::ShowSelfProfileEvent::SelfUpdate);
             }
             SessionEvent::OtherProfile(pkt) => {
@@ -1503,6 +1691,28 @@ fn bridge_session_events(
                     }));
                 }
             }
+            SessionEvent::GroupInvite(pkt) => {
+                // Server sent group invite (opcode 99); show invite popup.
+                match pkt {
+                    packets::server::DisplayGroupInvite::Invite {
+                        source_name,
+                        group_box_info,
+                    } => {
+                        group_state.pending_invite = Some(PendingGroupInvite {
+                            source_name: source_name.clone(),
+                            group_name: group_box_info.name.clone(),
+                            group_note: group_box_info.note.clone(),
+                        });
+                    }
+                    packets::server::DisplayGroupInvite::ShowGroupBox { source_name } => {
+                        group_state.pending_invite = Some(PendingGroupInvite {
+                            source_name: source_name.clone(),
+                            group_name: String::new(),
+                            group_note: String::new(),
+                        });
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -1618,6 +1828,7 @@ fn update_world_list_filtered(mut state: ResMut<WorldListState>, mut last_versio
             is_master: m.is_master,
             color: match m.color {
                 packets::server::WorldListColor::Guilded => [1.0, 0.75, 0.25, 1.0], // Gold-ish
+                packets::server::WorldListColor::Unknown => [1.0, 0.596, 0.0, 1.0], // Orange
                 packets::server::WorldListColor::WithinLevelRange => [0.6, 0.6, 1.0, 1.0], // Blue-ish
                 packets::server::WorldListColor::White => [1.0, 1.0, 1.0, 1.0],
                 packets::server::WorldListColor::NotSure => [0.5, 0.5, 0.5, 1.0], // Gray
@@ -1672,6 +1883,28 @@ pub struct WorldListState {
     pub filtered: Vec<WorldListMemberUi>,
     pub filter: WorldListFilter,
     pub version: u32,
+}
+
+// ---------------------------------------------------------------------------
+// Group state (from SelfProfile + DisplayGroupInvite)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default)]
+pub struct PendingGroupInvite {
+    pub source_name: String,
+    pub group_name: String,
+    pub group_note: String,
+}
+
+/// One group member: display name and whether the server marks them as leader (asterisk in SelfProfile).
+pub type GroupMemberEntry = (String, bool);
+
+#[derive(Resource, Default, Debug, Clone)]
+pub struct GroupState {
+    /// (display_name, is_leader_from_server). Leader line in group_string has "* " prefix.
+    pub members: Vec<GroupMemberEntry>,
+    pub is_groupable: bool,
+    pub pending_invite: Option<PendingGroupInvite>,
 }
 
 fn update_skill_cooldowns(
@@ -2116,7 +2349,12 @@ fn handle_login_results(
         let mut hotbar_state = crate::ecs::hotbar::HotbarState::new();
         hotbar_state.config = hotbars;
         commands.insert_resource(hotbar_state);
-        commands.insert_resource(crate::ecs::hotbar::HotbarPanelState::default());
+
+        // Load the saved hotbar panel selection
+        let saved_panel = settings.get_current_hotbar_panel(inner.server_id, &inner.username);
+        let mut hotbar_panel_state = crate::ecs::hotbar::HotbarPanelState::default();
+        hotbar_panel_state.current_panel = crate::ecs::hotbar::HotbarPanel::from_u8(saved_panel as u8);
+        commands.insert_resource(hotbar_panel_state);
 
         next_state.set(AppState::InGame);
         outbound.write(UiOutbound(CoreToUi::EnteredGame));
