@@ -2,6 +2,7 @@
 import versionData from '../data/version.json';
 
 const { version, downloads } = versionData;
+const releaseNotesUrl = 'https://github.com/talgonite/talgonite/releases';
 ---
 
 <div class="download-wrapper">
@@ -57,7 +58,14 @@ const { version, downloads } = versionData;
       </a>
     </div>
   </div>
-  <span class="version-label">v{version}</span>
+  <a
+    href={releaseNotesUrl}
+    class="version-link"
+    aria-label={`View release notes for version ${version}`}
+  >
+    <span class="version-label">v{version}</span>
+    <span class="version-link-text">Release notes</span>
+  </a>
 </div>
 
 <script is:inline>
@@ -254,9 +262,37 @@ const { version, downloads } = versionData;
     margin: 0.5rem 0;
   }
 
+  .version-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.03);
+    transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+  }
+
+  .version-link:hover {
+    border-color: var(--color-primary);
+    background: rgba(201, 166, 107, 0.08);
+    color: var(--color-text);
+  }
+
   .version-label {
     font-size: 0.875rem;
     font-family: system-ui, -apple-system, sans-serif;
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+
+  .version-link-text {
+    font-size: 0.8125rem;
+    font-family: system-ui, -apple-system, sans-serif;
     color: var(--color-text-muted);
+  }
+
+  .version-link:hover .version-link-text {
+    color: var(--color-text);
   }
 </style>
