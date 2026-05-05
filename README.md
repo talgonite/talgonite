@@ -1,6 +1,6 @@
 # talgonite
 
-Talgonite is a [Darkages](https://www.darkages.com) client.
+Talgonite is a modern [Darkages](https://www.darkages.com) client. It fixes quality of life issues, removes limitations around UI scaling, more hotkeys, built in private server switching and much more. Give it a go!
 
 > [!IMPORTANT]
 > This client is in early development. Expect bugs and missing features.
