@@ -190,9 +190,6 @@ impl TryFromBytes for DisplayBoard {
                     .read_u8()
                     .context("reading public post previous button flag")?
                     != 0;
-                cursor
-                    .read_u8()
-                    .context("reading public post unknown flag")?; // unknown
                 let post = PostInfo::try_from_cursor(&mut cursor)?;
                 let message = read_string_u16(&mut cursor, "post message")?;
                 DisplayBoard::PublicPost {

@@ -14,24 +14,30 @@ export global MailBoardState {
     in-out property <bool> visible: false;
     in-out property <string> board-name: "";
     in-out property <int> selected-index: -1;
+    in-out property <int> loading-post-id: -1;
     in-out property <int> session-token: 0;
     in-out property <[MailBoardPost]> posts: [];
     callback close-request();
+    callback post-open-request(index: int, post-id: int);
 
     public function select-post(index: int) {
         if index >= 0 && index < posts.length {
             selected-index = index;
+            loading-post-id = posts[index].post-id;
+            post-open-request(index, posts[index].post-id);
         }
     }
 
     public function clear-selection() {
         selected-index = -1;
+        loading-post-id = -1;
     }
 
     public function close() {
         session-token += 1;
         visible = false;
         selected-index = -1;
+        loading-post-id = -1;
         close-request();
     }
 }

@@ -225,6 +225,14 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
     {
         let tx = tx.clone();
         let mail_board = slint_app.global::<MailBoardState>();
+        mail_board.on_post_open_request(move |index, post_id| {
+            let _ = tx.send(UiToCore::MailBoardOpenPost { index, post_id });
+        });
+    }
+
+    {
+        let tx = tx.clone();
+        let mail_board = slint_app.global::<MailBoardState>();
         mail_board.on_close_request(move || {
             let _ = tx.send(UiToCore::MailBoardClose);
         });

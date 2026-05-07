@@ -146,6 +146,10 @@ pub enum UiToCore {
         id: i32,
     },
     WorldContextMenuClose,
+    MailBoardOpenPost {
+        index: i32,
+        post_id: i32,
+    },
     MailBoardClose,
 }
 
@@ -278,6 +282,7 @@ pub struct BoardStateUi {
     pub visible: bool,
     pub board_name: String,
     pub selected_index: i32,
+    pub loading_post_id: i32,
     pub session_token: i32,
     pub append: bool,
     pub posts: Vec<BoardPostUi>,

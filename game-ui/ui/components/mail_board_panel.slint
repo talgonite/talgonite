@@ -326,7 +326,32 @@ export component MailBoardPanel inherits BasePanel {
                         border-width: 1px;
                         border-color: Theme.border-subtle;
 
-                        ScrollView {
+                        if MailBoardState.loading-post-id == MailBoardState.posts[MailBoardState.selected-index].post-id: VerticalLayout {
+                            padding: Theme.spacing-large;
+                            spacing: Theme.spacing-small;
+
+                            Rectangle { }
+
+                            Text {
+                                text: "Loading post...";
+                                color: Theme.foreground-strong;
+                                font-size: Theme.font-size-medium;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                            }
+
+                            Text {
+                                text: "Fetching the full message contents from the server.";
+                                color: Theme.foreground-muted;
+                                font-size: Theme.font-size-small;
+                                wrap: word-wrap;
+                                horizontal-alignment: center;
+                            }
+
+                            Rectangle { }
+                        }
+
+                        if MailBoardState.loading-post-id != MailBoardState.posts[MailBoardState.selected-index].post-id: ScrollView {
                             VerticalLayout {
                                 padding: Theme.spacing-medium;
                                 spacing: Theme.spacing-small;

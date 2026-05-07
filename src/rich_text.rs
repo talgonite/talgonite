@@ -1,6 +1,6 @@
 //! Rich text parsing and handling.
 
-use i_slint_core::styled_text::{parse_markdown, StyledText};
+use i_slint_core::styled_text::{StyledText, parse_markdown};
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct RichTextChunk {
@@ -12,8 +12,6 @@ pub struct RichTextChunk {
 pub struct RichText {
     pub chunks: Vec<RichTextChunk>,
 }
-
-
 
 impl RichText {
     /// Parse a string containing color codes like `{=c` into chunks.
@@ -76,6 +74,7 @@ impl RichText {
                         '[' => escaped.push_str("\\["),
                         ']' => escaped.push_str("\\]"),
                         '#' => escaped.push_str("\\#"),
+                        '\r' | '\n' => escaped.push_str("&zwj;\n"), // fixes empty newlines being ignored
                         _ => escaped.push(ch),
                     }
                 }
@@ -83,10 +82,13 @@ impl RichText {
                 if let Some(code) = c.color_code {
                     if let Some(color) = RichTextColor::from_char_code(code) {
                         let [r, g, b, _] = color.to_color();
-                        return format!("<font color=\"#{:02x}{:02x}{:02x}\">{}</font>", r, g, b, escaped);
+                        return format!(
+                            "<font color=\"#{:02x}{:02x}{:02x}\">{}</font>",
+                            r, g, b, escaped
+                        );
                     }
                 }
-                
+
                 escaped
             })
             .collect()
@@ -118,7 +120,7 @@ pub enum RichTextColor {
     Green,
     Orange,
     Brown,
-    Invisible
+    Invisible,
 }
 
 impl RichTextColor {
@@ -187,17 +189,17 @@ mod tests {
     fn test_parse_rich_text() {
         let input = "Normal {=rRed {=bBlue";
         let rich = RichText::parse(input);
-        
+
         assert_eq!(rich.chunks.len(), 3);
         assert_eq!(rich.chunks[0].text, "Normal ");
         assert_eq!(rich.chunks[0].color_code, None);
-        
+
         assert_eq!(rich.chunks[1].text, "Red ");
         assert_eq!(rich.chunks[1].color_code, Some('r'));
-        
+
         assert_eq!(rich.chunks[2].text, "Blue");
         assert_eq!(rich.chunks[2].color_code, Some('b'));
-        
+
         assert_eq!(rich.to_plain_string(), "Normal Red Blue");
     }
 
