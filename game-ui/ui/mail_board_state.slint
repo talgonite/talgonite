@@ -1,0 +1,138 @@
+export struct MailBoardPost {
+    post-id: int,
+    author: string,
+    month-of-year: int,
+    day-of-month: int,
+    title: string,
+    message: string,
+    is-highlighted: bool,
+    is-unread: bool,
+    can-reply: bool,
+    can-delete: bool,
+}
+
+export global MailBoardState {
+    in-out property <bool> visible: true;
+    in-out property <string> board-name: "Inbox / Board Mock";
+    in-out property <int> selected-index: 8;
+    in-out property <[MailBoardPost]> posts: [
+        {
+            post-id: 80,
+            author: "Renna",
+            month-of-year: 10,
+            day-of-month: 3,
+            title: "Smithy repair queue for this week",
+            message: "Dropped the repair orders into the east rack.\n\nIf you are picking up your gear tonight, check the initials on the tag before leaving with it.",
+            is-highlighted: false,
+            is-unread: false,
+            can-reply: true,
+            can-delete: false,
+        },
+        {
+            post-id: 119,
+            author: "Talon",
+            month-of-year: 10,
+            day-of-month: 5,
+            title: "Need help finishing the crypt rotation after reset",
+            message: "Looking for two more people after the evening reset.\n\nBring enough food for a long run. Reply if you can take rear guard.",
+            is-highlighted: true,
+            is-unread: true,
+            can-reply: true,
+            can-delete: false,
+        },
+        {
+            post-id: 203,
+            author: "Mira",
+            month-of-year: 11,
+            day-of-month: 18,
+            title: "Auction board etiquette reminder",
+            message: "Please stop posting duplicate sale listings every hour.\n\nOne clean post with current pricing is easier for everyone to scan.",
+            is-highlighted: false,
+            is-unread: false,
+            can-reply: true,
+            can-delete: false,
+        },
+        {
+            post-id: 317,
+            author: "Caretaker Jo",
+            month-of-year: 1,
+            day-of-month: 11,
+            title: "Meeting notes from the northern gate patrol",
+            message: "Summary attached in the archive.\n\nShort version: nothing unusual beyond late caravan traffic and one broken lantern post.",
+            is-highlighted: false,
+            is-unread: false,
+            can-reply: true,
+            can-delete: false,
+        },
+        {
+            post-id: 403,
+            author: "Elyra",
+            month-of-year: 5,
+            day-of-month: 24,
+            title: "Moon festival volunteer sign-up and supply checklist",
+            message: "Still missing lamp oil, stage cloth, and a second musician for the last set.\n\nIf you can cover one shift, leave your name below.",
+            is-highlighted: false,
+            is-unread: true,
+            can-reply: true,
+            can-delete: false,
+        },
+        {
+            post-id: 440,
+            author: "Archivist Sen",
+            month-of-year: 3,
+            day-of-month: 31,
+            title: "Map room catalog has been reorganized by region",
+            message: "The desert charts and old sea routes are no longer mixed together.\n\nPlease return anything borrowed to the correct shelf before tomorrow morning.",
+            is-highlighted: false,
+            is-unread: false,
+            can-reply: true,
+            can-delete: false,
+        },
+        {
+            post-id: 441,
+            author: "Guildmaster Oren",
+            month-of-year: 4,
+            day-of-month: 2,
+            title: "Roster update for apprentices transferring next month",
+            message: "Final transfer list is attached to the office wall.\n\nAnyone contesting an assignment needs to speak with me before noon tomorrow.",
+            is-highlighted: true,
+            is-unread: false,
+            can-reply: true,
+            can-delete: false,
+        },
+        {
+            post-id: 512,
+            author: "Nessa",
+            month-of-year: 4,
+            day-of-month: 6,
+            title: "Spare reagents available if anyone is short before raid",
+            message: "I have extra ash root and glass petals.\n\nSend a reply with what you need and I will leave it in the guild chest.",
+            is-highlighted: false,
+            is-unread: true,
+            can-reply: true,
+            can-delete: true,
+        },
+        {
+            post-id: 604,
+            author: "Board Keeper",
+            month-of-year: 4,
+            day-of-month: 16,
+            title: "Welcome to the new board view mock for testing",
+            message: "This panel is seeded entirely from Slint so you can iterate on layout before the real mail and board packets are wired in.\n\nThings worth checking:\n- row density in the list\n- how long titles truncate\n- detail spacing for author, title, date, and message\n- action button affordances at the bottom\n\nIf you want this to lean harder toward the official client later, the data shape here is already close to DisplayBoard::MailBoard and MailPost.",
+            is-highlighted: true,
+            is-unread: false,
+            can-reply: true,
+            can-delete: true,
+        },
+    ];
+
+    public function select-post(index: int) {
+        if index >= 0 && index < posts.length {
+            selected-index = index;
+        }
+    }
+
+    public function close() {
+        visible = false;
+    }
+}
