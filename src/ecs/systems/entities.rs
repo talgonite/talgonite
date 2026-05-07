@@ -65,6 +65,7 @@ pub fn spawn_entities_system(
                 }
             }
             SessionEvent::WorldMap(_)
+            | SessionEvent::DisplayBoard(_)
             | SessionEvent::DisplayMenu(_)
             | SessionEvent::DisplayDialog(_)
             | SessionEvent::SelfProfile(_)

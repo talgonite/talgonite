@@ -34,29 +34,6 @@ component MailActionButton inherits Rectangle {
     }
 }
 
-component MailStatusPill inherits Rectangle {
-    in property <string> label;
-    in property <brush> fill: Theme.surface-secondary;
-    in property <brush> text-color: Theme.foreground-subtle;
-    in property <length> pill-width: 52px;
-
-    width: pill-width;
-    height: 18px;
-    border-radius: 9px;
-    border-width: 1px;
-    border-color: Theme.border-subtle;
-    background: fill;
-
-    Text {
-        text: root.label;
-        color: root.text-color;
-        font-size: Theme.font-size-xsmall;
-        font-weight: 700;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-}
-
 component MailPostRow inherits Rectangle {
     in property <MailBoardPost> post;
     in property <bool> selected: false;
@@ -66,20 +43,12 @@ component MailPostRow inherits Rectangle {
     border-radius: Theme.radius-small;
     border-width: 1px;
     border-color: selected ? Theme.accent-muted : row-touch.has-hover ? Theme.border-subtle : transparent;
-    background: selected ? Theme.accent-subtle : row-touch.has-hover ? Theme.surface-secondary : Theme.surface-card;
+    background: selected ? Theme.accent-subtle : post.is-unread ? Theme.surface-secondary : row-touch.has-hover ? Theme.surface-secondary : Theme.surface-card;
 
     HorizontalLayout {
         padding-left: Theme.spacing-small;
         padding-right: Theme.spacing-small;
         spacing: Theme.spacing-small;
-
-        Rectangle {
-            width: 3px;
-            height: 34px;
-            y: (parent.height - self.height) / 2;
-            border-radius: 2px;
-            background: selected ? Theme.accent : post.is-unread ? Theme.accent-muted : Theme.border-subtle;
-        }
 
         VerticalLayout {
             padding-top: 7px;
@@ -96,20 +65,6 @@ component MailPostRow inherits Rectangle {
                     font-weight: selected ? 700 : post.is-unread ? 700 : 600;
                     overflow: elide;
                 }
-
-                if post.is-highlighted: MailStatusPill {
-                    label: "Pinned";
-                    pill-width: 46px;
-                    fill: Theme.accent-subtle;
-                    text-color: Theme.accent;
-                }
-
-                if post.is-unread: MailStatusPill {
-                    label: "Unread";
-                    pill-width: 50px;
-                    fill: Theme.surface-secondary;
-                    text-color: Theme.foreground-strong;
-                }
             }
 
             HorizontalLayout {
@@ -118,9 +73,9 @@ component MailPostRow inherits Rectangle {
                 Text {
                     width: 96px;
                     text: post.author;
-                    color: post.is-highlighted ? Theme.accent : Theme.foreground-muted;
+                    color: Theme.foreground-muted;
                     font-size: Theme.font-size-small;
-                    font-weight: post.is-highlighted ? 700 : 600;
+                    font-weight: 600;
                     overflow: elide;
                     vertical-alignment: center;
                 }
@@ -173,35 +128,27 @@ export component MailBoardPanel inherits BasePanel {
             border-color: Theme.border-subtle;
 
             VerticalLayout {
-                spacing: 0px;
-
                 Rectangle {
-                    height: 44px;
                     background: Theme.surface-card;
                     border-top-left-radius: Theme.radius-medium;
                     border-top-right-radius: Theme.radius-medium;
 
                     HorizontalLayout {
-                        padding-left: Theme.spacing-medium;
-                        padding-right: Theme.spacing-small;
+                        padding: Theme.spacing-small;
                         spacing: Theme.spacing-small;
 
-                        Text {
-                            text: "Posts";
-                            color: Theme.foreground-strong;
-                            font-size: Theme.font-size-medium;
-                            font-weight: 700;
-                            vertical-alignment: center;
+                        VerticalLayout {
+                            padding-left: Theme.spacing-small;
+                            Text {
+                                text: "Posts";
+                                color: Theme.foreground-strong;
+                                font-size: Theme.font-size-medium;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                            }
                         }
 
                         Rectangle { }
-
-                        Text {
-                            text: MailBoardState.posts.length + " total";
-                            color: Theme.foreground-muted;
-                            font-size: Theme.font-size-small;
-                            vertical-alignment: center;
-                        }
 
                         MailActionButton {
                             width: 74px;
@@ -240,7 +187,7 @@ export component MailBoardPanel inherits BasePanel {
                 height: 32px;
                 background: transparent;
 
-                HorizontalLayout {
+                if MailBoardState.selected-index >= 0: HorizontalLayout {
                     spacing: Theme.spacing-medium;
 
                     Text {
@@ -263,20 +210,6 @@ export component MailBoardPanel inherits BasePanel {
                         vertical-alignment: center;
                     }
 
-                    if MailBoardState.posts[MailBoardState.selected-index].is-highlighted: MailStatusPill {
-                        label: "Pinned";
-                        pill-width: 46px;
-                        fill: Theme.accent-subtle;
-                        text-color: Theme.accent;
-                    }
-
-                    if MailBoardState.posts[MailBoardState.selected-index].is-unread: MailStatusPill {
-                        label: "Unread";
-                        pill-width: 50px;
-                        fill: Theme.surface-secondary;
-                        text-color: Theme.foreground-strong;
-                    }
-
                     Rectangle { }
 
                     MailActionButton {
@@ -292,9 +225,22 @@ export component MailBoardPanel inherits BasePanel {
                         enabled: MailBoardState.posts[MailBoardState.selected-index].can-delete;
                     }
                 }
+                if MailBoardState.selected-index < 0: HorizontalLayout {
+                    spacing: Theme.spacing-small;
+
+                    Text {
+                        text: "No post selected";
+                        color: Theme.foreground-muted;
+                        font-size: Theme.font-size-small;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+
+                    Rectangle { }
+                }
             }
 
-            Rectangle {
+            if MailBoardState.selected-index >= 0: Rectangle {
                 background: Theme.surface-muted;
                 border-radius: Theme.radius-medium;
                 border-width: 1px;
@@ -385,45 +331,41 @@ export component MailBoardPanel inherits BasePanel {
                                 padding: Theme.spacing-medium;
                                 spacing: Theme.spacing-small;
 
-                                Text {
+                                StyledText {
                                     text: MailBoardState.posts[MailBoardState.selected-index].message;
-                                    color: Theme.foreground;
-                                    font-size: Theme.font-size-medium;
-                                    wrap: word-wrap;
+                                    default-color: Theme.foreground;
+                                    default-font-size: Theme.font-size-medium;
                                 }
                             }
                         }
                     }
+                }
+            }
+            if MailBoardState.selected-index < 0: Rectangle {
+                background: Theme.surface-muted;
+                border-radius: Theme.radius-medium;
+                border-width: 1px;
+                border-color: Theme.border-subtle;
 
-                    Rectangle {
-                        height: 34px;
-                        background: Theme.surface-card;
-                        border-radius: Theme.radius-small;
-                        border-width: 1px;
-                        border-color: Theme.border-subtle;
+                VerticalLayout {
+                    padding: Theme.spacing-large;
+                    spacing: Theme.spacing-small;
 
-                        HorizontalLayout {
-                            padding-left: Theme.spacing-small;
-                            padding-right: Theme.spacing-small;
-                            spacing: Theme.spacing-small;
-
-                            Text {
-                                text: "Choose another post from the list to keep browsing.";
-                                color: Theme.foreground-muted;
-                                font-size: Theme.font-size-small;
-                                vertical-alignment: center;
-                            }
-
-                            Rectangle { }
-
-                            Text {
-                                text: MailBoardState.selected-index + 1 + " of " + MailBoardState.posts.length;
-                                color: Theme.foreground-subtle;
-                                font-size: Theme.font-size-small;
-                                vertical-alignment: center;
-                            }
-                        }
+                    Text {
+                        text: "Select a post to view it.";
+                        color: Theme.foreground-strong;
+                        font-size: Theme.font-size-medium;
+                        font-weight: 700;
                     }
+
+                    Text {
+                        text: "Use New Post to create one.";
+                        color: Theme.foreground-muted;
+                        font-size: Theme.font-size-small;
+                        wrap: word-wrap;
+                    }
+
+                    Rectangle { }
                 }
             }
         }

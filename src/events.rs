@@ -112,6 +112,7 @@ impl PlayerAction {
 pub enum SessionEvent {
     PlayerId(u32),
     WorldMap(server::WorldMap),
+    DisplayBoard(server::DisplayBoard),
     DisplayMenu(server::DisplayMenu),
     DisplayDialog(server::DisplayDialog),
     SelfProfile(server::SelfProfile),
@@ -165,11 +166,26 @@ pub enum InteractionIntentAction {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorldContextAction {
-    WalkToTile { tile_x: i32, tile_y: i32 },
-    ApproachActor { entity: Entity, tile_x: i32, tile_y: i32 },
-    ViewProfile { entity: Entity, is_self: bool },
-    PickUpItem { tile_x: i32, tile_y: i32 },
-    SpeakToNpc { entity: Entity },
+    WalkToTile {
+        tile_x: i32,
+        tile_y: i32,
+    },
+    ApproachActor {
+        entity: Entity,
+        tile_x: i32,
+        tile_y: i32,
+    },
+    ViewProfile {
+        entity: Entity,
+        is_self: bool,
+    },
+    PickUpItem {
+        tile_x: i32,
+        tile_y: i32,
+    },
+    SpeakToNpc {
+        entity: Entity,
+    },
     InteractWalls {
         walls: Vec<(i32, i32, bool)>,
     },

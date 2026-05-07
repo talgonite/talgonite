@@ -1,4 +1,10 @@
-import { GameState, DragDropState, SlotPanelType, SocialStatusState } from "../game_state.slint";
+import {
+    GameState,
+    DragDropState,
+    SlotPanelType,
+    SocialStatusState,
+} from "../game_state.slint";
+import { MailBoardState } from "../mail_board_state.slint";
 import { InputBridge } from "../input_bridge.slint";
 import { PlatformState } from "../platform_state.slint";
 import { UiSettings } from "../ui-settings.slint";
@@ -21,7 +27,10 @@ import { ProfilePanel } from "./profile_panel.slint";
 import { WorldContextMenuOverlay } from "./world_context_menu.slint";
 import { WorldListPanel } from "./world_list.slint";
 import { MailBoardPanel } from "./mail_board_panel.slint";
-import { SocialStatusDropdown, SocialStatusDropdownOverlay } from "./social_status_panel.slint";
+import {
+    SocialStatusDropdown,
+    SocialStatusDropdownOverlay,
+} from "./social_status_panel.slint";
 import { GroupPanel } from "./group_panel.slint";
 import { GroupInvitePopup } from "./group_invite_popup.slint";
 import {
@@ -182,8 +191,7 @@ export component GameScene inherits Rectangle {
         height: 100%;
     }
 
-
-    MailBoardPanel {
+    if MailBoardState.visible: MailBoardPanel {
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
     }

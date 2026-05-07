@@ -146,6 +146,7 @@ pub enum UiToCore {
         id: i32,
     },
     WorldContextMenuClose,
+    MailBoardClose,
 }
 
 /// A menu entry that can be a text option or an item with sprite
@@ -261,6 +262,7 @@ pub enum CoreToUi {
         args: String,
         entries: Vec<MenuEntryUi>,
     },
+    DisplayBoard(BoardStateUi),
     SettingsSync {
         xray_size: u8,
         sfx_volume: f32,
@@ -269,6 +271,29 @@ pub enum CoreToUi {
         modifier_hotbar_rows_target_custom_only: bool,
         key_bindings: KeyBindingsUi,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct BoardStateUi {
+    pub visible: bool,
+    pub board_name: String,
+    pub selected_index: i32,
+    pub session_token: i32,
+    pub append: bool,
+    pub posts: Vec<BoardPostUi>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BoardPostUi {
+    pub post_id: i32,
+    pub author: String,
+    pub month_of_year: i32,
+    pub day_of_month: i32,
+    pub title: String,
+    pub message: String,
+    pub is_unread: bool,
+    pub can_reply: bool,
+    pub can_delete: bool,
 }
 
 #[derive(Debug, Clone)]

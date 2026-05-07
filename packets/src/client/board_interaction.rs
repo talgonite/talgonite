@@ -1,60 +1,32 @@
-use crate::{ToBytes, TryFromBytes};
-use byteorder::{BigEndian, ReadBytesExt};
+use crate::ToBytes;
 use encoding::all::WINDOWS_949;
-use encoding::{DecoderTrap, EncoderTrap, Encoding};
-use std::io::{Cursor, Read};
+use encoding::{EncoderTrap, Encoding};
+use num_enum::IntoPrimitive;
 
 use super::Codes;
-// (reused above) EncoderTrap/DecoderTrap imported once
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive)]
 #[repr(u8)]
-pub enum BoardRequestType {
-    BoardList = 1,
+enum InteractionCode {
+    ListBoards = 1,
     ViewBoard = 2,
     ViewPost = 3,
     NewPost = 4,
     Delete = 5,
     SendMail = 6,
-    Highlight = 7,
+    MarkUnread = 7,
 }
 
-impl BoardRequestType {
-    pub fn from_byte(byte: u8) -> Option<Self> {
-        match byte {
-            1 => Some(BoardRequestType::BoardList),
-            2 => Some(BoardRequestType::ViewBoard),
-            3 => Some(BoardRequestType::ViewPost),
-            4 => Some(BoardRequestType::NewPost),
-            5 => Some(BoardRequestType::Delete),
-            6 => Some(BoardRequestType::SendMail),
-            7 => Some(BoardRequestType::Highlight),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(i8)]
-pub enum BoardControls {
-    None = 0,
-    Previous = -1,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive)]
+#[repr(u8)]
+pub enum BoardNavigation {
+    Previous = 0xFF,
     Next = 1,
 }
 
-impl BoardControls {
-    pub fn from_byte(byte: i8) -> Self {
-        match byte {
-            -1 => BoardControls::Previous,
-            1 => BoardControls::Next,
-            _ => BoardControls::None,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
-pub enum BoardInteractionArgs {
-    BoardList,
+pub enum BoardInteraction {
+    ListBoards,
     ViewBoard {
         board_id: u16,
         start_post_id: i16,
@@ -62,7 +34,7 @@ pub enum BoardInteractionArgs {
     ViewPost {
         board_id: u16,
         post_id: i16,
-        controls: BoardControls,
+        navigation: Option<BoardNavigation>,
     },
     NewPost {
         board_id: u16,
@@ -79,50 +51,49 @@ pub enum BoardInteractionArgs {
         subject: String,
         message: String,
     },
-    Highlight {
+    MarkUnread {
         board_id: u16,
         post_id: i16,
     },
-}
-
-#[derive(Debug, Clone)]
-pub struct BoardInteraction {
-    pub request_type: BoardRequestType,
-    pub args: BoardInteractionArgs,
 }
 
 impl ToBytes for BoardInteraction {
     const OPCODE: u8 = Codes::BoardInteraction as _;
 
     fn write_payload(&self, bytes: &mut Vec<u8>) {
-        bytes.push(self.request_type as u8);
-
-        match &self.args {
-            BoardInteractionArgs::BoardList => {
-                // No additional data
+        match &self {
+            BoardInteraction::ListBoards => {
+                bytes.push(InteractionCode::ListBoards.into());
             }
-            BoardInteractionArgs::ViewBoard {
+            BoardInteraction::ViewBoard {
                 board_id,
                 start_post_id,
             } => {
+                bytes.push(InteractionCode::ViewBoard.into());
                 bytes.extend_from_slice(&board_id.to_be_bytes());
                 bytes.extend_from_slice(&start_post_id.to_be_bytes());
-                bytes.push(240); // Unknown byte from C# code
+                bytes.push(0xF0); // unknown
             }
-            BoardInteractionArgs::ViewPost {
+            BoardInteraction::ViewPost {
                 board_id,
                 post_id,
-                controls,
+                navigation,
             } => {
+                bytes.push(InteractionCode::ViewPost.into());
                 bytes.extend_from_slice(&board_id.to_be_bytes());
                 bytes.extend_from_slice(&post_id.to_be_bytes());
-                bytes.push(*controls as i8 as u8);
+                if let Some(nav) = navigation {
+                    bytes.push((*nav).into());
+                } else {
+                    bytes.push(0);
+                }
             }
-            BoardInteractionArgs::NewPost {
+            BoardInteraction::NewPost {
                 board_id,
                 subject,
                 message,
             } => {
+                bytes.push(InteractionCode::NewPost.into());
                 bytes.extend_from_slice(&board_id.to_be_bytes());
                 let subject_bytes = WINDOWS_949
                     .encode(subject, EncoderTrap::Replace)
@@ -135,16 +106,18 @@ impl ToBytes for BoardInteraction {
                 bytes.extend_from_slice(&(message_bytes.len() as u16).to_be_bytes());
                 bytes.extend_from_slice(&message_bytes);
             }
-            BoardInteractionArgs::Delete { board_id, post_id } => {
+            BoardInteraction::Delete { board_id, post_id } => {
+                bytes.push(InteractionCode::Delete.into());
                 bytes.extend_from_slice(&board_id.to_be_bytes());
                 bytes.extend_from_slice(&post_id.to_be_bytes());
             }
-            BoardInteractionArgs::SendMail {
+            BoardInteraction::SendMail {
                 board_id,
                 to,
                 subject,
                 message,
             } => {
+                bytes.push(InteractionCode::SendMail.into());
                 bytes.extend_from_slice(&board_id.to_be_bytes());
                 let to_bytes = WINDOWS_949
                     .encode(to, EncoderTrap::Replace)
@@ -162,112 +135,11 @@ impl ToBytes for BoardInteraction {
                 bytes.extend_from_slice(&(message_bytes.len() as u16).to_be_bytes());
                 bytes.extend_from_slice(&message_bytes);
             }
-            BoardInteractionArgs::Highlight { board_id, post_id } => {
+            BoardInteraction::MarkUnread { board_id, post_id } => {
+                bytes.push(InteractionCode::MarkUnread.into());
                 bytes.extend_from_slice(&board_id.to_be_bytes());
                 bytes.extend_from_slice(&post_id.to_be_bytes());
             }
         }
-    }
-}
-
-impl TryFromBytes for BoardInteraction {
-    fn try_from_bytes(bytes: &[u8]) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
-        let mut cursor = Cursor::new(bytes);
-        let board_request_type_byte = cursor.read_u8()?;
-        let request_type = BoardRequestType::from_byte(board_request_type_byte)
-            .expect("Invalid board request type");
-
-        let args = match request_type {
-            BoardRequestType::BoardList => BoardInteractionArgs::BoardList,
-            BoardRequestType::ViewBoard => {
-                let board_id = cursor.read_u16::<BigEndian>()?;
-                let start_post_id = cursor.read_i16::<BigEndian>()?;
-                // Skip the unknown byte (240)
-                let _ = cursor.read_u8();
-                BoardInteractionArgs::ViewBoard {
-                    board_id,
-                    start_post_id,
-                }
-            }
-            BoardRequestType::ViewPost => {
-                let board_id = cursor.read_u16::<BigEndian>()?;
-                let post_id = cursor.read_i16::<BigEndian>()?;
-                let controls_byte = cursor.read_i8()?;
-                let controls = BoardControls::from_byte(controls_byte);
-                BoardInteractionArgs::ViewPost {
-                    board_id,
-                    post_id,
-                    controls,
-                }
-            }
-            BoardRequestType::NewPost => {
-                let board_id = cursor.read_u16::<BigEndian>()?;
-                let subject_len = cursor.read_u8()?;
-                let mut subject_buf = vec![0; subject_len as usize];
-                cursor.read_exact(&mut subject_buf)?;
-                let subject = WINDOWS_949
-                    .decode(&subject_buf, DecoderTrap::Replace)
-                    .unwrap_or_default();
-
-                let message_len = cursor.read_u16::<BigEndian>()?;
-                let mut message_buf = vec![0; message_len as usize];
-                cursor.read_exact(&mut message_buf)?;
-                let message = WINDOWS_949
-                    .decode(&message_buf, DecoderTrap::Replace)
-                    .unwrap_or_default();
-
-                BoardInteractionArgs::NewPost {
-                    board_id,
-                    subject,
-                    message,
-                }
-            }
-            BoardRequestType::Delete => {
-                let board_id = cursor.read_u16::<BigEndian>()?;
-                let post_id = cursor.read_i16::<BigEndian>()?;
-                BoardInteractionArgs::Delete { board_id, post_id }
-            }
-            BoardRequestType::SendMail => {
-                let board_id = cursor.read_u16::<BigEndian>()?;
-
-                let to_len = cursor.read_u8()?;
-                let mut to_buf = vec![0; to_len as usize];
-                cursor.read_exact(&mut to_buf)?;
-                let to = WINDOWS_949
-                    .decode(&to_buf, DecoderTrap::Replace)
-                    .unwrap_or_default();
-
-                let subject_len = cursor.read_u8()?;
-                let mut subject_buf = vec![0; subject_len as usize];
-                cursor.read_exact(&mut subject_buf)?;
-                let subject = WINDOWS_949
-                    .decode(&subject_buf, DecoderTrap::Replace)
-                    .unwrap_or_default();
-
-                let message_len = cursor.read_u16::<BigEndian>()?;
-                let mut message_buf = vec![0; message_len as usize];
-                cursor.read_exact(&mut message_buf)?;
-                let message = WINDOWS_949
-                    .decode(&message_buf, DecoderTrap::Replace)
-                    .unwrap_or_default();
-
-                BoardInteractionArgs::SendMail {
-                    board_id,
-                    to,
-                    subject,
-                    message,
-                }
-            }
-            BoardRequestType::Highlight => {
-                let board_id = cursor.read_u16::<BigEndian>()?;
-                let post_id = cursor.read_i16::<BigEndian>()?;
-                BoardInteractionArgs::Highlight { board_id, post_id }
-            }
-        };
-
-        Ok(BoardInteraction { request_type, args })
     }
 }

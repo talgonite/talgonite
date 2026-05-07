@@ -1,3 +1,4 @@
+use crate::rich_text::RichText;
 use crate::{
     resources::{PlayerPortraitState, RendererState, ZoomState},
     slint_support::assets::SlintAssetLoader,
@@ -241,6 +242,12 @@ fn reset_game_state_for_main_menu(window: &crate::MainWindow) {
     game_state.set_world_list_members(empty_model());
     game_state.set_world_list_count(0);
     game_state.set_world_list_total_count(0);
+
+    let mail_board = slint::ComponentHandle::global::<crate::MailBoardState>(window);
+    mail_board.set_visible(false);
+    mail_board.set_board_name(slint::SharedString::from(""));
+    mail_board.set_selected_index(-1);
+    mail_board.set_posts(empty_model());
 
     let mut profile = crate::ProfileData::default();
     profile.visible = false;
@@ -694,6 +701,48 @@ pub fn apply_core_to_slint(
                     text_entry_prompt: slint::SharedString::from(prompt.as_str()),
                     text_entry_args: slint::SharedString::from(args.as_str()),
                 });
+            }
+            crate::webui::ipc::CoreToUi::DisplayBoard(board_state) => {
+                let board = slint::ComponentHandle::global::<crate::MailBoardState>(&strong);
+
+                if board_state.session_token != board.get_session_token() {
+                    continue;
+                }
+
+                let mut slint_posts = Vec::with_capacity(board_state.posts.len());
+                for post in &board_state.posts {
+                    slint_posts.push(crate::MailBoardPost {
+                        post_id: post.post_id,
+                        author: slint::SharedString::from(post.author.as_str()),
+                        month_of_year: post.month_of_year,
+                        day_of_month: post.day_of_month,
+                        title: slint::SharedString::from(post.title.as_str()),
+                        message: RichText::parse(post.message.as_str()).to_slint_styled_text(),
+                        is_unread: post.is_unread,
+                        can_reply: post.can_reply,
+                        can_delete: post.can_delete,
+                    });
+                }
+
+                board.set_session_token(board_state.session_token);
+                board.set_visible(board_state.visible);
+                board.set_board_name(slint::SharedString::from(board_state.board_name.as_str()));
+
+                if board_state.append {
+                    let existing_posts = board.get_posts();
+                    let mut combined_posts =
+                        Vec::with_capacity(existing_posts.row_count() + slint_posts.len());
+                    for index in 0..existing_posts.row_count() {
+                        if let Some(post) = existing_posts.row_data(index) {
+                            combined_posts.push(post);
+                        }
+                    }
+                    combined_posts.extend(slint_posts);
+                    board.set_posts(slint::ModelRc::new(slint::VecModel::from(combined_posts)));
+                } else {
+                    board.set_selected_index(board_state.selected_index);
+                    board.set_posts(slint::ModelRc::new(slint::VecModel::from(slint_posts)));
+                }
             }
             crate::webui::ipc::CoreToUi::SettingsSync {
                 xray_size,

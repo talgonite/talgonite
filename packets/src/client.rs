@@ -2,9 +2,7 @@ mod begin_chant;
 pub use begin_chant::BeginChant;
 
 mod board_interaction;
-pub use board_interaction::{
-    BoardControls, BoardInteraction, BoardInteractionArgs, BoardRequestType,
-};
+pub use board_interaction::{BoardInteraction, BoardNavigation};
 
 mod spell_chant;
 pub use spell_chant::SpellChant;

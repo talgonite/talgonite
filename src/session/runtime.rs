@@ -148,7 +148,14 @@ fn process_net_packets(
                 }
                 &server::Codes::MapData => {
                     if let Some(q) = parse_packet::<server::MapData>(data) {
-                        handle_map_data(&mut session, &mut map_events, q, &map_store, &storage_config, server_id);
+                        handle_map_data(
+                            &mut session,
+                            &mut map_events,
+                            q,
+                            &map_store,
+                            &storage_config,
+                            server_id,
+                        );
                     }
                 }
                 &server::Codes::ServerMessage => {
@@ -171,6 +178,12 @@ fn process_net_packets(
                 &server::Codes::WorldList => {
                     if let Some(q) = parse_packet::<server::WorldList>(data) {
                         session_events.write(SessionEvent::WorldList(q));
+                    }
+                }
+                &server::Codes::DisplayBoard => {
+                    if let Some(q) = parse_packet::<server::DisplayBoard>(data) {
+                        tracing::info!("Received DisplayBoard: {:?}", q);
+                        session_events.write(SessionEvent::DisplayBoard(q));
                     }
                 }
                 &server::Codes::RemoveSkillFromPane => {

@@ -5,7 +5,8 @@ use slint::ComponentHandle;
 
 use crate::webui::ipc::{UiToCore, WorldListFilter};
 use crate::{
-    ContextMenuState, DragDropState, GameState, MainWindow, NpcDialogState, SlotPanelType, SocialStatus, SocialStatusState,
+    ContextMenuState, DragDropState, GameState, MailBoardState, MainWindow, NpcDialogState,
+    SlotPanelType, SocialStatus, SocialStatusState,
 };
 
 /// Convert Slint SlotPanelType to game types.
@@ -217,6 +218,15 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
         let tx = tx.clone();
         game_state.on_toggle_groupable(move || {
             let _ = tx.send(UiToCore::ToggleGroupable);
+        });
+    }
+
+    // Mail board close
+    {
+        let tx = tx.clone();
+        let mail_board = slint_app.global::<MailBoardState>();
+        mail_board.on_close_request(move || {
+            let _ = tx.send(UiToCore::MailBoardClose);
         });
     }
 

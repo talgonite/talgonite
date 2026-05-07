@@ -14,6 +14,12 @@ pub trait TryFromBytes {
         Self: Sized;
 }
 
+pub trait TryFromCursor {
+    fn try_from_cursor(cursor: &mut std::io::Cursor<&[u8]>) -> anyhow::Result<Self>
+    where
+        Self: Sized;
+}
+
 pub trait ToBytes {
     const OPCODE: u8;
 
