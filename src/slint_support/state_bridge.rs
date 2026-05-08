@@ -728,7 +728,6 @@ pub fn apply_core_to_slint(
                 board.set_session_token(board_state.session_token);
                 board.set_visible(board_state.visible);
                 board.set_board_name(slint::SharedString::from(board_state.board_name.as_str()));
-                board.set_loading_post_id(board_state.loading_post_id);
 
                 if board_state.append {
                     let existing_posts = board.get_posts();
@@ -741,10 +740,13 @@ pub fn apply_core_to_slint(
                     }
                     combined_posts.extend(slint_posts);
                     board.set_posts(slint::ModelRc::new(slint::VecModel::from(combined_posts)));
+                    board.set_loading_post_id(board_state.loading_post_id);
                     board.set_selected_index(board_state.selected_index);
                 } else {
-                    board.set_selected_index(board_state.selected_index);
+                    board.set_selected_index(-1);
                     board.set_posts(slint::ModelRc::new(slint::VecModel::from(slint_posts)));
+                    board.set_loading_post_id(board_state.loading_post_id);
+                    board.set_selected_index(board_state.selected_index);
                 }
             }
             crate::webui::ipc::CoreToUi::SettingsSync {

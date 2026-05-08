@@ -1,5 +1,9 @@
 # Unreleased
 
+## Boards / Posts
+
+Posts are now viewable with a much more modern interface with a list of posts on the left and their content on the right.
+
 # Version 0.1.7 (2026-05-05)
 
 ## Message formatting

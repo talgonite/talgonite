@@ -154,6 +154,7 @@ export component MailBoardPanel inherits BasePanel {
                             width: 74px;
                             label: "New Post";
                             emphasis: "primary";
+                            enabled: false;
                         }
                     }
                 }
@@ -215,14 +216,14 @@ export component MailBoardPanel inherits BasePanel {
                     MailActionButton {
                         width: 52px;
                         label: "Reply";
-                        enabled: MailBoardState.posts[MailBoardState.selected-index].can-reply;
+                        enabled: false;
                     }
 
                     MailActionButton {
                         width: 56px;
                         label: "Delete";
                         emphasis: "danger";
-                        enabled: MailBoardState.posts[MailBoardState.selected-index].can-delete;
+                        enabled: false;
                     }
                 }
                 if MailBoardState.selected-index < 0: HorizontalLayout {
@@ -384,7 +385,7 @@ export component MailBoardPanel inherits BasePanel {
                     }
 
                     Text {
-                        text: "Use New Post to create one.";
+                        text: "Posting actions are currently unavailable.";
                         color: Theme.foreground-muted;
                         font-size: Theme.font-size-small;
                         wrap: word-wrap;
