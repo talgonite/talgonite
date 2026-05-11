@@ -1,5 +1,7 @@
 use glam::{Mat4, Vec2, Vec3};
 
+pub const DEFAULT_FOG_DESATURATION: f32 = 0.7;
+
 #[derive(Debug)]
 pub struct Camera {
     pub width: f32,
@@ -39,7 +41,7 @@ pub struct CameraUniform {
     pub view_proj: [[f32; 4]; 4],
     pub position: [f32; 2],
     pub xray_size: f32,
-    pub _padding: f32,
+    pub fog_desaturation: f32,
     pub tint: [f32; 4],
 }
 
@@ -49,7 +51,7 @@ impl CameraUniform {
             view_proj: Mat4::default().to_cols_array_2d(),
             position: [0.0; 2],
             xray_size: 1.0,
-            _padding: 0.0,
+            fog_desaturation: DEFAULT_FOG_DESATURATION,
             tint: [0.0, 0.0, 0.0, 0.0],
         }
     }

@@ -29,24 +29,47 @@ pub fn setup_game_files(
     storage_config: Res<crate::resources::StorageConfig>,
     state: Res<State<AppState>>,
     mut next_state: ResMut<NextState<AppState>>,
+    mut install_transition_requested: Local<bool>,
 ) {
     if existing.is_some() {
+        *install_transition_requested = false;
         if *state.get() == AppState::CheckingFiles {
             next_state.set(AppState::MainMenu);
         }
         return;
     }
 
+    if *state.get() == AppState::Installing {
+        *install_transition_requested = true;
+        return;
+    }
+
     let path = storage_config.data_arx_path();
-    if !path.exists() {
-        if *state.get() != AppState::Installing {
-            tracing::warn!("data.arx not found at {:?}, switching to Installing state", path);
+    let archive_issue = if !path.exists() {
+        Some(format!("data.arx not found at {:?}", path))
+    } else {
+        match installer::is_archive_up_to_date(&path) {
+            Ok(true) => None,
+            Ok(false) => Some(format!("data.arx found at {:?} but version is stale", path)),
+            Err(error) => Some(format!(
+                "failed to verify data.arx at {:?}: {:?}",
+                path, error
+            )),
+        }
+    };
+
+    if let Some(issue) = archive_issue {
+        if !*install_transition_requested {
+            tracing::warn!("{}, switching to Installing state", issue);
             next_state.set(AppState::Installing);
+            *install_transition_requested = true;
         }
         return;
     }
 
-    tracing::info!("data.arx found, initializing GameFiles");
+    *install_transition_requested = false;
+
+    tracing::info!("data.arx found and version matches, initializing GameFiles");
     let game_files = GameFiles::from_root(&storage_config.root);
     commands.insert_resource(SlintAssetLoaderRes(SlintAssetLoader::new(&game_files)));
     commands.insert_resource(game_files);

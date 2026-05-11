@@ -137,6 +137,11 @@ impl CameraState {
         self.update(queue);
     }
 
+    pub fn set_fog_desaturation(&mut self, queue: &wgpu::Queue, amount: f32) {
+        self.camera_uniform.fog_desaturation = amount.clamp(0.0, 1.0);
+        self.update(queue);
+    }
+
     fn update(&mut self, queue: &wgpu::Queue) {
         self.camera_uniform.update_view_proj(&self.camera);
         queue.write_buffer(

@@ -79,6 +79,11 @@ pub fn sync_lobby_portraits(
                     preview.helmet_color as u8,
                 ),
                 (
+                    PlayerPieceType::HelmetExtra,
+                    preview.helmet,
+                    preview.helmet_color as u8,
+                ),
+                (
                     PlayerPieceType::HelmetFg,
                     preview.helmet,
                     preview.helmet_color as u8,
@@ -123,11 +128,7 @@ pub fn sync_lobby_portraits(
                         &renderer.queue,
                         &mut player_store.store,
                         &game_files.inner().archive(),
-                        PlayerSpriteKey {
-                            gender,
-                            slot,
-                            sprite_id: id,
-                        },
+                        PlayerSpriteKey::for_piece(slot, id, gender),
                         color,
                         2, // Down
                         0.0,
@@ -181,11 +182,7 @@ pub fn collect_player_sprites(
     for child in children.iter() {
         if let Ok(sprite) = sprite_query.get(child) {
             sprites.push((
-                PlayerSpriteKey {
-                    gender,
-                    slot: sprite.slot,
-                    sprite_id: sprite.id,
-                },
+                PlayerSpriteKey::for_piece(sprite.slot, sprite.id, gender),
                 sprite.color,
             ));
         }
@@ -310,11 +307,7 @@ pub fn sync_players_to_renderer(
             &shared_state.queue,
             &mut store_state.store,
             &game_files.inner().archive(),
-            PlayerSpriteKey {
-                gender,
-                slot: sprite.slot,
-                sprite_id: sprite.id,
-            },
+            PlayerSpriteKey::for_piece(sprite.slot, sprite.id, gender),
             sprite.color,
             *direction as u8,
             position.x,

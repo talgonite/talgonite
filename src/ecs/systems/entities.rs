@@ -57,9 +57,12 @@ pub fn spawn_entities_system(
                 // Retroactively mark existing entity as local player
                 for (entity, ent_id, _pos) in existing_players.iter() {
                     if ent_id.id == *id {
-                        commands
-                            .entity(entity)
-                            .insert((LocalPlayer, CameraTarget, UnconfirmedWalks::default(), UnconfirmedTurns::default()));
+                        commands.entity(entity).insert((
+                            LocalPlayer,
+                            CameraTarget,
+                            UnconfirmedWalks::default(),
+                            UnconfirmedTurns::default(),
+                        ));
                         break;
                     }
                 }
@@ -266,7 +269,12 @@ fn spawn_display_player(
 
     let is_local = Some(player.id) == local_id;
     if is_local {
-        player_entity.insert((LocalPlayer, CameraTarget, UnconfirmedWalks::default(), UnconfirmedTurns::default()));
+        player_entity.insert((
+            LocalPlayer,
+            CameraTarget,
+            UnconfirmedWalks::default(),
+            UnconfirmedTurns::default(),
+        ));
     } else {
         player_entity.insert(HoverName::new(player.name.clone()));
     }
@@ -445,6 +453,11 @@ fn spawn_player_sprites(
         parent.spawn(PlayerSprite {
             id: head_sprite,
             slot: PlayerPieceType::HelmetBg,
+            color: head_color,
+        });
+        parent.spawn(PlayerSprite {
+            id: head_sprite,
+            slot: PlayerPieceType::HelmetExtra,
             color: head_color,
         });
         parent.spawn(PlayerSprite {

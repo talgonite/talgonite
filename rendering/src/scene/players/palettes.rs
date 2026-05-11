@@ -26,15 +26,12 @@ impl PaletteLookup {
 
     pub fn get_palette(&self, gender: Gender, id: u16) -> Option<u16> {
         let gendered_override = match gender {
-            Gender::Male => self.male.as_ref()?.get(&id),
-            Gender::Female => self.female.as_ref()?.get(&id),
+            Gender::Male => self.male.as_ref().and_then(|m| m.get(&id).copied()),
+            Gender::Female => self.female.as_ref().and_then(|f| f.get(&id).copied()),
             _ => None,
         };
 
-        match gendered_override {
-            Some(p) => Some(*p),
-            None => self.base.as_ref()?.get(&id).copied(),
-        }
+        gendered_override.or_else(|| self.base.as_ref()?.get(&id).copied())
     }
 }
 
@@ -139,7 +136,10 @@ impl PlayerPalettes {
         let palette_prefix = key.prefix_for_palette(key.sprite_id);
         let palette_y = *self.info.get(&palette_prefix).unwrap_or(&0);
 
-        let palette_index = if matches!(key.slot, PlayerPieceType::Body | PlayerPieceType::Face | PlayerPieceType::Emote) {
+        let palette_index = if matches!(
+            key.slot,
+            PlayerPieceType::Body | PlayerPieceType::Face | PlayerPieceType::Emote
+        ) {
             dye_color as u16
         } else {
             match self.table.get(&key.slot.prefix(key.sprite_id)) {
@@ -149,7 +149,10 @@ impl PlayerPalettes {
         };
 
         let v_coord = ((palette_y + palette_index as u32) as f32 + 0.5) / self.count as f32;
-        let dye_param = if matches!(key.slot, PlayerPieceType::Body | PlayerPieceType::Face | PlayerPieceType::Emote) {
+        let dye_param = if matches!(
+            key.slot,
+            PlayerPieceType::Body | PlayerPieceType::Face | PlayerPieceType::Emote
+        ) {
             -1.
         } else {
             dye_color as f32 / 256.

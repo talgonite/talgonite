@@ -20,7 +20,7 @@ pub struct EpfImage {
 #[repr(u8)]
 pub enum EpfAnimationType {
     Walk,
-    Idle,
+    Idle, // in EPF 04 for accessories
     Attack,
     SpellChant,        // in EPF b
     BardAttack,        // in EPF b
@@ -28,7 +28,6 @@ pub enum EpfAnimationType {
     ArmsUpChant,       // in EPF 03
     Wave,              // in EPF 03
     BlowKiss,          // in EPF 03
-    ShowOffAccessory,  // in EPF 04 - This is a total guess
     TwoHandedAttack,   //in EPF c
     JumpAttack,        //in EPF c
     SwipeAttack,       // in EPF c
@@ -168,7 +167,7 @@ impl EpfImage {
             .collect()
     }
 
-    pub fn into_animation(&self, suffix: &str) -> Vec<EpfAnimation> {
+    pub fn into_animation(&self, suffix: &str, frame_count: usize) -> Vec<EpfAnimation> {
         let meh = match suffix {
             "01" => vec![
                 (EpfAnimationType::Idle, AnimationDirection::Away, 0..1),
@@ -202,16 +201,16 @@ impl EpfImage {
             ],
             "04" => vec![
                 (
-                    EpfAnimationType::ShowOffAccessory,
+                    EpfAnimationType::Idle,
                     AnimationDirection::Away,
-                    0..8,
+                    0..frame_count / 2,
                 ),
                 (
-                    EpfAnimationType::ShowOffAccessory,
+                    EpfAnimationType::Idle,
                     AnimationDirection::Towards,
-                    8..16,
+                    frame_count / 2..frame_count,
                 ),
-            ], //TODO: Finalize what this actually is, this is a complete guess
+            ],
             "b" => vec![
                 //priest
                 (EpfAnimationType::SpellChant, AnimationDirection::Away, 0..3),

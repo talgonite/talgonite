@@ -2,6 +2,7 @@ struct Camera {
     view_proj: mat4x4<f32>,
     position: vec2<f32>,
     xray_size: f32,
+    fog_desaturation: f32,
     tint: vec3<f32>,
 }
 @group(1) @binding(0)

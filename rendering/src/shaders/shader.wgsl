@@ -2,6 +2,7 @@ struct Camera {
     view_proj: mat4x4<f32>,
     position: vec2<f32>,
     xray_size: f32,
+    fog_desaturation: f32,
     tint: vec3<f32>,
 }
 @group(1) @binding(0)
@@ -158,12 +159,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     let inner_radius = 9.0;
     let outer_radius = 13.0;
-    let factor = smoothstep(inner_radius, outer_radius, dist);
+    let factor = smoothstep(inner_radius, outer_radius, dist) * camera.fog_desaturation;
 
     // Convert to grayscale
     let gray = dot(final_color.rgb, vec3<f32>(0.299, 0.587, 0.114));
     // Mix between full color and slightly dimmed grayscale
-    var out_rgb = mix(final_color.rgb, vec3<f32>(gray) * 0.5, factor);
+    var out_rgb = mix(final_color.rgb, vec3<f32>(gray) * 0.6, factor);
 
     return vec4<f32>(out_rgb.rgb + camera.tint + in.tint, final_color.a);
 }

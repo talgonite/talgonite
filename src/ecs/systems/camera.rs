@@ -3,6 +3,7 @@
 use super::super::components::*;
 use crate::{Camera, RendererState};
 use bevy::prelude::*;
+use rendering::camera::DEFAULT_FOG_DESATURATION;
 use tracing::debug;
 
 /// Initializes the game world with a camera entity.
@@ -66,6 +67,9 @@ pub fn camera_xray_sync(
     settings: Res<crate::settings_types::Settings>,
 ) {
     if settings.is_changed() {
+        camera
+            .camera
+            .set_fog_desaturation(&renderer.queue, DEFAULT_FOG_DESATURATION);
         camera.camera.set_xray_size(
             &renderer.queue,
             settings.graphics.xray_size.to_shader_multiplier(),

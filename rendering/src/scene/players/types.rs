@@ -29,6 +29,7 @@ pub enum PlayerPieceType {
     Accessory2Fg,
     Accessory3Bg,
     Accessory3Fg,
+    HelmetExtra,
     HelmetBg,
     HelmetFg,
     Boots,
@@ -43,8 +44,9 @@ pub enum PlayerPieceType {
 }
 
 impl PlayerPieceType {
-    pub fn prefix(&self, id: u16) -> char {
+    pub const fn prefix(&self, id: u16) -> char {
         match self {
+            PlayerPieceType::HelmetExtra => 'f',
             PlayerPieceType::HelmetBg => 'h',
             PlayerPieceType::HelmetFg => 'e',
             PlayerPieceType::Body => 'm',
@@ -77,40 +79,42 @@ impl PlayerPieceType {
         }
     }
 
-    pub fn z_priority(&self, towards: bool) -> f32 {
+    pub const fn z_priority(&self, towards: bool) -> f32 {
         match towards {
             true => match self {
                 PlayerPieceType::Accessory1Fg => 0.93,
                 PlayerPieceType::Accessory2Fg => 0.92,
                 PlayerPieceType::Accessory3Fg => 0.91,
                 PlayerPieceType::Shield => 0.7,
-                PlayerPieceType::HelmetFg => 0.5,
-                PlayerPieceType::Weapon => 0.4,
-                PlayerPieceType::Armor => 0.3,
-                PlayerPieceType::HelmetBg => 0.275,
-                PlayerPieceType::Boots => 0.25,
-                PlayerPieceType::Pants => 0.2,
-                PlayerPieceType::Arms => 0.175,
-                PlayerPieceType::Emote => 0.16, // Slightly above face
-                PlayerPieceType::Face => 0.15,
-                PlayerPieceType::Body => 0.1,
+                PlayerPieceType::Arms => 0.6,
+                PlayerPieceType::Weapon => 0.5,
+                PlayerPieceType::HelmetFg => 0.42,
+                PlayerPieceType::Armor => 0.38,
+                PlayerPieceType::HelmetBg => 0.3,
+                PlayerPieceType::Boots => 0.26,
+                PlayerPieceType::Emote => 0.23, // Slightly above face
+                PlayerPieceType::Face => 0.22,
+                PlayerPieceType::Pants => 0.18,
+                PlayerPieceType::Body => 0.12,
                 PlayerPieceType::Accessory1Bg => 0.09,
                 PlayerPieceType::Accessory2Bg => 0.08,
                 PlayerPieceType::Accessory3Bg => 0.07,
+                PlayerPieceType::HelmetExtra => 0.06,
             },
             false => match self {
                 PlayerPieceType::Accessory1Fg => 0.93,
                 PlayerPieceType::Accessory2Fg => 0.92,
                 PlayerPieceType::Accessory3Fg => 0.91,
-                PlayerPieceType::HelmetFg => 0.75,
-                PlayerPieceType::HelmetBg => 0.7,
-                PlayerPieceType::Weapon => 0.5,
+                PlayerPieceType::Arms => 0.7,
+                PlayerPieceType::Weapon => 0.6,
+                PlayerPieceType::HelmetExtra => 0.55,
+                PlayerPieceType::HelmetBg => 0.5,
+                PlayerPieceType::HelmetFg => 0.45,
                 PlayerPieceType::Armor => 0.4,
                 PlayerPieceType::Boots => 0.325,
-                PlayerPieceType::Pants => 0.3,
-                PlayerPieceType::Arms => 0.275,
-                PlayerPieceType::Emote => 0.23, // Slightly above face
-                PlayerPieceType::Face => 0.225,
+                PlayerPieceType::Pants => 0.28,
+                PlayerPieceType::Emote => 0.245, // Slightly above face
+                PlayerPieceType::Face => 0.24,
                 PlayerPieceType::Body => 0.2,
                 PlayerPieceType::Shield => 0.15,
                 PlayerPieceType::Accessory1Bg => 0.09,
@@ -120,7 +124,7 @@ impl PlayerPieceType {
         }
     }
 
-    pub fn offset(&self) -> Vec2 {
+    pub const fn offset(&self) -> Vec2 {
         match self {
             PlayerPieceType::Weapon => Vec2::new(-27., 0.),
             PlayerPieceType::Accessory1Fg
@@ -150,7 +154,20 @@ impl PlayerSpriteKey {
             | PlayerPieceType::Accessory2Bg
             | PlayerPieceType::Accessory3Bg => 'c',
             PlayerPieceType::Face | PlayerPieceType::Emote => 'm',
+            PlayerPieceType::Arms => 'u',
+            PlayerPieceType::Armor => 'i',
             _ => self.slot.prefix(sprite_id),
+        }
+    }
+
+    pub fn for_piece(slot: PlayerPieceType, sprite_id: u16, gender: Gender) -> Self {
+        Self {
+            slot,
+            sprite_id,
+            gender: match slot {
+                PlayerPieceType::Shield | PlayerPieceType::Emote => Gender::Male,
+                _ => gender,
+            },
         }
     }
 }

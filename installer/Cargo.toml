@@ -27,3 +27,4 @@ libarx = { version = "0.4", features = ["zstd"] }
 jubako = "*"
 tracing.workspace = true
 indicatif = "0.18"
+rendering.workspace = true
