@@ -1,6 +1,5 @@
 ---
 source: tests/rendering_snapshots.rs
-assertion_line: 619
 expression: png
 extension: png
 snapshot_kind: binary

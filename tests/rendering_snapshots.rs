@@ -2,10 +2,11 @@ mod common;
 
 use common::TestScene;
 use packets::server::{self};
+use talgonite_lib::events::{InputSource, PlayerAction};
 
 #[test]
 fn test_player_on_map() {
-    let mut scene = TestScene::new("assets/data.arx", "assets/maps");
+    let mut scene = TestScene::new();
 
     scene.load_map(498, 12, 12);
 
@@ -101,7 +102,7 @@ fn test_player_on_map() {
 
 #[test]
 fn test_player_on_map_2() {
-    let mut scene = TestScene::new("assets/data.arx", "assets/maps");
+    let mut scene = TestScene::new();
 
     scene.load_map(498, 12, 12);
 
@@ -257,7 +258,7 @@ fn test_player_on_map_2() {
 
 #[test]
 fn test_player_on_map_3() {
-    let mut scene = TestScene::new("assets/data.arx", "assets/maps");
+    let mut scene = TestScene::new();
 
     scene.load_map(505, 50, 50);
 
@@ -442,7 +443,7 @@ fn test_player_on_map_3() {
 
 #[test]
 fn test_player_on_map_4() {
-    let mut scene = TestScene::new("assets/data.arx", "assets/maps");
+    let mut scene = TestScene::new();
 
     scene.load_map(505, 50, 50);
 
@@ -559,7 +560,7 @@ fn test_player_on_map_4() {
 
 #[test]
 fn test_player_movement() {
-    let mut scene = TestScene::new("assets/data.arx", "assets/maps");
+    let mut scene = TestScene::new();
 
     scene.load_map(498, 12, 12);
 
@@ -607,9 +608,9 @@ fn test_player_movement() {
     scene.update();
 
     // Take a step down (direction 2)
-    scene.send_player_action(talgonite::events::PlayerAction::Walk {
-        direction: 2,
-        source: talgonite::events::InputSource::Manual,
+    scene.send_player_action(PlayerAction::Walk {
+        direction: 2.into(),
+        source: InputSource::Manual,
     });
 
     // Process the action (inserts the tween)
@@ -626,4 +627,153 @@ fn test_player_movement() {
 
     let png = scene.capture(240, 160);
     insta::assert_binary_snapshot!("player_movement_finished.png", png);
+}
+
+#[test]
+fn test_female_player_equipment() {
+    let mut scene = TestScene::new();
+
+    scene.load_map(500, 100, 100);
+
+    let player_id = scene.next_entity_id();
+    scene.display_player(server::display_player::DisplayPlayer {
+        id: player_id,
+        x: 49,
+        y: 48,
+        direction: 1,
+        args: server::display_player::DisplayArgs::Normal {
+            head_sprite: 459,
+            body_sprite: 32,
+            pants_color: 0,
+            armor_sprite1: 165,
+            boots_sprite: 1,
+            armor_sprite2: 165,
+            shield_sprite: 23,
+            weapon_sprite: 130,
+            head_color: 18,
+            boots_color: 12,
+            accessory_color1: 0,
+            accessory_sprite1: 219,
+            accessory_color2: 0,
+            accessory_sprite2: 0,
+            accessory_color3: 0,
+            accessory_sprite3: 0,
+            lantern_size: 0,
+            rest_position: 0,
+            overcoat_sprite: 0,
+            overcoat_color: 0,
+            body_color: 0,
+            is_transparent: false,
+            face_sprite: 0,
+            is_male: false,
+        },
+        ..Default::default()
+    });
+
+    scene.set_light_level(packets::server::LightLevelKind::DarkestA);
+
+    scene.update();
+    scene.center_camera_on_tile(48.0, 47.0);
+    scene.update();
+
+    let png = scene.capture(120, 150);
+    insta::assert_binary_snapshot!("female_player_equipment.png", png);
+}
+
+#[test]
+fn test_female_player_equipment_away() {
+    let mut scene = TestScene::new();
+
+    scene.load_map(500, 100, 100);
+
+    let player_id = scene.next_entity_id();
+    scene.display_player(server::display_player::DisplayPlayer {
+        id: player_id,
+        x: 49,
+        y: 48,
+        direction: 0,
+        args: server::display_player::DisplayArgs::Normal {
+            head_sprite: 459,
+            body_sprite: 32,
+            pants_color: 0,
+            armor_sprite1: 165,
+            boots_sprite: 1,
+            armor_sprite2: 165,
+            shield_sprite: 23,
+            weapon_sprite: 130,
+            head_color: 18,
+            boots_color: 12,
+            accessory_color1: 0,
+            accessory_sprite1: 219,
+            accessory_color2: 0,
+            accessory_sprite2: 0,
+            accessory_color3: 0,
+            accessory_sprite3: 0,
+            lantern_size: 0,
+            rest_position: 0,
+            overcoat_sprite: 0,
+            overcoat_color: 0,
+            body_color: 0,
+            is_transparent: false,
+            face_sprite: 0,
+            is_male: false,
+        },
+        ..Default::default()
+    });
+
+    scene.set_light_level(packets::server::LightLevelKind::DarkestA);
+
+    scene.update();
+    scene.center_camera_on_tile(48.0, 47.0);
+    scene.update();
+
+    let png = scene.capture(120, 150);
+    insta::assert_binary_snapshot!("female_player_equipment_away.png", png);
+}
+
+#[test]
+fn test_ant_wings() {
+    let mut scene = TestScene::new();
+
+    let player_id = scene.next_entity_id();
+    scene.display_player(server::display_player::DisplayPlayer {
+        id: player_id,
+        x: 0,
+        y: 0,
+        direction: 0,
+        args: server::display_player::DisplayArgs::Normal {
+            head_sprite: 0,
+            body_sprite: 16,
+            pants_color: 0,
+            armor_sprite1: 0,
+            boots_sprite: 0,
+            armor_sprite2: 0,
+            shield_sprite: 0,
+            weapon_sprite: 0,
+            head_color: 0,
+            boots_color: 0,
+            accessory_color1: 0,
+            accessory_sprite1: 4,
+            accessory_color2: 0,
+            accessory_sprite2: 0,
+            accessory_color3: 0,
+            accessory_sprite3: 0,
+            lantern_size: 0,
+            rest_position: 0,
+            overcoat_sprite: 0,
+            overcoat_color: 0,
+            body_color: 0,
+            is_transparent: false,
+            face_sprite: 0,
+            is_male: true,
+        },
+        ..Default::default()
+    });
+
+    scene.update();
+    scene.center_camera_on_tile(-1.0, -1.0);
+    scene.update();
+
+    let png = scene.capture(48, 80);
+    insta::assert_binary_snapshot!("ant_wings.png", png);
 }
