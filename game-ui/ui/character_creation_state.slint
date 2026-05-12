@@ -1,0 +1,13 @@
+export global CharacterCreationState {
+    in-out property <string> username;
+    in-out property <string> password;
+    in-out property <string> confirm_password;
+    in-out property <int> gender: 0; // 0 for male, 1 for female
+    in-out property <int> hair_style: 0;
+    in-out property <int> hair_color: 0;
+    in-out property <int> random_armor_id: 1;
+    in-out property <bool> save_login: true;
+    in-out property <bool> is_submitting: false;
+    in-out property <string> error_message;
+    in-out property <image> preview;
+}

@@ -53,12 +53,18 @@ impl StorageConfig {
         path
     }
 
-    pub fn server_character_settings_path(&self, server_id: u32, username: &str) -> std::path::PathBuf {
-        self.server_characters_dir(server_id).join(format!("{}.toml", username))
+    pub fn server_character_settings_path(
+        &self,
+        server_id: u32,
+        username: &str,
+    ) -> std::path::PathBuf {
+        self.server_characters_dir(server_id)
+            .join(format!("{}.toml", username))
     }
 
     pub fn server_map_path(&self, server_id: u32, map_id: u16) -> std::path::PathBuf {
-        self.server_maps_dir(server_id).join(format!("lod{:03}.map", map_id))
+        self.server_maps_dir(server_id)
+            .join(format!("lod{:03}.map", map_id))
     }
 }
 
@@ -162,6 +168,31 @@ pub struct ProfilePortraitState {
 pub struct TranslucentPlayerPassState {
     pub color_texture: rendering::texture::Texture,
     pub depth_texture: rendering::texture::Texture,
+}
+
+#[derive(Resource)]
+pub struct CharacterCreatorPreviewState {
+    pub texture: Option<wgpu::Texture>,
+    pub gender: u8,
+    pub hair_style: u8,
+    pub hair_color: u8,
+    pub armor_id: u16,
+    pub dirty: bool,
+    pub version: u32,
+}
+
+impl Default for CharacterCreatorPreviewState {
+    fn default() -> Self {
+        Self {
+            texture: None,
+            gender: 0,
+            hair_style: 0,
+            hair_color: 0,
+            armor_id: 1,
+            dirty: true,
+            version: 0,
+        }
+    }
 }
 
 pub struct WindowSurface {

@@ -116,6 +116,36 @@ impl Settings {
         }
     }
 
+    pub fn add_credential(
+        &mut self,
+        server_id: u32,
+        username: &str,
+        config: &crate::resources::StorageConfig,
+        preview: Option<CharacterPreview>,
+    ) {
+        let cred_id = format!("{}:{}", server_id, username);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+
+        if let Some(existing) = self.saved_credentials.iter_mut().find(|c| c.id == cred_id) {
+            existing.last_used = now;
+            if preview.is_some() {
+                existing.preview = preview;
+            }
+        } else {
+            self.saved_credentials.push(SavedCredential {
+                id: cred_id.clone(),
+                server_id,
+                username: username.to_string(),
+                last_used: now,
+                preview,
+            });
+        }
+        self.save_to_root(config);
+    }
+
     pub fn update_character_preview(
         &mut self,
         server_url: &str,

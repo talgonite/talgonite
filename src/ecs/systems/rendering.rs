@@ -139,8 +139,8 @@ pub fn sync_lobby_portraits(
                         PlayerSpriteKey::for_piece(slot, id, gender),
                         color,
                         2, // Down
-                        0.0,
-                        0.0,
+                        -0.7,
+                        -0.7,
                         0, // No stacking for preview
                         InstanceFlag::None,
                         glam::Vec3::ZERO,
@@ -172,6 +172,97 @@ pub fn sync_lobby_portraits(
 
     batch.clear_and_unload(&mut player_store.store);
     portrait_state.version += 1;
+}
+
+/// Syncs character preview for the character creator screen.
+pub fn sync_character_creator_preview(
+    renderer: Res<RendererState>,
+    game_files: Res<GameFiles>,
+    mut portrait_state: ResMut<crate::resources::CharacterCreatorPreviewState>,
+    mut player_store: ResMut<PlayerAssetStoreState>,
+    _win: Res<crate::slint_support::state_bridge::SlintWindow>,
+) {
+    if !portrait_state.dirty {
+        return;
+    }
+
+    let portrait_size = 64;
+    let batch = rendering::scene::players::PlayerBatch::new(&renderer.device, &player_store.store);
+
+    let depth_texture = rendering::texture::Texture::create_depth_texture(
+        &renderer.device,
+        portrait_size,
+        portrait_size,
+        "character_creator_portrait_depth",
+    );
+    let mut camera = rendering::scene::CameraState::new(
+        glam::UVec2::new(portrait_size, portrait_size),
+        &renderer.device,
+        1.0,
+    );
+    camera.set_screen_offset(&renderer.queue, 0.0, -42.0);
+
+    let gender = if portrait_state.gender == 0 {
+        Gender::Male
+    } else {
+        Gender::Female
+    };
+
+    let slots = vec![
+        (PlayerPieceType::Body, 1, 0),
+        (PlayerPieceType::Face, 1, 0),
+        (
+            PlayerPieceType::HelmetBg,
+            portrait_state.hair_style as u16,
+            portrait_state.hair_color,
+        ),
+        (
+            PlayerPieceType::HelmetFg,
+            portrait_state.hair_style as u16,
+            portrait_state.hair_color,
+        ),
+        (PlayerPieceType::Arms, portrait_state.armor_id, 0),
+        (PlayerPieceType::Armor, portrait_state.armor_id, 0),
+    ];
+
+    for (slot, id, color) in slots {
+        if id != 0 || slot == PlayerPieceType::Body {
+            let _ = batch.add_player_sprite(
+                &renderer.queue,
+                &mut player_store.store,
+                &game_files.inner().archive(),
+                PlayerSpriteKey::for_piece(slot, id, gender),
+                color,
+                2, // Down
+                -0.7,
+                -0.7,
+                0, // No stacking for preview
+                InstanceFlag::None,
+                glam::Vec3::ZERO,
+            );
+        }
+    }
+
+    let texture = rendering::texture::Texture::create_render_texture(
+        &renderer.device,
+        "character_creator_portrait",
+        portrait_size,
+        portrait_size,
+        wgpu::TextureFormat::Rgba8Unorm,
+    );
+
+    render_player_batch_to_target(
+        &renderer,
+        &batch,
+        &texture.view,
+        &depth_texture.view,
+        &camera,
+    );
+
+    portrait_state.texture = Some(texture.texture);
+    portrait_state.dirty = false;
+    portrait_state.version += 1;
+    batch.clear_and_unload(&mut player_store.store);
 }
 
 /// Collects all sprite keys and colors for a player entity.
@@ -551,8 +642,8 @@ pub fn sync_player_portrait(
                     key,
                     color,
                     1, // "Towards" direction
-                    0.0,
-                    0.0,
+                    -0.7,
+                    -0.7,
                     0, // No stacking for portrait
                     rendering::instance::InstanceFlag::None,
                     glam::Vec3::ZERO,
@@ -677,8 +768,8 @@ pub fn sync_profile_portrait(
                     key,
                     color,
                     1, // "Towards" direction
-                    0.0,
-                    0.0,
+                    -0.7,
+                    -0.7,
                     0, // No stacking for portrait
                     rendering::instance::InstanceFlag::None,
                     glam::Vec3::ZERO,

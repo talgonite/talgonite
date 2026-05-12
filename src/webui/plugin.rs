@@ -158,6 +158,8 @@ impl Plugin for UiBridgePlugin {
                     handle_ui_inbound_ingame.run_if(in_state(AppState::InGame)),
                     handle_login_tasks,
                     handle_login_results,
+                    handle_character_creation_tasks,
+                    handle_character_creation_results,
                     update_skill_cooldowns,
                     sync_settings_to_ui,
                 ),
@@ -1146,9 +1148,11 @@ fn handle_ui_inbound_login(
     mut commands: Commands,
     storage_config: Res<crate::resources::StorageConfig>,
     bindings: InputBindingResources,
+    mut char_preview_state: ResMut<crate::resources::CharacterCreatorPreviewState>,
 ) {
     let mut input_bindings = bindings.input_bindings;
     let mut unified_bindings = bindings.unified_bindings;
+
 
     for UiInbound(msg) in inbound.read() {
         match msg {
@@ -1305,6 +1309,68 @@ fn handle_ui_inbound_login(
                 let _ = keyring::delete_password(id);
                 settings.remove_credential(id, &storage_config);
                 outbound.write(UiOutbound(settings.to_snapshot_message(None)));
+            }
+            UiToCore::CharacterCreationSubmit {
+                server_id,
+                username,
+                password,
+                save_login,
+            } => {
+                println!(
+                    "[webui] CharacterCreationSubmit: server_id={:?} username={} gender={} hair_style={} hair_color={}",
+                    server_id, username, char_preview_state.gender, char_preview_state.hair_style, char_preview_state.hair_color
+                );
+                let server = settings
+                    .servers
+                    .iter()
+                    .find(|s| s.id == *server_id)
+                    .cloned();
+                if let Some(server) = server {
+                    let uname = username.clone();
+                    let pw = password.clone();
+                    let uname_task = uname.clone();
+                    let pw_task = pw.clone();
+                    let gender_task = char_preview_state.gender;
+                    let hair_style_task = char_preview_state.hair_style;
+                    let hair_color_task = char_preview_state.hair_color;
+                    let task = IoTaskPool::get().spawn(async move {
+                        let (host, port) = parse_host_port(&server.address)
+                            .unwrap_or((server.address.clone(), 2610));
+                        match crate::session_prelogin::PreLoginSession::new(&host, port).await {
+                            Ok(mut lobby) => {
+                                match lobby
+                                    .create_character(&uname_task, &pw_task, hair_style_task, gender_task, hair_color_task)
+                                    .await
+                                {
+                                    Ok(_) => Ok(()),
+                                    Err(code) => Err(code),
+                                }
+                            }
+                            Err(_) => Err(0),
+                        }
+                    });
+                    commands.spawn(CharacterCreationTaskEntity(CharacterCreationTaskInner {
+                        task,
+                        save_login: *save_login,
+                        server_id: server.id,
+                        username: uname,
+                        password: Some(pw),
+                    }));
+                } else {
+                    println!("[webui] CharacterCreationSubmit: server id {} not found", server_id);
+                }
+            }
+            UiToCore::UpdateCharacterCreationPreview {
+                gender,
+                hair_style,
+                hair_color,
+                armor_id,
+            } => {
+                char_preview_state.gender = *gender;
+                char_preview_state.hair_style = *hair_style;
+                char_preview_state.hair_color = *hair_color;
+                char_preview_state.armor_id = *armor_id;
+                char_preview_state.dirty = true;
             }
             UiToCore::ServersChangeCurrent { id } => {
                 settings.gameplay.current_server_id = Some(*id);
@@ -2664,6 +2730,24 @@ fn to_public(c: &SavedCredential) -> SavedCredentialPublic {
 }
 
 #[derive(Component)]
+struct CharacterCreationTaskEntity(CharacterCreationTaskInner);
+
+struct CharacterCreationTaskInner {
+    task: Task<Result<(), u8>>,
+    save_login: bool,
+    server_id: u32,
+    username: String,
+    password: Option<String>,
+}
+
+#[derive(Component)]
+struct CharacterCreationResultComp(Option<CharacterCreationTaskInner>);
+
+#[derive(Component)]
+struct CharacterCreationErrorComp(u8, CharacterCreationTaskInner);
+
+
+#[derive(Component)]
 struct LoginTaskEntity(LoginTaskInner);
 
 struct LoginTaskInner {
@@ -2714,7 +2798,88 @@ fn handle_login_tasks(mut commands: Commands, mut q: Query<(Entity, &mut LoginTa
     }
 }
 
+fn handle_character_creation_tasks(mut commands: Commands, mut q: Query<(Entity, &mut CharacterCreationTaskEntity)>) {
+    for (e, mut task_wrap) in &mut q {
+        if let Some(res) = future::block_on(future::poll_once(&mut task_wrap.0.task)) {
+            println!("[webui] CharacterCreationTask completed: success={}.", res.is_ok());
+            let inner = std::mem::replace(
+                &mut task_wrap.0,
+                CharacterCreationTaskInner {
+                    task: IoTaskPool::get().spawn(async { Err(0) }),
+                    save_login: false,
+                    server_id: 0,
+                    username: String::new(),
+                    password: None,
+                },
+            );
+
+            match res {
+                Ok(_) => {
+                    commands.spawn(CharacterCreationResultComp(Some(inner)));
+                }
+                Err(err) => {
+                    commands.spawn(CharacterCreationErrorComp(err, inner));
+                }
+            }
+            commands.entity(e).despawn();
+        }
+    }
+}
+
+fn handle_character_creation_results(
+    mut commands: Commands,
+    mut success_q: Query<(Entity, &mut CharacterCreationResultComp)>,
+    mut error_q: Query<(Entity, &mut CharacterCreationErrorComp)>,
+    mut outbound: MessageWriter<UiOutbound>,
+    mut settings: ResMut<SettingsFile>,
+    storage_config: Res<crate::resources::StorageConfig>,
+) {
+    for (e, mut res) in &mut success_q {
+        let inner = res.0.take();
+        if inner.is_none() {
+            continue;
+        }
+        let inner = inner.unwrap();
+
+        commands.entity(e).despawn();
+
+        println!(
+            "[webui] CharacterCreationResult: success for user {}",
+            inner.username
+        );
+        
+        let cred_id = format!("{}:{}", inner.server_id, inner.username);
+
+        if inner.save_login {
+            if let Some(pw) = inner.password {
+                let _ = keyring::set_password(&cred_id, &pw);
+            }
+            settings.add_credential(
+                inner.server_id,
+                &inner.username,
+                &storage_config,
+                None, // We can't save preview here, it will be fetched when logging in.
+            );
+        }
+
+        // Return to login screen
+        outbound.write(UiOutbound(settings.to_snapshot_message(None)));
+        // Tell UI it entered "game" effectively returning to login by resetting
+        outbound.write(UiOutbound(CoreToUi::EnteredGame)); // Actually, this hides prelogin. 
+        // We should instead just trigger a snapshot to update logins and let the UI close the character creation window.
+        // Wait, the UI closes it on `cancel`. The UI is waiting for `is-submitting` to become false. 
+        // Sending a snapshot with error=None resets `is-submitting`.
+    }
+
+    for (e, err) in &mut error_q {
+        println!("[webui] CharacterCreationResult: error code {}", err.0);
+        commands.entity(e).despawn();
+        outbound.write(UiOutbound(settings.to_snapshot_message(Some(LoginError::Unknown)))); // Map to generic error for now
+    }
+}
+
 fn parse_host_port(address: &str) -> Option<(String, u16)> {
+
     let mut parts = address.split(':');
     let host = parts.next()?.to_string();
     let port = parts

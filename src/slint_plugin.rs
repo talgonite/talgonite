@@ -49,6 +49,9 @@ impl Plugin for SlintBridgePlugin {
                     crate::slint_support::state_bridge::sync_lobby_portraits_to_slint
                         .run_if(resource_exists::<crate::slint_support::state_bridge::SlintWindow>)
                         .run_if(in_state(AppState::MainMenu)),
+                    crate::slint_support::state_bridge::sync_character_creator_preview_to_slint
+                        .run_if(resource_exists::<crate::slint_support::state_bridge::SlintWindow>)
+                        .run_if(in_state(AppState::MainMenu)),
                     handle_show_self_profile
                         .run_if(resource_exists::<crate::slint_support::state_bridge::SlintWindow>)
                         .run_if(in_state(AppState::InGame)),

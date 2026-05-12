@@ -25,6 +25,18 @@ pub enum UiToCore {
     LoginRemoveSaved {
         id: String,
     },
+    CharacterCreationSubmit {
+        server_id: u32,
+        username: String,
+        password: String,
+        save_login: bool,
+    },
+    UpdateCharacterCreationPreview {
+        gender: u8,
+        hair_style: u8,
+        hair_color: u8,
+        armor_id: u16,
+    },
     RequestSnapshot,
     ServersChangeCurrent {
         id: u32,

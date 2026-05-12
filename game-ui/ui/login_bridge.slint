@@ -6,4 +6,8 @@ export global LoginBridge {
     callback add-server(name: string, address: string);
     callback edit-server(id: int, name: string, address: string);
     callback remove-server(id: int);
+    callback submit-character-creation();
+    callback set-character-creation-gender(gender: int);
+    callback cycle-character-creation-hair-style(delta: int);
+    callback set-character-creation-hair-color(hair-color: int);
 }

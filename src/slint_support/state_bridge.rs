@@ -140,6 +140,30 @@ pub fn sync_lobby_portraits_to_slint(
     *last_version = portraits.version;
 }
 
+pub fn sync_character_creator_preview_to_slint(
+    preview: Res<crate::resources::CharacterCreatorPreviewState>,
+    win: Res<SlintWindow>,
+    mut last_version: Local<u32>,
+) {
+    if preview.version == *last_version {
+        return;
+    }
+
+    let Some(strong) = win.0.upgrade() else {
+        return;
+    };
+    let state = slint::ComponentHandle::global::<game_ui::slint_types::CharacterCreationState>(&strong);
+
+    if let Some(texture) = &preview.texture {
+        if let Ok(image) = texture.clone().try_into() {
+            state.set_preview(image);
+        }
+    }
+
+    *last_version = preview.version;
+}
+
+
 fn parse_color_hex(hex: &str) -> slint::Brush {
     let hex = hex.trim_start_matches('#');
     let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(208);
@@ -478,6 +502,17 @@ pub fn apply_core_to_slint(
                 }));
                 if login_error.is_some() {
                     login_state.set_is_submitting(false);
+                    let char_state = slint::ComponentHandle::global::<game_ui::slint_types::CharacterCreationState>(&strong);
+                    char_state.set_is_submitting(false);
+                    // For now map login errors to character creation errors since they use the same result path
+                    char_state.set_error_message(slint::SharedString::from("Creation failed (or username taken)"));
+                } else {
+                    let char_state = slint::ComponentHandle::global::<game_ui::slint_types::CharacterCreationState>(&strong);
+                    char_state.set_is_submitting(false);
+                    char_state.set_error_message(slint::SharedString::from(""));
+                    // Also close the character creation window if we succeeded
+                    let login_state = slint::ComponentHandle::global::<crate::LoginState>(&strong);
+                    login_state.set_show_character_creation(false);
                 }
             }
             crate::webui::ipc::CoreToUi::EnteredGame => {

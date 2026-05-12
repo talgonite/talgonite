@@ -26,6 +26,7 @@ impl Plugin for GamePlugin {
             .init_resource::<LocalSocialStatus>()
             .init_resource::<systems::AutoAttackState>()
             .init_resource::<crate::resources::LobbyPortraits>()
+            .init_resource::<crate::resources::CharacterCreatorPreviewState>()
             .init_resource::<crate::resources::ItemTileCounters>()
             .init_resource::<super::components::MapDoorQueue>()
             .add_message::<super::components::MapPrepared>()
@@ -35,7 +36,10 @@ impl Plugin for GamePlugin {
             )
             .add_systems(
                 Update,
-                systems::sync_lobby_portraits
+                (
+                    systems::sync_lobby_portraits,
+                    systems::sync_character_creator_preview,
+                )
                     .run_if(in_state(crate::app_state::AppState::MainMenu))
                     .run_if(resource_exists::<crate::PlayerAssetStoreState>)
                     .run_if(resource_exists::<crate::RendererState>)

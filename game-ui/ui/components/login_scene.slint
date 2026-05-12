@@ -9,6 +9,7 @@ import { SubmittingOverlay } from "./submitting_overlay.slint";
 import { InstallerOverlay } from "./installer_overlay.slint";
 import { InstallerState } from "../login_state.slint";
 import { ScrollView } from "std-widgets.slint";
+import { CharacterCreationScene } from "./character_creation_scene.slint";
 
 import "../CinzelDecorative-Bold.ttf";
 
@@ -140,6 +141,7 @@ export component LoginScene inherits Rectangle {
                 // New Login link
                 HorizontalLayout {
                     alignment: center;
+                    spacing: 16px;
                     Rectangle {
                         width: new-login-text.preferred-width + 32px;
                         height: 40px;
@@ -167,6 +169,38 @@ export component LoginScene inherits Rectangle {
                                 text: "New Login";
                                 font-size: 14px;
                                 color: new-login-touch.has-hover ? Theme.accent : Theme.foreground-subtle;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: create-char-text.preferred-width + 32px;
+                        height: 40px;
+                        background: create-char-touch.has-hover ? #FFFFFF08 : transparent;
+                        border-radius: Theme.radius-medium;
+                        create-char-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                LoginState.show-character-creation = true;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 8px;
+                            Text {
+                                text: "+";
+                                font-size: 18px;
+                                font-weight: 500;
+                                color: create-char-touch.has-hover ? Theme.accent : Theme.foreground-subtle;
+                                vertical-alignment: center;
+                            }
+
+                            create-char-text := Text {
+                                text: "Create Character";
+                                font-size: 14px;
+                                color: create-char-touch.has-hover ? Theme.accent : Theme.foreground-subtle;
                                 vertical-alignment: center;
                             }
                         }
@@ -212,4 +246,9 @@ export component LoginScene inherits Rectangle {
 
     if (LoginState.is-submitting): SubmittingOverlay { }
     if (InstallerState.is-installing): InstallerOverlay { }
+    if (LoginState.show-character-creation): CharacterCreationScene {
+        cancel => {
+            LoginState.show-character-creation = false;
+        }
+    }
 }
