@@ -1,6 +1,6 @@
 //! Rich text parsing and handling.
 
-use i_slint_core::styled_text::{StyledText, parse_markdown};
+use i_slint_core::styled_text::{StyledText, string_to_styled_text};
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct RichTextChunk {
@@ -95,7 +95,20 @@ impl RichText {
     }
 
     pub fn to_slint_styled_text(&self) -> StyledText {
-        parse_markdown(&self.to_html_string(), &[] as &[StyledText])
+        let parsed = StyledText::parse_interpolated(&self.to_html_string(), &[] as &[StyledText]);
+
+        match parsed {
+            Ok(styled) => styled,
+            Err(err) => {
+                let plain_string = self.to_plain_string();
+                tracing::error!(
+                    "Failed to parse styled text: {:?}\r\n falling back to plain string: {}",
+                    err,
+                    plain_string
+                );
+                string_to_styled_text(plain_string)
+            }
+        }
     }
 }
 

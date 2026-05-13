@@ -20,7 +20,7 @@ mod client_walk;
 pub use client_walk::ClientWalk;
 
 mod create_char_finalize;
-pub use create_char_finalize::CreateCharFinalize;
+pub use create_char_finalize::{CharGender, CreateCharFinalize};
 
 mod create_char_initial;
 pub use create_char_initial::CreateCharInitial;

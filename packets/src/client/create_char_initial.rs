@@ -8,6 +8,7 @@ use encoding::{EncoderTrap, Encoding};
 pub struct CreateCharInitial {
     pub name: String,
     pub password: String,
+    pub email: String,
 }
 
 impl ToBytes for CreateCharInitial {
@@ -25,5 +26,11 @@ impl ToBytes for CreateCharInitial {
             .unwrap_or_default();
         bytes.push(password_bytes.len() as u8);
         bytes.extend_from_slice(&password_bytes);
+
+        let email_bytes = WINDOWS_949
+            .encode(&self.email, EncoderTrap::Replace)
+            .unwrap_or_default();
+        bytes.push(email_bytes.len() as u8);
+        bytes.extend_from_slice(&email_bytes);
     }
 }

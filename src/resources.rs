@@ -185,7 +185,7 @@ impl Default for CharacterCreatorPreviewState {
     fn default() -> Self {
         Self {
             texture: None,
-            gender: 0,
+            gender: 1,
             hair_style: 0,
             hair_color: 0,
             armor_id: 1,

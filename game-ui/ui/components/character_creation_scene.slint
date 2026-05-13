@@ -144,18 +144,18 @@ export component CharacterCreationScene inherits Rectangle {
                         male-button := Button {
                             transform-scale: 1.3;
                             text: "♂";
-                            primary: CharacterCreationState.gender == 0;
+                            primary: CharacterCreationState.gender == 1;
                             clicked => {
-                                LoginBridge.set-character-creation-gender(0);
+                                LoginBridge.set-character-creation-gender(1);
                             }
                         }
 
                         female-button := Button {
                             transform-scale: 1.3;
                             text: "♀";
-                            primary: CharacterCreationState.gender == 1;
+                            primary: CharacterCreationState.gender == 2;
                             clicked => {
-                                LoginBridge.set-character-creation-gender(1);
+                                LoginBridge.set-character-creation-gender(2);
                             }
                         }
                     }

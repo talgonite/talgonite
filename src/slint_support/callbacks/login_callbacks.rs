@@ -9,9 +9,11 @@ use crate::{LoginBridge, MainWindow};
 
 const CHARACTER_CREATION_ARMOR_VARIANTS: i32 = 10;
 const CHARACTER_CREATION_HAIR_COLORS: i32 = 14;
+const CHARACTER_CREATION_GENDER_MALE: i32 = 1;
+const CHARACTER_CREATION_GENDER_FEMALE: i32 = 2;
 
 fn get_hair_style_count(gender: i32) -> i32 {
-    if gender == 1 {
+    if gender == CHARACTER_CREATION_GENDER_FEMALE {
         17 // Female
     } else {
         18 // Male
@@ -59,7 +61,11 @@ pub fn wire_login_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
         use rand::Rng;
         let mut rng = rand::rng();
         let char_state = slint_app.global::<game_ui::slint_types::CharacterCreationState>();
-        let gender = rng.random_range(0..=1);
+        let gender = if rng.random_bool(0.5) {
+            CHARACTER_CREATION_GENDER_MALE
+        } else {
+            CHARACTER_CREATION_GENDER_FEMALE
+        };
         char_state.set_gender(gender);
         char_state.set_hair_style(rng.random_range(1..=get_hair_style_count(gender)));
         char_state.set_hair_color(random_character_creation_hair_color());
@@ -202,7 +208,11 @@ pub fn wire_login_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
             };
 
             let char_state = strong.global::<game_ui::slint_types::CharacterCreationState>();
-            let gender = if gender == 1 { 1 } else { 0 };
+            let gender = if gender == CHARACTER_CREATION_GENDER_FEMALE {
+                CHARACTER_CREATION_GENDER_FEMALE
+            } else {
+                CHARACTER_CREATION_GENDER_MALE
+            };
             char_state.set_gender(gender);
 
             // Ensure hair style is within range for the new gender

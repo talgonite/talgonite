@@ -202,7 +202,7 @@ pub fn sync_character_creator_preview(
     );
     camera.set_screen_offset(&renderer.queue, 0.0, -42.0);
 
-    let gender = if portrait_state.gender == 0 {
+    let gender = if portrait_state.gender == 1 {
         Gender::Male
     } else {
         Gender::Female

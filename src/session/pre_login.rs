@@ -1,6 +1,8 @@
 use anyhow::anyhow;
+use async_std::future::timeout;
 use async_std::net::TcpStream;
 use async_std::sync::Arc;
+use std::time::Duration;
 use packets::{
     ToBytes, TryFromBytes, client,
     server::{self, LoginMessageType},
@@ -24,6 +26,160 @@ pub struct PreLoginSession {
 pub use game_ui::LoginError;
 
 impl PreLoginSession {
+    fn format_login_message(message: &server::LoginMessage) -> String {
+        match message.msg_type {
+            server::LoginMessageType::Other(code) => {
+                format!("Unknown login message code {}: {}", code, message.msg)
+            }
+            msg_type => format!("{:?} (code {}): {}", msg_type, msg_type.code(), message.msg),
+        }
+    }
+
+    async fn flush_login_prelude(&mut self) -> Result<(), LoginError> {
+        loop {
+            let packet = match timeout(Duration::from_millis(200), self.decoder.read()).await {
+                Ok(Ok(packet)) => packet,
+                Ok(Err(error)) => {
+                    return Err(LoginError::Network(format!(
+                        "Failed to read login prelude packet: {error}"
+                    )))
+                }
+                Err(_) => break,
+            };
+
+            let description = self.describe_prelogin_packet(&packet);
+            tracing::info!("Processing prelogin prelude packet: {}", description);
+
+            match server::Codes::try_from(packet[0]) {
+                Ok(server::Codes::LoginNotice) => {
+                    let mut payload = packet[1..].to_vec();
+                    let notice = server::LoginNotice::try_from_bytes(
+                        &self.decrypter.decrypt(&mut payload, EncryptionType::Normal),
+                    )
+                    .map_err(|_| LoginError::Unknown)?;
+
+                    if matches!(notice, server::LoginNotice::CheckSum { .. }) {
+                        self.sender
+                            .send_packet(&client::NoticeRequest)
+                            .await
+                            .map_err(|_| {
+                                LoginError::Network(
+                                    "Failed to send login notice request".to_string(),
+                                )
+                            })?;
+                        self.sender.flush().await.map_err(|_| {
+                            LoginError::Network(
+                                "Failed to flush login notice request".to_string(),
+                            )
+                        })?;
+                    }
+                }
+                Ok(server::Codes::LoginControl) => {
+                    self.sender
+                        .send_packet(&client::HomepageRequest)
+                        .await
+                        .map_err(|_| {
+                            LoginError::Network("Failed to send homepage request".to_string())
+                        })?;
+                    self.sender.flush().await.map_err(|_| {
+                        LoginError::Network("Failed to flush homepage request".to_string())
+                    })?;
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
+    }
+
+    fn describe_prelogin_packet(&self, packet: &[u8]) -> String {
+        let opcode = packet.first().copied().unwrap_or_default();
+
+        match server::Codes::try_from(opcode) {
+            Ok(server::Codes::LoginMessage) => {
+                let mut payload = packet[1..].to_vec();
+                match server::LoginMessage::try_from_bytes(
+                    &self.decrypter.decrypt(&mut payload, EncryptionType::Normal),
+                ) {
+                    Ok(message) => format!(
+                        "LoginMessage(type={:?}, code={}, msg={:?})",
+                        message.msg_type,
+                        message.msg_type.code(),
+                        message.msg
+                    ),
+                    Err(error) => format!("LoginMessage(parse_error={error:?})"),
+                }
+            }
+            Ok(server::Codes::LoginNotice) => {
+                let mut payload = packet[1..].to_vec();
+                match server::LoginNotice::try_from_bytes(
+                    &self.decrypter.decrypt(&mut payload, EncryptionType::Normal),
+                ) {
+                    Ok(notice) => format!("LoginNotice({notice:?})"),
+                    Err(error) => format!("LoginNotice(parse_error={error:?})"),
+                }
+            }
+            Ok(server::Codes::LoginControl) => {
+                let mut payload = packet[1..].to_vec();
+                match server::LoginControl::try_from_bytes(
+                    &self.decrypter.decrypt(&mut payload, EncryptionType::Normal),
+                ) {
+                    Ok(control) => format!(
+                        "LoginControl(type={:?}, message={:?})",
+                        control.login_controls_type, control.message
+                    ),
+                    Err(error) => format!("LoginControl(parse_error={error:?})"),
+                }
+            }
+            Ok(code) => format!("{:?}(opcode={}, len={})", code, opcode, packet.len()),
+            Err(_) => format!("Unknown(opcode={}, len={})", opcode, packet.len()),
+        }
+    }
+
+    async fn read_login_message(&mut self, read_error: &str) -> Result<server::LoginMessage, LoginError> {
+        let mut last_packet_description = None;
+
+        loop {
+            let mut packet = self
+                .decoder
+                .read()
+                .await
+                .map_err(|error| {
+                    let detail = last_packet_description
+                        .map(|packet| format!("{read_error}: {error} (last packet: {packet})"))
+                        .unwrap_or_else(|| format!("{read_error}: {error}"));
+                    LoginError::Network(detail)
+                })?;
+
+            let packet_description = self.describe_prelogin_packet(&packet);
+            last_packet_description = Some(packet_description.clone());
+
+            if packet[0] != server::Codes::LoginMessage as u8 {
+                tracing::info!(
+                    "Ignoring prelogin packet while waiting for login message: {}",
+                    packet_description
+                );
+                continue;
+            }
+
+            let message = server::LoginMessage::try_from_bytes(
+                &self
+                    .decrypter
+                    .decrypt(&mut packet[1..], EncryptionType::Normal),
+            )
+            .map_err(|error| {
+                LoginError::Network(format!(
+                    "{read_error}: failed to parse login message from {packet_description}: {error}"
+                ))
+            })?;
+            tracing::info!(
+                "Received prelogin login message while waiting for response: {}",
+                Self::format_login_message(&message)
+            );
+            return Ok(message);
+        }
+    }
+
     pub async fn new(server_address: &str, server_port: u16) -> anyhow::Result<Self> {
         tracing::info!(
             "Connecting to lobby server at {}:{}...",
@@ -100,11 +256,16 @@ impl PreLoginSession {
             encoder,
             PacketEncrypter::new(redirect.key.clone(), redirect.seed),
         );
-        Ok(Self {
+        let mut session = Self {
             decoder,
             decrypter: PacketDecrypter::new(redirect.key, redirect.seed),
             sender,
-        })
+        };
+        session
+            .flush_login_prelude()
+            .await
+            .map_err(|error| anyhow!("{error:?}"))?;
+        Ok(session)
     }
 
     pub async fn login(
@@ -119,28 +280,21 @@ impl PreLoginSession {
             })
             .await
             .map_err(|_| LoginError::Network("Failed to send login packet".to_string()))?;
-        self.sender.flush().await.ok();
+        self.sender
+            .flush()
+            .await
+            .map_err(|_| LoginError::Network("Failed to flush login packet".to_string()))?;
 
-        let login_response = loop {
-            let mut packet =
-                self.decoder.read().await.map_err(|_| {
-                    LoginError::Network("Failed to read login response".to_string())
-                })?;
-
-            if packet[0] == server::Codes::LoginMessage as u8 {
-                break match server::LoginMessage::try_from_bytes(
-                    &self
-                        .decrypter
-                        .decrypt(&mut packet[1..], EncryptionType::Normal),
-                ) {
-                    Ok(m) => m,
-                    Err(_) => return Err(LoginError::Unknown),
-                };
-            }
-        };
+        let login_response = self.read_login_message("Failed to read login response").await?;
 
         if login_response.msg_type != LoginMessageType::Confirm {
-            return Err(LoginError::Response(login_response.msg_type));
+            return Err(match login_response.msg_type {
+                LoginMessageType::Other(_) => LoginError::Network(format!(
+                    "Login rejected: {}",
+                    Self::format_login_message(&login_response)
+                )),
+                msg_type => LoginError::Response(msg_type),
+            });
         }
 
         let packet = self
@@ -195,19 +349,38 @@ impl PreLoginSession {
         name: &str,
         password: &str,
         hair_style: u8,
-        gender: u8,
+        gender: client::CharGender,
         hair_color: u8,
-    ) -> Result<(), u8> {
+    ) -> Result<(), LoginError> {
         self.sender
             .send_packet(&client::CreateCharInitial {
                 name: name.to_string(),
                 password: password.to_string(),
+                email: "".to_string(),
             })
             .await
-            .unwrap();
+            .map_err(|_| {
+                LoginError::Network("Failed to send character creation packet".to_string())
+            })?;
+        self.sender
+            .flush()
+            .await
+            .map_err(|_| {
+                LoginError::Network("Failed to flush character creation packet".to_string())
+            })?;
 
-        // TODO: The server might send a response to CreateCharInitial.
-        // We need to handle that here. For now, we'll just assume it's successful.
+        let initial_response = self
+            .read_login_message("Failed to read character creation response")
+            .await?;
+        if initial_response.msg_type != LoginMessageType::Confirm {
+            return Err(match initial_response.msg_type {
+                LoginMessageType::Other(_) => LoginError::Network(format!(
+                    "Character creation rejected: {}",
+                    Self::format_login_message(&initial_response)
+                )),
+                msg_type => LoginError::Response(msg_type),
+            });
+        }
 
         self.sender
             .send_packet(&client::CreateCharFinalize {
@@ -216,11 +389,28 @@ impl PreLoginSession {
                 hair_color,
             })
             .await
-            .unwrap();
+            .map_err(|_| {
+                LoginError::Network("Failed to send character finalize packet".to_string())
+            })?;
+        self.sender
+            .flush()
+            .await
+            .map_err(|_| {
+                LoginError::Network("Failed to flush character finalize packet".to_string())
+            })?;
 
-        // TODO: The server will likely send a response to CreateCharFinalize.
-        // We need to handle that here and return Ok(()) on success, or Err(error_code) on failure.
-        // For now, we'll just assume it's successful.
+        let finalize_response = self
+            .read_login_message("Failed to read character finalize response")
+            .await?;
+        if finalize_response.msg_type != LoginMessageType::Confirm {
+            return Err(match finalize_response.msg_type {
+                LoginMessageType::Other(_) => LoginError::Network(format!(
+                    "Character creation finalize rejected: {}",
+                    Self::format_login_message(&finalize_response)
+                )),
+                msg_type => LoginError::Response(msg_type),
+            });
+        }
 
         Ok(())
     }

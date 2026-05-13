@@ -497,15 +497,40 @@ pub fn apply_core_to_slint(
                 lobby_state.set_saved_logins(slint::ModelRc::new(logins_model));
                 let login_state = slint::ComponentHandle::global::<crate::LoginState>(&strong);
                 login_state.set_login_error_code(login_error.clone().map_or(-1i32, |c| match c {
-                    LoginError::Response(r) => r as i32,
+                    LoginError::Response(r) => r.code() as i32,
                     _ => 0i32,
                 }));
                 if login_error.is_some() {
                     login_state.set_is_submitting(false);
                     let char_state = slint::ComponentHandle::global::<game_ui::slint_types::CharacterCreationState>(&strong);
                     char_state.set_is_submitting(false);
-                    // For now map login errors to character creation errors since they use the same result path
-                    char_state.set_error_message(slint::SharedString::from("Creation failed (or username taken)"));
+                    let error_message = match login_error.as_ref() {
+                        Some(LoginError::Network(message)) => message.clone(),
+                        Some(LoginError::Response(packets::server::LoginMessageType::ClearNameMessage)) => {
+                            "That name is unavailable".to_string()
+                        }
+                        Some(LoginError::Response(packets::server::LoginMessageType::NameExistsOrReserved)) => {
+                            "That name already exists or contains a reserved string".to_string()
+                        }
+                        Some(LoginError::Response(packets::server::LoginMessageType::ClearPswdMessage)) => {
+                            "That password is invalid".to_string()
+                        }
+                        Some(LoginError::Response(packets::server::LoginMessageType::CharacterDoesntExist)) => {
+                            "Character does not exist".to_string()
+                        }
+                        Some(LoginError::Response(packets::server::LoginMessageType::WrongPassword)) => {
+                            "Wrong password".to_string()
+                        }
+                        Some(LoginError::Response(packets::server::LoginMessageType::Confirm)) => {
+                            "Creation failed".to_string()
+                        }
+                        Some(LoginError::Response(packets::server::LoginMessageType::Other(code))) => {
+                            format!("Creation failed (code: {})", code)
+                        }
+                        Some(LoginError::Unknown) => "Creation failed".to_string(),
+                        None => String::new(),
+                    };
+                    char_state.set_error_message(slint::SharedString::from(error_message));
                 } else {
                     let char_state = slint::ComponentHandle::global::<game_ui::slint_types::CharacterCreationState>(&strong);
                     char_state.set_is_submitting(false);
