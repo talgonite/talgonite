@@ -1,5 +1,9 @@
 # Unreleased
 
+## Character creation
+
+Characters can be created now with an interface that's close to the official client.
+
 ## More player rendering fixes
 
 - Creature form displays the creature now, the animations aren't perfect but it's fine for now
