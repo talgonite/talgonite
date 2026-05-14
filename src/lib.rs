@@ -23,6 +23,7 @@ pub mod game_files;
 pub mod input;
 pub mod map_store;
 pub mod metafile_store;
+pub mod minimap_assets;
 pub mod network;
 pub mod plugins;
 pub mod render_plugin;
@@ -35,6 +36,8 @@ pub mod settings_types;
 pub mod slint_plugin;
 pub mod slint_support;
 pub mod webui;
+
+pub use minimap_assets::MINIMAP_TILES_2X_KTX2;
 
 pub use resources::{
     Camera, CreatureAssetStoreState, CreatureBatchState, EffectManagerState, ItemAssetStoreState,

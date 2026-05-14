@@ -1,0 +1,17 @@
+[package]
+name = "formats-macros"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+formats.workspace = true
+png = "0.18"
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["parsing"] }
+
+[dev-dependencies]
+ktx2 = "0.4"

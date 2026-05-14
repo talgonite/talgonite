@@ -44,6 +44,7 @@ path = "src/main.rs"
 [dependencies]
 installer.workspace = true
 formats.workspace = true
+formats-macros.workspace = true
 rendering.workspace = true
 packets.workspace = true
 crc.workspace = true
@@ -117,6 +118,7 @@ edition = "2024"
 members = [
     "crc",
     "formats",
+    "formats-macros",
     "installer",
     "rendering",
     "packets",
@@ -128,6 +130,7 @@ members = [
 
 [workspace.dependencies]
 formats = { path = "formats" }
+formats-macros = { path = "formats-macros" }
 installer = { path = "installer" }
 rendering = { path = "rendering" }
 network = { path = "network" }

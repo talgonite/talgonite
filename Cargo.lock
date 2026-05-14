@@ -2473,6 +2473,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "formats-macros"
+version = "0.1.8"
+dependencies = [
+ "formats",
+ "ktx2",
+ "png 0.18.1",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "futures"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7055,6 +7067,7 @@ dependencies = [
  "dirs",
  "flate2",
  "formats",
+ "formats-macros",
  "futures-lite",
  "game-input",
  "game-types",

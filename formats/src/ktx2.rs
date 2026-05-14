@@ -10,6 +10,12 @@ const IDENTIFIER: [u8; 12] = [
     0xAB, 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A,
 ];
 
+pub fn encode_ktx2(width: u32, height: u32, format: u32, data: &[u8]) -> anyhow::Result<Vec<u8>> {
+    let mut bytes = get_ktx2_header(width, height, format, data.len() as u64)?;
+    bytes.extend_from_slice(data);
+    Ok(bytes)
+}
+
 pub fn get_ktx2_header(
     width: u32,
     height: u32,
