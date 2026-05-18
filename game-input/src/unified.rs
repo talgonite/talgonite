@@ -109,6 +109,10 @@ impl UnifiedInputBindings {
             ],
         );
         bindings.insert(
+            GameAction::ToggleOverview,
+            vec![InputSource::Keyboard(KeyBinding::new(KeyCode::Tab))],
+        );
+        bindings.insert(
             GameAction::BasicAttack,
             vec![
                 InputSource::Keyboard(KeyBinding::new(KeyCode::Space)),
@@ -149,6 +153,7 @@ impl UnifiedInputBindings {
         bind!(spells, Spells);
         bind!(settings, Settings);
         bind!(refresh, Refresh);
+        bind!(toggle_overview, ToggleOverview);
         bind!(basic_attack, BasicAttack);
         bind!(auto_attack_toggle, AutoAttackToggle);
         bind!(item_pickup_below, ItemPickupBelow);

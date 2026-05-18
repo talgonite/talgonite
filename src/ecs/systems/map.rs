@@ -1,7 +1,10 @@
 //! Map loading and rendering systems
 
 use super::super::components::*;
-use crate::{Camera, MapRendererState, RendererState, events::MapEvent, game_files::GameFiles};
+use crate::{
+    Camera, MapRendererState, MinimapCacheState, MinimapMarkerSyncState, MinimapRendererState,
+    RendererState, events::MapEvent, game_files::GameFiles,
+};
 use bevy::prelude::*;
 use rendering::scene::map::renderer::MapRenderer;
 use tracing::info;
@@ -15,6 +18,7 @@ pub fn map_system(
     map_entities: Query<&GameMap>,
     renderer: Option<Res<RendererState>>,
     mut camera: Option<ResMut<Camera>>,
+    minimap_renderer_state: Option<Res<MinimapRendererState>>,
     settings: Res<crate::settings::Settings>,
     mut door_queue: ResMut<MapDoorQueue>,
     mut tile_counters: ResMut<crate::resources::ItemTileCounters>,
@@ -56,6 +60,8 @@ pub fn map_system(
                     &mut commands,
                     &archive,
                     renderer.as_deref(),
+                    camera.as_deref(),
+                    minimap_renderer_state.as_deref(),
                     &settings,
                     map_info,
                     map_bytes,
@@ -89,6 +95,8 @@ fn handle_map_clear(
     }
     info!("Despawned {} MapScoped entities", count);
     commands.remove_resource::<MapRendererState>();
+    commands.remove_resource::<MinimapCacheState>();
+    commands.remove_resource::<MinimapMarkerSyncState>();
     commands.remove_resource::<crate::ecs::collision::MapCollisionData>();
     tile_counters.counters.clear();
     *local_map_renderer = None;
@@ -98,6 +106,8 @@ fn handle_map_set_info(
     commands: &mut Commands,
     archive: &Res<GameFiles>,
     renderer: Option<&RendererState>,
+    camera: Option<&Camera>,
+    minimap_renderer_state: Option<&MinimapRendererState>,
     settings: &Res<crate::settings::Settings>,
     map_info: &packets::server::MapInfo,
     map_bytes: &std::sync::Arc<[u8]>,
@@ -127,6 +137,26 @@ fn handle_map_set_info(
         &prepared_map.wall_heights,
     );
     commands.insert_resource(map_collision);
+    commands.insert_resource(MinimapCacheState::new(
+        map_info.map_id,
+        map_info.width,
+        map_info.height,
+    ));
+    commands.insert_resource(MinimapMarkerSyncState::default());
+
+    if let (Some(renderer), Some(camera)) = (renderer, camera) {
+        if minimap_renderer_state.is_none() {
+            if let Ok(minimap_state) = MinimapRendererState::new(
+                renderer,
+                &camera.camera.bind_group_layout,
+                crate::FULLSCREEN_MINIMAP_ASSETS,
+                camera.camera.camera.width as u32,
+                camera.camera.camera.height as u32,
+            ) {
+                commands.insert_resource(minimap_state);
+            }
+        }
+    }
 
     // Bind map to renderer
     let local_map_renderer = if let Some(renderer) = renderer {
@@ -183,6 +213,7 @@ fn handle_light_level(
 pub fn handle_doors(
     renderer: Option<Res<RendererState>>,
     mut map_renderer_state: Option<ResMut<MapRendererState>>,
+    minimap_cache: Option<ResMut<MinimapCacheState>>,
     mut map_collision: Option<ResMut<crate::ecs::collision::MapCollisionData>>,
     mut door_queue: ResMut<MapDoorQueue>,
 ) {
@@ -199,13 +230,14 @@ pub fn handle_doors(
     }
 
     for door in &door_queue.pending {
-        map_state.map_renderer.set_wall_toggle_state(
-            &renderer.queue,
-            door.x,
-            door.y,
-            door.closed,
-        );
+        map_state
+            .map_renderer
+            .set_wall_toggle_state(&renderer.queue, door.x, door.y, door.closed);
         map_collision.set_door(door.x, door.y, door.closed);
+    }
+
+    if let Some(mut minimap_cache) = minimap_cache {
+        minimap_cache.mark_topology_dirty();
     }
 
     door_queue.pending.clear();

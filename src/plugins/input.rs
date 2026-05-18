@@ -420,6 +420,7 @@ pub fn input_handling_system(
     settings: Res<Settings>,
     gamepad_query: Query<&Gamepad>,
     gamepad_config: Res<GamepadConfig>,
+    minimap_renderer_state: Option<ResMut<crate::resources::MinimapRendererState>>,
     window: Option<Res<crate::slint_support::state_bridge::SlintWindow>>,
     mut player_actions: MessageWriter<PlayerAction>,
     mut player_query: Query<
@@ -469,6 +470,17 @@ pub fn input_handling_system(
         Some(&gamepad_config),
     ) {
         player_actions.write(PlayerAction::ItemPickupBelow);
+    }
+
+    if bindings.is_just_pressed(
+        GameAction::ToggleOverview,
+        &keyboard_input,
+        Some(&gamepad_query),
+        Some(&gamepad_config),
+    ) {
+        if let Some(mut minimap_state) = minimap_renderer_state {
+            minimap_state.visible = !minimap_state.visible;
+        }
     }
 
     // Toggle Panels

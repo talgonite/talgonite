@@ -218,6 +218,31 @@ pub struct PlayerSprite {
     pub color: u8,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MinimapMarkerKind {
+    Player,
+    Creature,
+}
+
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MinimapMarker {
+    pub kind: MinimapMarkerKind,
+}
+
+impl MinimapMarker {
+    pub const fn player() -> Self {
+        Self {
+            kind: MinimapMarkerKind::Player,
+        }
+    }
+
+    pub const fn creature() -> Self {
+        Self {
+            kind: MinimapMarkerKind::Creature,
+        }
+    }
+}
+
 #[derive(Component)]
 #[component(on_remove = cleanup_player_sprite_instance)]
 pub struct PlayerSpriteInstance {

@@ -128,6 +128,10 @@ impl InputBindings {
         bindings.insert(GameAction::Settings, vec![KeyBinding::new(KeyCode::Escape)]);
         bindings.insert(GameAction::Refresh, vec![KeyBinding::new(KeyCode::F5)]);
         bindings.insert(
+            GameAction::ToggleOverview,
+            vec![KeyBinding::new(KeyCode::Tab)],
+        );
+        bindings.insert(
             GameAction::BasicAttack,
             vec![KeyBinding::new(KeyCode::Space)],
         );
@@ -164,6 +168,7 @@ impl InputBindings {
         bind!(spells, Spells);
         bind!(settings, Settings);
         bind!(refresh, Refresh);
+        bind!(toggle_overview, ToggleOverview);
         bind!(basic_attack, BasicAttack);
         bind!(auto_attack_toggle, AutoAttackToggle);
         bind!(item_pickup_below, ItemPickupBelow);

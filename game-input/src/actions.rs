@@ -9,6 +9,7 @@ pub enum GameAction {
     Spells,
     Settings,
     Refresh,
+    ToggleOverview,
     BasicAttack,
     AutoAttackToggle,
     ItemPickupBelow,
@@ -80,6 +81,7 @@ impl GameAction {
             GameAction::Spells,
             GameAction::Settings,
             GameAction::Refresh,
+            GameAction::ToggleOverview,
             GameAction::BasicAttack,
             GameAction::AutoAttackToggle,
             GameAction::ItemPickupBelow,
@@ -151,6 +153,7 @@ impl GameAction {
             GameAction::Spells => "spells",
             GameAction::Settings => "settings",
             GameAction::Refresh => "refresh",
+            GameAction::ToggleOverview => "toggle_overview",
             GameAction::BasicAttack => "basic_attack",
             GameAction::AutoAttackToggle => "auto_attack_toggle",
             GameAction::ItemPickupBelow => "item_pickup_below",
@@ -222,6 +225,7 @@ impl GameAction {
             "spells" => Some(GameAction::Spells),
             "settings" => Some(GameAction::Settings),
             "refresh" => Some(GameAction::Refresh),
+            "toggle_overview" => Some(GameAction::ToggleOverview),
             "basic_attack" => Some(GameAction::BasicAttack),
             "auto_attack_toggle" => Some(GameAction::AutoAttackToggle),
             "item_pickup_below" => Some(GameAction::ItemPickupBelow),
@@ -294,6 +298,7 @@ impl GameAction {
             GameAction::Spells => "Spells",
             GameAction::Settings => "Settings",
             GameAction::Refresh => "Refresh",
+            GameAction::ToggleOverview => "Tab overview",
             GameAction::BasicAttack => "Basic Attack",
             GameAction::AutoAttackToggle => "Auto Attack Toggle",
             GameAction::ItemPickupBelow => "Item Pickup",
@@ -352,5 +357,20 @@ impl GameAction {
             GameAction::SwitchToHotbar2 => "Hotbar 2",
             GameAction::SwitchToHotbar3 => "Hotbar 3",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GameAction;
+
+    #[test]
+    fn toggle_overview_action_round_trips() {
+        assert_eq!(GameAction::ToggleOverview.action_id(), "toggle_overview");
+        assert_eq!(
+            GameAction::from_action_id("toggle_overview"),
+            Some(GameAction::ToggleOverview)
+        );
+        assert!(GameAction::all().contains(&GameAction::ToggleOverview));
     }
 }

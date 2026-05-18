@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use rendering::scene::map::renderer::MapRenderer;
-use rendering::scene::{CameraState, EffectManager, Scene, creatures, items, players};
+use rendering::scene::{CameraState, EffectManager, Scene, creatures, items, minimap, players};
 use wgpu;
 
 use std::ops::{Deref, DerefMut};
@@ -85,6 +85,101 @@ pub struct Camera {
 #[derive(Resource)]
 pub struct MapRendererState {
     pub map_renderer: MapRenderer,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct MinimapViewConfig {
+    pub zoom: f32,
+    pub layout: minimap::MinimapLayout,
+}
+
+impl Default for MinimapViewConfig {
+    fn default() -> Self {
+        Self {
+            zoom: 1.0,
+            layout: minimap::MinimapLayout::default(),
+        }
+    }
+}
+
+#[derive(Resource)]
+pub struct MinimapRendererState {
+    pub renderer: minimap::MinimapRenderer,
+    pub camera: CameraState,
+    pub config: MinimapViewConfig,
+    pub assets: crate::minimap_assets::MinimapAssets,
+    pub visible: bool,
+}
+
+#[derive(Resource, Debug)]
+pub struct MinimapCacheState {
+    pub map_id: u16,
+    pub map_width: u8,
+    pub map_height: u8,
+    pub topology_dirty: bool,
+    pub tile_atlas_indices: Vec<u8>,
+}
+
+impl MinimapCacheState {
+    pub fn new(map_id: u16, map_width: u8, map_height: u8) -> Self {
+        Self {
+            map_id,
+            map_width,
+            map_height,
+            topology_dirty: true,
+            tile_atlas_indices: Vec::new(),
+        }
+    }
+
+    pub fn mark_topology_dirty(&mut self) {
+        self.topology_dirty = true;
+    }
+}
+
+#[derive(Debug)]
+pub struct MinimapMarkerEntry {
+    pub handle: minimap::MinimapMarkerHandle,
+    pub kind: crate::ecs::components::MinimapMarkerKind,
+}
+
+#[derive(Resource, Default, Debug)]
+pub struct MinimapMarkerSyncState {
+    pub handles: std::collections::HashMap<Entity, MinimapMarkerEntry>,
+}
+
+impl MinimapRendererState {
+    pub fn new(
+        renderer_state: &RendererState,
+        camera_bind_group_layout: &wgpu::BindGroupLayout,
+        assets: crate::minimap_assets::MinimapAssets,
+        width: u32,
+        height: u32,
+    ) -> anyhow::Result<Self> {
+        let config = MinimapViewConfig::default();
+        let renderer = minimap::MinimapRenderer::new(
+            &renderer_state.device,
+            &renderer_state.queue,
+            camera_bind_group_layout,
+            assets.tiles_ktx2,
+            assets.player_icon_ktx2,
+            assets.creature_icon_ktx2,
+            config.layout,
+        )?;
+        let mut camera = CameraState::new(
+            glam::UVec2::new(width, height),
+            &renderer_state.device,
+            config.zoom,
+        );
+        camera.set_screen_offset(&renderer_state.queue, 0.0, 0.0);
+
+        Ok(Self {
+            renderer,
+            camera,
+            config,
+            assets,
+            visible: false,
+        })
+    }
 }
 
 #[derive(Resource)]

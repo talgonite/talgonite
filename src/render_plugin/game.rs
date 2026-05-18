@@ -2,8 +2,8 @@ use crate::app_state::AppState;
 use crate::slint_support::frame_exchange::{BackBufferPool, ControlMessage, FrameChannels};
 use crate::{
     Camera, CreatureAssetStoreState, CreatureBatchState, EffectManagerState, ItemAssetStoreState,
-    ItemBatchState, MapRendererState, PlayerAssetStoreState, PlayerBatchState, RendererState,
-    TranslucentPlayerPassState, WindowSurface, game_files,
+    ItemBatchState, MapRendererState, MinimapRendererState, PlayerAssetStoreState,
+    PlayerBatchState, RendererState, TranslucentPlayerPassState, WindowSurface, game_files,
 };
 use async_std::task::block_on;
 use bevy::prelude::*;
@@ -203,6 +203,7 @@ fn apply_pending_resize(
     mut camera: ResMut<Camera>,
     _web_ui: Option<NonSend<WebUi>>,
     mut pool: ResMut<BackBufferPool>,
+    minimap: Option<ResMut<MinimapRendererState>>,
     translucent_players: Option<ResMut<TranslucentPlayerPassState>>,
 ) {
     if !pending.dirty || pending.width == 0 || pending.height == 0 {
@@ -221,6 +222,15 @@ fn apply_pending_resize(
         (pending.width, pending.height).into(),
         pending.scale,
     );
+
+    if let Some(mut minimap) = minimap {
+        let zoom = minimap.config.zoom;
+        minimap.camera.resize(
+            &renderer_state.queue,
+            (pending.width, pending.height).into(),
+            zoom,
+        );
+    }
 
     // Reallocate pool textures to new resolution so next frame can render immediately
     pool.0.clear();
@@ -275,6 +285,7 @@ fn draw_frame(
     item_batch_state: Option<Res<ItemBatchState>>,
     player_batch_state: Option<Res<PlayerBatchState>>,
     effect_manager_state: Option<Res<EffectManagerState>>,
+    minimap_renderer_state: Option<Res<MinimapRendererState>>,
     translucent_player_pass_state: Option<Res<TranslucentPlayerPassState>>,
     channels: Res<FrameChannels>,
     mut pool: ResMut<BackBufferPool>,
@@ -454,6 +465,31 @@ fn draw_frame(
         composite_pass.set_pipeline(&render_hardware.scene.translucent_player_composite_pipeline);
         composite_pass.set_bind_group(0, &composite_bind_group, &[]);
         composite_pass.draw(0..3, 0..1);
+    }
+
+    if let Some(minimap) = minimap_renderer_state.filter(|minimap| minimap.visible) {
+        let mut minimap_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Minimap Overlay Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+                depth_slice: None,
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &render_hardware.scene.depth_texture.view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Discard,
+                }),
+                stencil_ops: None,
+            }),
+            ..Default::default()
+        });
+        minimap.renderer.render(&mut minimap_pass, &minimap.camera.camera_bind_group);
     }
 
     render_hardware.queue.submit([encoder.finish()]);

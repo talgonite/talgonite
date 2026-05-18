@@ -2,19 +2,25 @@
 
 use super::super::animation::{Animation, AnimationMode, AnimationType};
 use super::super::components::*;
-use crate::resources::{CharacterCreatorPreviewState, LobbyPortraitRenderer, LobbyPortraits, PlayerPortraitState};
+use crate::resources::{
+    CharacterCreatorPreviewState, LobbyPortraitRenderer, LobbyPortraits, MinimapCacheState,
+    MinimapMarkerEntry, MinimapMarkerSyncState, PlayerPortraitState,
+};
 use crate::{
-    CreatureAssetStoreState, CreatureBatchState, ItemAssetStoreState, ItemBatchState,
-    PlayerAssetStoreState, PlayerBatchState, PortraitRenderTarget, RendererState,
-    game_files::GameFiles,
-    settings_types::Settings,
+    Camera, CreatureAssetStoreState, CreatureBatchState, ItemAssetStoreState, ItemBatchState,
+    MinimapRendererState, PlayerAssetStoreState, PlayerBatchState, PortraitRenderTarget,
+    RendererState, game_files::GameFiles, settings_types::Settings,
 };
 use bevy::prelude::*;
 use formats::epf::EpfAnimationType;
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 use rendering::{
     instance::InstanceFlag,
-    scene::players::{Gender, PlayerBatch, PlayerPieceType, PlayerSpriteKey},
+    scene::{
+        TILE_HEIGHT_HALF, TILE_WIDTH_HALF,
+        minimap::{self, MinimapMarker as MinimapMarkerInstance, MinimapMarkerLayer, MinimapTile},
+        players::{Gender, PlayerBatch, PlayerPieceType, PlayerSpriteKey},
+    },
 };
 
 fn player_instance_state(render_state: &PlayerRenderState) -> InstanceFlag {
@@ -201,7 +207,9 @@ pub fn sync_lobby_portraits(
                 continue;
             }
 
-            lobby_renderer.batch.clear_and_unload(&mut player_store.store);
+            lobby_renderer
+                .batch
+                .clear_and_unload(&mut player_store.store);
             let sprites = build_saved_preview_sprites(preview);
             populate_player_batch_with_sprites(
                 &renderer,
@@ -234,7 +242,9 @@ pub fn sync_lobby_portraits(
         }
     }
 
-    lobby_renderer.batch.clear_and_unload(&mut player_store.store);
+    lobby_renderer
+        .batch
+        .clear_and_unload(&mut player_store.store);
     portrait_state.version += 1;
 }
 
@@ -255,13 +265,7 @@ pub fn sync_character_creator_preview(
         return;
     };
 
-    render_sprites_to_portrait_target(
-        &renderer,
-        &game_files,
-        &mut player_store,
-        target,
-        &sprites,
-    );
+    render_sprites_to_portrait_target(&renderer, &game_files, &mut player_store, target, &sprites);
     portrait_state.version = target.version;
 }
 
@@ -297,7 +301,14 @@ fn render_sprites_to_portrait_target(
     sprites: &[(PlayerSpriteKey, u8)],
 ) {
     target.batch.clear_and_unload(&mut player_store.store);
-    populate_player_batch_with_sprites(renderer, game_files, player_store, &target.batch, sprites, 1);
+    populate_player_batch_with_sprites(
+        renderer,
+        game_files,
+        player_store,
+        &target.batch,
+        sprites,
+        1,
+    );
 
     render_player_batch_to_target(
         renderer,
@@ -776,5 +787,376 @@ pub fn sync_profile_portrait(
                 &sprites,
             );
         }
+    }
+}
+
+pub fn sync_minimap_to_renderer(
+    renderer: Res<RendererState>,
+    camera: Res<Camera>,
+    minimap_state: Option<ResMut<MinimapRendererState>>,
+    minimap_cache: Option<ResMut<MinimapCacheState>>,
+    minimap_markers: Option<ResMut<MinimapMarkerSyncState>>,
+    map_query: Query<&GameMap>,
+    marker_query: Query<(Entity, &Position, &crate::ecs::components::MinimapMarker)>,
+    changed_marker_query: Query<
+        (Entity, &Position, &crate::ecs::components::MinimapMarker),
+        Or<(
+            Added<crate::ecs::components::MinimapMarker>,
+            Changed<Position>,
+            Changed<crate::ecs::components::MinimapMarker>,
+        )>,
+    >,
+    mut removed_markers: RemovedComponents<crate::ecs::components::MinimapMarker>,
+    collision_table: Option<Res<crate::ecs::collision::WallCollisionTable>>,
+    map_collision: Option<Res<crate::ecs::collision::MapCollisionData>>,
+) {
+    let Some(mut minimap_state) = minimap_state else {
+        return;
+    };
+
+    let (Some(mut minimap_cache), Some(mut minimap_markers)) = (minimap_cache, minimap_markers)
+    else {
+        minimap_state.renderer.clear();
+        return;
+    };
+
+    let Ok(map) = map_query.single() else {
+        minimap_state.renderer.clear();
+        return;
+    };
+
+    let layout = minimap_state.config.layout;
+    let layout_changed = minimap_state.renderer.layout() != layout;
+    if layout_changed {
+        minimap_state.renderer.set_layout(layout);
+    }
+
+    let zoom = minimap_state.config.zoom;
+    if (minimap_state.camera.zoom() - zoom).abs() > f32::EPSILON {
+        minimap_state.camera.set_zoom(&renderer.queue, zoom);
+    }
+
+    let camera_position = minimap_camera_position(camera.camera.position(), layout);
+    if minimap_state.camera.position() != camera_position {
+        minimap_state.camera.set_screen_offset(
+            &renderer.queue,
+            camera_position.x,
+            camera_position.y,
+        );
+    }
+
+    let map_changed = minimap_cache.map_id != map.map_id
+        || minimap_cache.map_width != map.width
+        || minimap_cache.map_height != map.height;
+    if map_changed {
+        *minimap_cache = MinimapCacheState::new(map.map_id, map.width, map.height);
+    }
+
+    let hidden_atlas_index = atlas_index_for_tile_value(0b0000);
+    let topology_dirty = minimap_cache.topology_dirty;
+
+    if topology_dirty {
+        let lattice_width = map.width as usize;
+        let lattice_height = map.height as usize;
+        let mut tile_atlas_indices = Vec::with_capacity(lattice_width * lattice_height);
+
+        for lattice_y in 0..lattice_height {
+            for lattice_x in 0..lattice_width {
+                let atlas_index = minimap_lattice_index(
+                    lattice_x,
+                    lattice_y,
+                    map.width,
+                    map.height,
+                    |sample_x, sample_y| {
+                        crate::ecs::collision::can_walk_to(
+                            sample_x,
+                            sample_y,
+                            collision_table.as_deref(),
+                            map_collision.as_deref(),
+                        )
+                    },
+                );
+                tile_atlas_indices.push(atlas_index);
+            }
+        }
+
+        minimap_cache.tile_atlas_indices = tile_atlas_indices;
+        minimap_cache.topology_dirty = false;
+    }
+
+    if map_changed || layout_changed || topology_dirty {
+        let lattice_width = map.width as usize;
+        let lattice_height = map.height as usize;
+        let mut tiles = Vec::with_capacity(lattice_width * lattice_height);
+
+        for lattice_y in 0..lattice_height {
+            for lattice_x in 0..lattice_width {
+                let index = lattice_y * lattice_width + lattice_x;
+                let atlas_index = minimap_cache
+                    .tile_atlas_indices
+                    .get(index)
+                    .copied()
+                    .unwrap_or(hidden_atlas_index);
+                if atlas_index == hidden_atlas_index {
+                    continue;
+                }
+
+                let tile = Vec2::new(lattice_x as f32, lattice_y as f32);
+                tiles.push(MinimapTile {
+                    position: minimap::minimap_tile_position(tile, Vec2::ZERO, layout),
+                    atlas_index,
+                });
+            }
+        }
+
+        minimap_state
+            .renderer
+            .rebuild_tiles(&renderer.device, tiles);
+    }
+
+    for entity in removed_markers.read() {
+        if let Some(marker) = minimap_markers.handles.remove(&entity) {
+            minimap_state
+                .renderer
+                .remove_marker(&renderer.queue, marker.handle);
+        }
+    }
+
+    if map_changed || layout_changed {
+        for (entity, position, marker) in marker_query.iter() {
+            upsert_minimap_marker(
+                &renderer.queue,
+                &minimap_state.renderer,
+                &mut minimap_markers,
+                entity,
+                position,
+                marker,
+                Vec2::ZERO,
+                layout,
+            );
+        }
+    } else {
+        for (entity, position, marker) in changed_marker_query.iter() {
+            upsert_minimap_marker(
+                &renderer.queue,
+                &minimap_state.renderer,
+                &mut minimap_markers,
+                entity,
+                position,
+                marker,
+                Vec2::ZERO,
+                layout,
+            );
+        }
+    }
+}
+
+fn upsert_minimap_marker(
+    queue: &wgpu::Queue,
+    renderer: &rendering::scene::minimap::MinimapRenderer,
+    marker_state: &mut MinimapMarkerSyncState,
+    entity: Entity,
+    position: &Position,
+    marker: &crate::ecs::components::MinimapMarker,
+    center: Vec2,
+    layout: minimap::MinimapLayout,
+) {
+    let marker_position =
+        minimap::minimap_marker_position(Vec2::new(position.x, position.y), center, layout);
+    let instance = MinimapMarkerInstance {
+        position: marker_position,
+    };
+
+    let existing_handle = marker_state.handles.get(&entity).map(|entry| entry.handle);
+    let existing_kind = marker_state.handles.get(&entity).map(|entry| entry.kind);
+
+    if let Some(existing_handle) = existing_handle {
+        let expected_layer = match marker.kind {
+            crate::ecs::components::MinimapMarkerKind::Player => MinimapMarkerLayer::Player,
+            crate::ecs::components::MinimapMarkerKind::Creature => MinimapMarkerLayer::Creature,
+        };
+
+        if existing_handle.layer() == expected_layer && existing_kind == Some(marker.kind) {
+            renderer.update_marker(queue, existing_handle, instance);
+            return;
+        }
+
+        renderer.remove_marker(queue, existing_handle);
+    }
+
+    let handle = match marker.kind {
+        crate::ecs::components::MinimapMarkerKind::Player => {
+            renderer.add_player_marker(queue, instance)
+        }
+        crate::ecs::components::MinimapMarkerKind::Creature => {
+            renderer.add_creature_marker(queue, instance)
+        }
+    };
+
+    if let Some(handle) = handle {
+        marker_state.handles.insert(
+            entity,
+            MinimapMarkerEntry {
+                handle,
+                kind: marker.kind,
+            },
+        );
+    } else {
+        marker_state.handles.remove(&entity);
+    }
+}
+
+fn minimap_lattice_index(
+    lattice_x: usize,
+    lattice_y: usize,
+    map_width: u8,
+    map_height: u8,
+    is_walkable: impl FnMut(u8, u8) -> bool,
+) -> u8 {
+    minimap_lattice_index_from_walkability(lattice_x, lattice_y, map_width, map_height, is_walkable)
+}
+
+// Atlas ordering for the 4-bit minimap mask produced by the corner-based 2x2
+// tile sampler below.
+const SIMPLE_TILE_VALUES: [u8; 16] = [
+    0b1101, 0b1010, 0b0100, 0b1100, 0b0110, 0b1000, 0b0000, 0b0001, 0b1011, 0b0011, 0b0010, 0b0101,
+    0b1111, 0b1110, 0b1001, 0b0111,
+];
+
+const MINIMAP_MASK_TOP_LEFT: u8 = 0b1000;
+const MINIMAP_MASK_TOP_RIGHT: u8 = 0b0100;
+const MINIMAP_MASK_BOTTOM_LEFT: u8 = 0b0010;
+const MINIMAP_MASK_BOTTOM_RIGHT: u8 = 0b0001;
+
+fn atlas_index_for_tile_value(tile_value: u8) -> u8 {
+    SIMPLE_TILE_VALUES
+        .iter()
+        .position(|candidate| *candidate == tile_value)
+        .expect("tile value must map to an atlas index") as u8
+}
+
+fn minimap_camera_position(camera_position: Vec2, layout: minimap::MinimapLayout) -> Vec2 {
+    let world_x = (camera_position.x / TILE_WIDTH_HALF as f32
+        + camera_position.y / TILE_HEIGHT_HALF as f32)
+        * 0.5;
+    let world_y = (camera_position.y / TILE_HEIGHT_HALF as f32
+        - camera_position.x / TILE_WIDTH_HALF as f32)
+        * 0.5;
+
+    minimap::minimap_tile_position(Vec2::new(world_x, world_y), Vec2::ZERO, layout)
+}
+
+// Render one minimap tile per world tile, but choose that tile by sampling the
+// corner at (x + 0.5, y + 0.5), which pulls in the surrounding 2x2 world tiles.
+
+fn minimap_lattice_index_from_walkability(
+    lattice_x: usize,
+    lattice_y: usize,
+    map_width: u8,
+    map_height: u8,
+    mut is_walkable: impl FnMut(u8, u8) -> bool,
+) -> u8 {
+    if map_width == 0 || map_height == 0 {
+        return atlas_index_for_tile_value(0);
+    }
+
+    let is_blocked_sample =
+        |sample_x: i32, sample_y: i32, is_walkable: &mut dyn FnMut(u8, u8) -> bool| {
+            !is_walkable(
+                sample_x.min(map_width as i32 - 1).max(0) as u8,
+                sample_y.min(map_height as i32 - 1).max(0) as u8,
+            )
+        };
+
+    let world_x = lattice_x as i32;
+    let world_y = lattice_y as i32;
+
+    let mut dual_mask = 0_u8;
+    if is_blocked_sample(world_x, world_y, &mut is_walkable) {
+        dual_mask |= MINIMAP_MASK_TOP_LEFT;
+    }
+    if is_blocked_sample(world_x + 1, world_y, &mut is_walkable) {
+        dual_mask |= MINIMAP_MASK_TOP_RIGHT;
+    }
+    if is_blocked_sample(world_x, world_y + 1, &mut is_walkable) {
+        dual_mask |= MINIMAP_MASK_BOTTOM_LEFT;
+    }
+    if is_blocked_sample(world_x + 1, world_y + 1, &mut is_walkable) {
+        dual_mask |= MINIMAP_MASK_BOTTOM_RIGHT;
+    }
+
+    atlas_index_for_tile_value(dual_mask)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SIMPLE_TILE_VALUES, minimap, minimap_lattice_index_from_walkability};
+    use glam::Vec2;
+
+    fn minimap_lattice_from_blocked_grid(width: usize, blocked: &[u8]) -> Vec<u8> {
+        let blocked_rows = blocked.chunks_exact(width).collect::<Vec<_>>();
+        let walkable = blocked_rows
+            .iter()
+            .map(|row| row.iter().map(|cell| *cell != 0).collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+        let walkable_rows = walkable.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        let map_height = walkable_rows.len() as u8;
+        let map_width = walkable_rows.first().map_or(0, |row| row.len()) as u8;
+        let lattice_width = width;
+        let lattice_height = walkable_rows.len();
+        let mut indices = Vec::with_capacity(lattice_width * lattice_height);
+
+        for lattice_y in 0..lattice_height {
+            for lattice_x in 0..lattice_width {
+                indices.push(minimap_lattice_index_from_walkability(
+                    lattice_x,
+                    lattice_y,
+                    map_width,
+                    map_height,
+                    |sx, sy| walkable_rows[sy as usize][sx as usize],
+                ));
+            }
+        }
+
+        indices
+    }
+
+    #[test]
+    fn lattice_size_matches_world_tile_count() {
+        let blocked = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let lattice = minimap_lattice_from_blocked_grid(3, &blocked);
+
+        assert_eq!(lattice.len(), 9);
+    }
+
+    #[test]
+    fn simple_tile_values_cover_every_mask_once() {
+        let mut sorted = SIMPLE_TILE_VALUES;
+        sorted.sort_unstable();
+
+        assert_eq!(
+            sorted,
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        );
+    }
+
+    #[test]
+    fn minimap_tile_position_uses_world_origin() {
+        let layout = crate::resources::MinimapViewConfig::default().layout;
+
+        assert_eq!(
+            minimap::minimap_tile_position(Vec2::new(1.0, 1.0), Vec2::ZERO, layout),
+            Vec2::new(0.0, layout.tile_size.y)
+        );
+    }
+
+    #[test]
+    fn minimap_marker_position_keeps_half_tile_offset() {
+        let layout = crate::resources::MinimapViewConfig::default().layout;
+
+        assert_eq!(
+            minimap::minimap_marker_position(Vec2::new(0.0, 0.0), Vec2::ZERO, layout),
+            Vec2::new(0.0, -(layout.tile_size.y * 0.5))
+        );
     }
 }

@@ -93,23 +93,25 @@ gamepad_settings.primary_gamepad = Some(specific_gamepad);
 
 Each action can have multiple input sources:
 
-| Action | Keyboard | Gamepad |
-|--------|----------|---------|
-| Move Up | Arrow Up | D-Pad Up / Left Stick Up |
-| Move Down | Arrow Down | D-Pad Down / Left Stick Down |
-| Move Left | Arrow Left | D-Pad Left / Left Stick Left |
-| Move Right | Arrow Right | D-Pad Right / Left Stick Right |
-| Inventory | I | Y/Triangle |
-| Skills | K | X/Square |
-| Spells | P | B/Circle |
-| Settings | Escape | Start |
-| Refresh | F5 | Select |
+| Action       | Keyboard    | Gamepad                        |
+| ------------ | ----------- | ------------------------------ |
+| Move Up      | Arrow Up    | D-Pad Up / Left Stick Up       |
+| Move Down    | Arrow Down  | D-Pad Down / Left Stick Down   |
+| Move Left    | Arrow Left  | D-Pad Left / Left Stick Left   |
+| Move Right   | Arrow Right | D-Pad Right / Left Stick Right |
+| Inventory    | I           | Y/Triangle                     |
+| Skills       | K           | X/Square                       |
+| Spells       | P           | B/Circle                       |
+| Settings     | Escape      | Start                          |
+| Refresh      | F5          | Select                         |
+| Tab overview | Tab         | -                              |
 
 ## Migration Guide
 
 ### From Direct Settings Access
 
 **Before:**
+
 ```rust
 let key_refresh = dom_code_to_keycode(&settings.key_bindings.refresh)
     .unwrap_or(KeyCode::F5);
@@ -117,6 +119,7 @@ if keyboard.just_pressed(key_refresh) { }
 ```
 
 **After:**
+
 ```rust
 if bindings.is_just_pressed(GameAction::Refresh, &keyboard) { }
 ```

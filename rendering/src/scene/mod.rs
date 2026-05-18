@@ -10,6 +10,7 @@ pub mod creatures;
 pub mod effects;
 pub mod items;
 pub mod map;
+pub mod minimap;
 pub mod players;
 
 pub use effects::{EffectHandle, EffectManager};
