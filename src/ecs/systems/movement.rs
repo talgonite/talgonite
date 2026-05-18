@@ -204,8 +204,8 @@ fn handle_walk_request(
         entity_commands.insert(AnimationBundle::new(
             AnimationMode::OneShot,
             AnimationType::Player(EpfAnimationType::Walk),
-            0.10,
-            5,
+            0.5,
+            1,
         ));
     }
 
@@ -283,8 +283,8 @@ pub fn entity_motion_system(
                         commands.entity(entity).insert(AnimationBundle::new(
                             AnimationMode::OneShot,
                             AnimationType::Player(EpfAnimationType::Walk),
-                            0.10,
-                            5,
+                            0.5,
+                            1,
                         ));
                     }
 
@@ -439,8 +439,8 @@ pub fn player_animation_start_system(
             commands.entity(entity).insert(AnimationBundle::new(
                 AnimationMode::OneShot,
                 AnimationType::Player(anim_type),
-                anim.animation_speed as f32 / 100.,
-                frame_count,
+                anim.animation_speed as f32 / 100. * frame_count as f32,
+                1,
             ));
         }
 

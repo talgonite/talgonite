@@ -433,6 +433,7 @@ impl PlayerAssetStore {
         let path = Self::player_sprite_path(key);
         let epf_bytes = archive.get_file(&path)?;
         let decoded = Self::decode_player_sprite(&epf_bytes)?;
+
         Ok(Self::finalize_player_sprite(atlas, key, queue, decoded, 1))
     }
 
@@ -624,7 +625,7 @@ impl PlayerBatch {
         y: f32,
         color: u8,
         animation_type: EpfAnimationType,
-        frame_index: usize,
+        progress: f32,
         flags: InstanceFlag,
         tint: Vec3,
     ) -> anyhow::Result<()> {
@@ -634,6 +635,21 @@ impl PlayerBatch {
             .ok_or_else(|| anyhow::anyhow!("Sprite not loaded"))?;
 
         let (is_towards, flip) = direction_to_orientation(direction);
+
+        let anim_direction = if is_towards {
+            AnimationDirection::Towards
+        } else {
+            AnimationDirection::Away
+        };
+
+        let anim_data = loaded_sprite.animations.get(&(animation_type, anim_direction))
+            .ok_or_else(|| anyhow::anyhow!("Animation {:?} for direction {:?} not found", animation_type, anim_direction))?;
+
+        let frame_index = if anim_data.frame_count <= 1 {
+            0
+        } else {
+            ((progress * anim_data.frame_count as f32) as usize).min(anim_data.frame_count - 1)
+        };
 
         let instance = PlayerAssetStore::get_instance_for_frame(
             &store.palettes,

@@ -3,14 +3,12 @@
 use super::super::animation::{Animation, AnimationMode, AnimationType};
 use super::super::components::*;
 use crate::resources::{
-    CharacterCreatorPreviewState, LobbyPortraitRenderer, LobbyPortraits, MinimapCacheState,
-    MinimapMarkerEntry, MinimapMarkerSyncState, PlayerPortraitState,
+    CharacterCreatorPreviewState, CreatureAssetStoreState, CreatureBatchState, ItemAssetStoreState,
+    ItemBatchState, LobbyPortraitRenderer, LobbyPortraits, MinimapCacheState, MinimapMarkerEntry,
+    MinimapMarkerSyncState, MinimapRendererState, PlayerAssetStoreState, PlayerBatchState,
+    PlayerPortraitState, PortraitRenderTarget,
 };
-use crate::{
-    Camera, CreatureAssetStoreState, CreatureBatchState, ItemAssetStoreState, ItemBatchState,
-    MinimapRendererState, PlayerAssetStoreState, PlayerBatchState, PortraitRenderTarget,
-    RendererState, game_files::GameFiles, settings_types::Settings,
-};
+use crate::{Camera, RendererState, game_files::GameFiles, settings_types::Settings};
 use bevy::prelude::*;
 use formats::epf::EpfAnimationType;
 use glam::{Vec2, Vec3};
@@ -99,7 +97,7 @@ fn build_saved_preview_sprites(
     ];
 
     if preview.pants_color > 0 {
-        slots.push((PlayerPieceType::Pants, preview.pants_color as u16, 1));
+        slots.push((PlayerPieceType::Pants, 1, preview.pants_color as u8));
     }
 
     if preview.overcoat > 0 {
@@ -481,99 +479,83 @@ pub fn update_player_sprites(
     store_state: Res<PlayerAssetStoreState>,
     batch_state: Res<PlayerBatchState>,
     parent_query: Query<(
+        Entity,
         &Position,
         &Direction,
         Option<&Animation>,
+        Option<&crate::ecs::animation::AnimationTimer>,
         &PlayerRenderState,
         Option<&TargetingHover>,
         &Children,
         &EntityId,
     )>,
-    changed_query: Query<
-        Entity,
-        Or<(
-            Changed<Position>,
-            Changed<Direction>,
-            Changed<Animation>,
-            Changed<PlayerRenderState>,
-            Changed<TargetingHover>,
-        )>,
-    >,
-    mut removed_hovers: RemovedComponents<TargetingHover>,
+    _removed_hovers: RemovedComponents<TargetingHover>,
     children_query: Query<(&PlayerSprite, &PlayerSpriteInstance)>,
+    time: Res<Time>,
 ) {
-    let mut to_update = changed_query
-        .iter()
-        .collect::<std::collections::HashSet<_>>();
-    for entity in removed_hovers.read() {
-        to_update.insert(entity);
-    }
+    for (
+        _entity,
+        position,
+        direction,
+        animation,
+        animation_timer,
+        render_state,
+        targeting_hover,
+        children,
+        _entity_id,
+    ) in parent_query.iter()
+    {
+        let (anim_type, progress) = match (animation, animation_timer) {
+            (Some(anim), Some(timer)) if anim.mode != AnimationMode::Finished => {
+                if let AnimationType::Player(at) = anim.anim_type {
+                    (at, timer.0.fraction())
+                } else {
+                    (EpfAnimationType::Idle, time.elapsed_secs() % 1.0)
+                }
+            }
+            _ => (EpfAnimationType::Idle, time.elapsed_secs() % 1.0),
+        };
 
-    for entity in to_update {
-        if let Ok((
-            position,
-            direction,
-            animation,
-            render_state,
-            targeting_hover,
-            children,
-            _entity_id,
-        )) = parent_query.get(entity)
-        {
-            let (anim_type, frame_index) = match animation {
-                Some(anim) if anim.mode == AnimationMode::Finished => (EpfAnimationType::Idle, 0),
-                Some(anim) => match anim.anim_type {
-                    AnimationType::Player(at) => (at, anim.current_frame),
-                    _ => (EpfAnimationType::Idle, 0),
-                },
-                None => (EpfAnimationType::Idle, 0),
-            };
+        let tint = targeting_hover.map(|t| t.tint).unwrap_or(Vec3::ZERO);
+        let flags = player_instance_state(render_state);
 
-            let tint = targeting_hover.map(|t| t.tint).unwrap_or(Vec3::ZERO);
-            let flags = player_instance_state(render_state);
+        for child_entity in children.iter() {
+            if let Ok((sprite, sprite_instance)) = children_query.get(child_entity) {
+                let target = match (anim_type.is_emote(), sprite.slot) {
+                    (true, PlayerPieceType::Emote) => Some((anim_type, progress)), // Active emote layer
+                    (true, PlayerPieceType::Face) => None, // Hide face when emoting (face usually in emote)
+                    (true, _) => Some((EpfAnimationType::Idle, time.elapsed_secs() % 1.0)), // Base layers go to Idle
+                    (false, PlayerPieceType::Emote) => None, // Hide emote layer when not emoting
+                    (false, _) => Some((anim_type, progress)), // Standard animation
+                };
 
-            for child_entity in children.iter() {
-                if let Ok((sprite, sprite_instance)) = children_query.get(child_entity) {
-                    let target = match (anim_type.is_emote(), sprite.slot) {
-                        (true, PlayerPieceType::Emote) => Some((anim_type, frame_index)), // Active emote layer
-                        (true, PlayerPieceType::Face) => None, // Hide face when emoting (face usually in emote)
-                        (true, _) => Some((EpfAnimationType::Idle, 0)), // Base layers go to Idle
-                        (false, PlayerPieceType::Emote) => None, // Hide emote layer when not emoting
-                        (false, _) => Some((anim_type, frame_index)), // Standard animation
-                    };
-
-                    if let Some((at, fi)) = target {
-                        if let Err(e) = batch_state.batch.update_player_sprite_with_animation(
-                            &shared_state.queue,
-                            &store_state.store,
-                            &sprite_instance.handle,
-                            *direction as u8,
-                            position.x,
-                            position.y,
-                            sprite.color,
-                            at,
-                            fi,
-                            flags,
-                            tint,
-                        ) {
-                            if at.is_emote() {
-                                // If emote fails (e.g. facing away), just hide the emote layer
-                                let _ = batch_state.batch.hide_player_sprite(
-                                    &shared_state.queue,
-                                    &sprite_instance.handle,
-                                );
-                            } else if !anim_type.is_emote() {
-                                tracing::error!(
-                                    "update_player_sprite_with_animation failed: {:?}",
-                                    e
-                                );
-                            }
+                if let Some((at, p)) = target {
+                    if let Err(e) = batch_state.batch.update_player_sprite_with_animation(
+                        &shared_state.queue,
+                        &store_state.store,
+                        &sprite_instance.handle,
+                        *direction as u8,
+                        position.x,
+                        position.y,
+                        sprite.color,
+                        at,
+                        p,
+                        flags,
+                        tint,
+                    ) {
+                        if at.is_emote() {
+                            // If emote fails (e.g. facing away), just hide the emote layer
+                            let _ = batch_state
+                                .batch
+                                .hide_player_sprite(&shared_state.queue, &sprite_instance.handle);
+                        } else if !anim_type.is_emote() {
+                            tracing::error!("update_player_sprite_with_animation failed: {:?}", e);
                         }
-                    } else {
-                        let _ = batch_state
-                            .batch
-                            .hide_player_sprite(&shared_state.queue, &sprite_instance.handle);
                     }
+                } else {
+                    let _ = batch_state
+                        .batch
+                        .hide_player_sprite(&shared_state.queue, &sprite_instance.handle);
                 }
             }
         }

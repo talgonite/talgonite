@@ -10,6 +10,10 @@ Characters can be created now with an interface that's close to the official cli
 - Invisibility is handled properly now
 - Fix wrong palette for some armor
 
+## Player idle animations
+
+- Player idle animations are now visible on characters showing off their flashy accessories and weapons and stuff
+
 # Version 0.1.8 (2026-05-12)
 
 ## Boards / Posts
