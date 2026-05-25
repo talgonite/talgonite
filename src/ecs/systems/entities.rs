@@ -60,7 +60,7 @@ pub fn spawn_entities_system(
                         commands.entity(entity).insert((
                             LocalPlayer,
                             CameraTarget,
-                            MinimapMarker::player(),
+                            MinimapMarker::current_player(),
                             UnconfirmedWalks::default(),
                             UnconfirmedTurns::default(),
                         ));
@@ -210,6 +210,11 @@ fn spawn_display_entities(
                 entity_type,
                 name,
             } => {
+                let marker = if name.is_some() {
+                    MinimapMarker::named_creature()
+                } else {
+                    MinimapMarker::unnamed_creature()
+                };
                 commands.spawn((
                     NPCBundle {
                         entity_id: EntityId { id: *id },
@@ -226,7 +231,7 @@ fn spawn_display_entities(
                     },
                     InGameScoped,
                     MapScoped,
-                    MinimapMarker::creature(),
+                    marker,
                     Hitbox::screen_space(Vec2::new(-0.45, -1.25), Vec2::new(0.45, 0.65)),
                     HoverName {
                         name: name.clone().unwrap_or_default(),
@@ -281,12 +286,15 @@ fn spawn_display_player(
         player_entity.insert((
             LocalPlayer,
             CameraTarget,
-            MinimapMarker::player(),
+            MinimapMarker::current_player(),
             UnconfirmedWalks::default(),
             UnconfirmedTurns::default(),
         ));
     } else {
-        player_entity.insert(HoverName::new(player.name.clone()));
+        player_entity.insert((
+            MinimapMarker::other_player(),
+            HoverName::new(player.name.clone()),
+        ));
     }
 
     match &player.args {

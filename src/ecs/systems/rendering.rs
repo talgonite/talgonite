@@ -4,9 +4,8 @@ use super::super::animation::{Animation, AnimationMode, AnimationType};
 use super::super::components::*;
 use crate::resources::{
     CharacterCreatorPreviewState, CreatureAssetStoreState, CreatureBatchState, ItemAssetStoreState,
-    ItemBatchState, LobbyPortraitRenderer, LobbyPortraits, MinimapCacheState, MinimapMarkerEntry,
-    MinimapMarkerSyncState, MinimapRendererState, PlayerAssetStoreState, PlayerBatchState,
-    PlayerPortraitState, PortraitRenderTarget,
+    ItemBatchState, LobbyPortraitRenderer, LobbyPortraits, MinimapCacheState, MinimapRendererState,
+    PlayerAssetStoreState, PlayerBatchState, PlayerPortraitState, PortraitRenderTarget,
 };
 use crate::{Camera, RendererState, game_files::GameFiles, settings_types::Settings};
 use bevy::prelude::*;
@@ -16,7 +15,7 @@ use rendering::{
     instance::InstanceFlag,
     scene::{
         TILE_HEIGHT_HALF, TILE_WIDTH_HALF,
-        minimap::{self, MinimapMarker as MinimapMarkerInstance, MinimapMarkerLayer, MinimapTile},
+        minimap::{self, MinimapTile},
         players::{Gender, PlayerBatch, PlayerPieceType, PlayerSpriteKey},
     },
 };
@@ -795,23 +794,12 @@ pub fn sync_profile_portrait(
     }
 }
 
-pub fn sync_minimap_to_renderer(
+pub fn sync_minimap_tiles_to_renderer(
     renderer: Res<RendererState>,
     camera: Res<Camera>,
     minimap_state: Option<ResMut<MinimapRendererState>>,
     minimap_cache: Option<ResMut<MinimapCacheState>>,
-    minimap_markers: Option<ResMut<MinimapMarkerSyncState>>,
     map_query: Query<&GameMap>,
-    marker_query: Query<(Entity, &Position, &crate::ecs::components::MinimapMarker)>,
-    changed_marker_query: Query<
-        (Entity, &Position, &crate::ecs::components::MinimapMarker),
-        Or<(
-            Added<crate::ecs::components::MinimapMarker>,
-            Changed<Position>,
-            Changed<crate::ecs::components::MinimapMarker>,
-        )>,
-    >,
-    mut removed_markers: RemovedComponents<crate::ecs::components::MinimapMarker>,
     collision_table: Option<Res<crate::ecs::collision::WallCollisionTable>>,
     map_collision: Option<Res<crate::ecs::collision::MapCollisionData>>,
 ) {
@@ -819,10 +807,12 @@ pub fn sync_minimap_to_renderer(
         return;
     };
 
-    let (Some(mut minimap_cache), Some(mut minimap_markers)) = (minimap_cache, minimap_markers)
-    else {
-        minimap_state.renderer.clear();
-        return;
+    let mut minimap_cache = match minimap_cache {
+        Some(c) => c,
+        None => {
+            minimap_state.renderer.clear();
+            return;
+        }
     };
 
     let Ok(map) = map_query.single() else {
@@ -889,125 +879,64 @@ pub fn sync_minimap_to_renderer(
         minimap_cache.topology_dirty = false;
     }
 
-    if map_changed || layout_changed || topology_dirty {
-        let lattice_width = map.width as usize;
-        let lattice_height = map.height as usize;
-        let mut tiles = Vec::with_capacity(lattice_width * lattice_height);
+    if !map_changed && !layout_changed && !topology_dirty {
+        return;
+    }
 
-        for lattice_y in 0..lattice_height {
-            for lattice_x in 0..lattice_width {
-                let index = lattice_y * lattice_width + lattice_x;
-                let atlas_index = minimap_cache
-                    .tile_atlas_indices
-                    .get(index)
-                    .copied()
-                    .unwrap_or(hidden_atlas_index);
-                if atlas_index == hidden_atlas_index {
-                    continue;
-                }
+    let lattice_width = map.width as usize;
+    let lattice_height = map.height as usize;
+    let mut tiles = Vec::with_capacity(lattice_width * lattice_height);
 
-                let tile = Vec2::new(lattice_x as f32, lattice_y as f32);
-                tiles.push(MinimapTile {
-                    position: minimap::minimap_tile_position(tile, Vec2::ZERO, layout),
-                    atlas_index,
-                });
+    for lattice_y in 0..lattice_height {
+        for lattice_x in 0..lattice_width {
+            let index = lattice_y * lattice_width + lattice_x;
+            let atlas_index = minimap_cache
+                .tile_atlas_indices
+                .get(index)
+                .copied()
+                .unwrap_or(hidden_atlas_index);
+            if atlas_index == hidden_atlas_index {
+                continue;
             }
-        }
 
-        minimap_state
-            .renderer
-            .rebuild_tiles(&renderer.device, tiles);
-    }
-
-    for entity in removed_markers.read() {
-        if let Some(marker) = minimap_markers.handles.remove(&entity) {
-            minimap_state
-                .renderer
-                .remove_marker(&renderer.queue, marker.handle);
+            let tile = Vec2::new(lattice_x as f32, lattice_y as f32);
+            tiles.push(MinimapTile {
+                position: minimap::minimap_tile_position(tile, Vec2::ZERO, layout),
+                atlas_index,
+            });
         }
     }
 
-    if map_changed || layout_changed {
-        for (entity, position, marker) in marker_query.iter() {
-            upsert_minimap_marker(
-                &renderer.queue,
-                &minimap_state.renderer,
-                &mut minimap_markers,
-                entity,
-                position,
-                marker,
-                Vec2::ZERO,
-                layout,
-            );
-        }
-    } else {
-        for (entity, position, marker) in changed_marker_query.iter() {
-            upsert_minimap_marker(
-                &renderer.queue,
-                &minimap_state.renderer,
-                &mut minimap_markers,
-                entity,
-                position,
-                marker,
-                Vec2::ZERO,
-                layout,
-            );
-        }
-    }
+    minimap_state
+        .renderer
+        .rebuild_tiles(&renderer.device, tiles);
 }
 
-fn upsert_minimap_marker(
-    queue: &wgpu::Queue,
-    renderer: &rendering::scene::minimap::MinimapRenderer,
-    marker_state: &mut MinimapMarkerSyncState,
-    entity: Entity,
-    position: &Position,
-    marker: &crate::ecs::components::MinimapMarker,
-    center: Vec2,
-    layout: minimap::MinimapLayout,
+pub fn sync_minimap_markers_to_renderer(
+    renderer: Res<RendererState>,
+    minimap_state: Option<ResMut<MinimapRendererState>>,
+    mut marker_query: Query<(&Position, &mut crate::ecs::components::MinimapMarker)>,
 ) {
-    let marker_position =
-        minimap::minimap_marker_position(Vec2::new(position.x, position.y), center, layout);
-    let instance = MinimapMarkerInstance {
-        position: marker_position,
+    let Some(minimap_state) = minimap_state else {
+        return;
     };
+    let layout = minimap_state.config.layout;
 
-    let existing_handle = marker_state.handles.get(&entity).map(|entry| entry.handle);
-    let existing_kind = marker_state.handles.get(&entity).map(|entry| entry.kind);
-
-    if let Some(existing_handle) = existing_handle {
-        let expected_layer = match marker.kind {
-            crate::ecs::components::MinimapMarkerKind::Player => MinimapMarkerLayer::Player,
-            crate::ecs::components::MinimapMarkerKind::Creature => MinimapMarkerLayer::Creature,
+    for (position, mut marker) in marker_query.iter_mut() {
+        let marker_pos =
+            minimap::minimap_marker_position(Vec2::new(position.x, position.y), Vec2::ZERO, layout);
+        let instance = minimap::MinimapMarker {
+            position: marker_pos,
+            tint: marker.kind.tint(),
         };
 
-        if existing_handle.layer() == expected_layer && existing_kind == Some(marker.kind) {
-            renderer.update_marker(queue, existing_handle, instance);
-            return;
+        if let Some(handle) = marker.handle {
+            minimap_state
+                .renderer
+                .update_marker(&renderer.queue, handle, instance);
+        } else if let Some(handle) = minimap_state.renderer.add_marker(&renderer.queue, instance) {
+            marker.handle = Some(handle);
         }
-
-        renderer.remove_marker(queue, existing_handle);
-    }
-
-    let handle = match marker.kind {
-        crate::ecs::components::MinimapMarkerKind::Player => {
-            renderer.add_player_marker(queue, instance)
-        }
-        crate::ecs::components::MinimapMarkerKind::Creature => {
-            renderer.add_creature_marker(queue, instance)
-        }
-    };
-
-    if let Some(handle) = handle {
-        marker_state.handles.insert(
-            entity,
-            MinimapMarkerEntry {
-                handle,
-                kind: marker.kind,
-            },
-        );
-    } else {
-        marker_state.handles.remove(&entity);
     }
 }
 

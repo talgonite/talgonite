@@ -2,7 +2,7 @@
 
 use super::super::components::*;
 use crate::{
-    Camera, MapRendererState, MinimapCacheState, MinimapMarkerSyncState, MinimapRendererState,
+    Camera, MapRendererState, MinimapCacheState, MinimapRendererState,
     RendererState, events::MapEvent, game_files::GameFiles,
 };
 use bevy::prelude::*;
@@ -96,7 +96,6 @@ fn handle_map_clear(
     info!("Despawned {} MapScoped entities", count);
     commands.remove_resource::<MapRendererState>();
     commands.remove_resource::<MinimapCacheState>();
-    commands.remove_resource::<MinimapMarkerSyncState>();
     commands.remove_resource::<crate::ecs::collision::MapCollisionData>();
     tile_counters.counters.clear();
     *local_map_renderer = None;
@@ -142,7 +141,6 @@ fn handle_map_set_info(
         map_info.width,
         map_info.height,
     ));
-    commands.insert_resource(MinimapMarkerSyncState::default());
 
     if let (Some(renderer), Some(camera)) = (renderer, camera) {
         if minimap_renderer_state.is_none() {

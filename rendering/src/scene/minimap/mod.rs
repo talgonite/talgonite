@@ -1,4 +1,4 @@
-use glam::{UVec2, Vec2};
+use glam::{UVec2, Vec2, Vec3};
 use wgpu::util::DeviceExt;
 
 use crate::{
@@ -6,8 +6,6 @@ use crate::{
 };
 
 const TILE_GRID_DIMENSION: u32 = 4;
-const TILE_VERTEX_SIZE: u32 = 32;
-const MARKER_VERTEX_SIZE: u32 = 64;
 
 pub const DUAL_MASK_TOP_LEFT: u8 = 1;
 pub const DUAL_MASK_TOP_RIGHT: u8 = 2;
@@ -25,8 +23,8 @@ impl Default for MinimapLayout {
     fn default() -> Self {
         Self {
             tile_size: Vec2::new(32.0, 16.0),
-            marker_size: Vec2::new(18.0, 18.0),
-            overlay_alpha: 0.5,
+            marker_size: Vec2::new(32.0, 16.0),
+            overlay_alpha: 0.75,
         }
     }
 }
@@ -46,37 +44,25 @@ pub struct MinimapTile {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MinimapMarker {
     pub position: Vec2,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MinimapMarkerLayer {
-    Player,
-    Creature,
+    pub tint: Vec3,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MinimapMarkerHandle {
     index: usize,
-    layer: MinimapMarkerLayer,
-}
-
-impl MinimapMarkerHandle {
-    pub fn layer(&self) -> MinimapMarkerLayer {
-        self.layer
-    }
 }
 
 pub struct MinimapRenderer {
     pipeline: wgpu::RenderPipeline,
     tile_bind_group: wgpu::BindGroup,
-    player_bind_group: wgpu::BindGroup,
-    creature_bind_group: wgpu::BindGroup,
+    marker_bind_group: wgpu::BindGroup,
     tile_vertices: Vec<Vertex>,
     atlas_slices: [Option<MinimapSlice>; 16],
     tile_batch: Option<InstanceBatch>,
-    player_markers: SharedInstanceBatch,
-    creature_markers: SharedInstanceBatch,
+    markers: SharedInstanceBatch,
     layout: MinimapLayout,
+    tile_vert_size: u32,
+    marker_vert_size: u32,
 }
 
 impl MinimapRenderer {
@@ -85,25 +71,17 @@ impl MinimapRenderer {
         queue: &wgpu::Queue,
         camera_bind_group_layout: &wgpu::BindGroupLayout,
         tile_bytes: &[u8],
-        player_icon_bytes: &[u8],
-        creature_icon_bytes: &[u8],
+        tile_width: u32,
+        tile_height: u32,
+        icon_bytes: &[u8],
+        icon_width: u32,
+        _icon_height: u32,
         layout: MinimapLayout,
     ) -> anyhow::Result<Self> {
-        let (tile_width, tile_height, _) = texture::Texture::load_ktx2(tile_bytes)?;
         let tile_texture =
             texture::Texture::from_ktx2_rgba8(device, queue, "minimap_tiles", tile_bytes)?;
-        let player_texture = texture::Texture::from_ktx2_rgba8(
-            device,
-            queue,
-            "minimap_player_icon",
-            player_icon_bytes,
-        )?;
-        let creature_texture = texture::Texture::from_ktx2_rgba8(
-            device,
-            queue,
-            "minimap_creature_icon",
-            creature_icon_bytes,
-        )?;
+        let icon_texture =
+            texture::Texture::from_ktx2_rgba8(device, queue, "minimap_icon", icon_bytes)?;
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Minimap Shader"),
@@ -192,8 +170,7 @@ impl MinimapRenderer {
         };
 
         let tile_alpha = alpha_buffer("minimap_tile_alpha");
-        let player_alpha = alpha_buffer("minimap_player_alpha");
-        let creature_alpha = alpha_buffer("minimap_creature_alpha");
+        let marker_alpha = alpha_buffer("minimap_marker_alpha");
 
         let make_bind_group = |texture: &texture::Texture, alpha: &wgpu::Buffer, label: &str| {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -218,34 +195,30 @@ impl MinimapRenderer {
 
         let tile_bind_group =
             make_bind_group(&tile_texture, &tile_alpha, "minimap_tile_bind_group");
-        let player_bind_group =
-            make_bind_group(&player_texture, &player_alpha, "minimap_player_bind_group");
-        let creature_bind_group = make_bind_group(
-            &creature_texture,
-            &creature_alpha,
-            "minimap_creature_bind_group",
-        );
+        let marker_bind_group =
+            make_bind_group(&icon_texture, &marker_alpha, "minimap_marker_bind_group");
+
+        let tile_vert_size = tile_width / TILE_GRID_DIMENSION;
+        let marker_vert_size = icon_width;
 
         let atlas_slices = atlas_slice_regions(UVec2::new(tile_width, tile_height));
-        let tile_vertices = make_quad(TILE_VERTEX_SIZE, TILE_VERTEX_SIZE).to_vec();
-        let marker_vertices = make_quad(MARKER_VERTEX_SIZE, MARKER_VERTEX_SIZE).to_vec();
+        let tile_vertices = make_quad(tile_vert_size, tile_vert_size).to_vec();
+        let marker_vertices = make_quad(marker_vert_size, marker_vert_size).to_vec();
 
-        let player_markers =
-            SharedInstanceBatch::new(device, marker_vertices.clone(), player_bind_group.clone());
-        let creature_markers =
-            SharedInstanceBatch::new(device, marker_vertices.clone(), creature_bind_group.clone());
+        let markers =
+            SharedInstanceBatch::new(device, marker_vertices.clone(), marker_bind_group.clone());
 
         Ok(Self {
             pipeline,
             tile_bind_group,
-            player_bind_group,
-            creature_bind_group,
+            marker_bind_group,
             tile_vertices,
             atlas_slices,
             tile_batch: None,
-            player_markers,
-            creature_markers,
+            markers,
             layout,
+            tile_vert_size,
+            marker_vert_size,
         })
     }
 
@@ -280,8 +253,7 @@ impl MinimapRenderer {
     }
 
     pub fn clear_markers(&self) {
-        self.player_markers.clear();
-        self.creature_markers.clear();
+        self.markers.clear();
     }
 
     pub fn clear(&mut self) {
@@ -289,34 +261,14 @@ impl MinimapRenderer {
         self.clear_markers();
     }
 
-    pub fn add_player_marker(
+    pub fn add_marker(
         &self,
         queue: &wgpu::Queue,
         marker: MinimapMarker,
     ) -> Option<MinimapMarkerHandle> {
-        let index = self
-            .player_markers
-            .add(queue, self.marker_instance(marker.position))?;
+        let index = self.markers.add(queue, self.marker_instance(marker))?;
 
-        Some(MinimapMarkerHandle {
-            index,
-            layer: MinimapMarkerLayer::Player,
-        })
-    }
-
-    pub fn add_creature_marker(
-        &self,
-        queue: &wgpu::Queue,
-        marker: MinimapMarker,
-    ) -> Option<MinimapMarkerHandle> {
-        let index = self
-            .creature_markers
-            .add(queue, self.marker_instance(marker.position))?;
-
-        Some(MinimapMarkerHandle {
-            index,
-            layer: MinimapMarkerLayer::Creature,
-        })
+        Some(MinimapMarkerHandle { index })
     }
 
     pub fn update_marker(
@@ -325,25 +277,12 @@ impl MinimapRenderer {
         handle: MinimapMarkerHandle,
         marker: MinimapMarker,
     ) {
-        match handle.layer {
-            MinimapMarkerLayer::Player => self.player_markers.update(
-                queue,
-                handle.index,
-                self.marker_instance(marker.position),
-            ),
-            MinimapMarkerLayer::Creature => self.creature_markers.update(
-                queue,
-                handle.index,
-                self.marker_instance(marker.position),
-            ),
-        }
+        self.markers
+            .update(queue, handle.index, self.marker_instance(marker));
     }
 
     pub fn remove_marker(&self, queue: &wgpu::Queue, handle: MinimapMarkerHandle) {
-        match handle.layer {
-            MinimapMarkerLayer::Player => self.player_markers.remove(queue, handle.index),
-            MinimapMarkerLayer::Creature => self.creature_markers.remove(queue, handle.index),
-        }
+        self.markers.remove(queue, handle.index);
     }
 
     pub fn render(
@@ -364,12 +303,7 @@ impl MinimapRenderer {
             );
         }
 
-        render_shared_batch(render_pass, &self.player_markers, &self.player_bind_group);
-        render_shared_batch(
-            render_pass,
-            &self.creature_markers,
-            &self.creature_bind_group,
-        );
+        render_shared_batch(render_pass, &self.markers, &self.marker_bind_group);
     }
 
     fn tile_instances(&self, tile: MinimapTile) -> Vec<Instance> {
@@ -383,24 +317,26 @@ impl MinimapRenderer {
             tex_min: slice.tex_min,
             tex_max: slice.tex_max,
             sprite_size: Vec2::new(
-                tile_size.x / TILE_VERTEX_SIZE as f32,
-                tile_size.y / TILE_VERTEX_SIZE as f32,
+                tile_size.x / self.tile_vert_size as f32,
+                tile_size.y / self.tile_vert_size as f32,
             ),
+            tint: Vec3::ONE,
             ..Default::default()
         }]
     }
 
-    fn marker_instance(&self, position: Vec2) -> Instance {
+    fn marker_instance(&self, marker: MinimapMarker) -> Instance {
         let half_marker = self.layout.marker_size * 0.5;
 
         Instance {
-            position: (position - half_marker).extend(1.0),
+            position: (marker.position - half_marker).extend(1.0),
             tex_min: Vec2::ZERO,
             tex_max: Vec2::ONE,
             sprite_size: Vec2::new(
-                self.layout.marker_size.x / MARKER_VERTEX_SIZE as f32,
-                self.layout.marker_size.y / MARKER_VERTEX_SIZE as f32,
+                self.layout.marker_size.x / self.marker_vert_size as f32,
+                self.layout.marker_size.y / self.marker_vert_size as f32,
             ),
+            tint: marker.tint,
             ..Default::default()
         }
     }

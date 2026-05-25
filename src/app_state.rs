@@ -13,7 +13,7 @@ use crate::webui::plugin::{
     PlayerProfileState, WorldListState,
 };
 use crate::{
-    MapRendererState, MinimapCacheState, MinimapMarkerSyncState, MinimapRendererState,
+    MapRendererState, MinimapCacheState, MinimapRendererState,
     network::PacketOutbox,
 };
 
@@ -97,7 +97,6 @@ pub fn cleanup_ingame_world(
     }
     commands.remove_resource::<MapRendererState>();
     commands.remove_resource::<MinimapCacheState>();
-    commands.remove_resource::<MinimapMarkerSyncState>();
     commands.remove_resource::<MinimapRendererState>();
     commands.remove_resource::<crate::ecs::collision::MapCollisionData>();
     map_events.write(MapEvent::Clear);

@@ -155,7 +155,8 @@ impl Plugin for GamePlugin {
                 Update,
                 (
                     systems::creature_load_system,
-                    systems::sync_minimap_to_renderer,
+                    systems::sync_minimap_tiles_to_renderer,
+                    systems::sync_minimap_markers_to_renderer,
                     systems::sync_items_to_renderer,
                     systems::update_items_to_renderer,
                     systems::sync_players_to_renderer,

@@ -136,17 +136,6 @@ impl MinimapCacheState {
     }
 }
 
-#[derive(Debug)]
-pub struct MinimapMarkerEntry {
-    pub handle: minimap::MinimapMarkerHandle,
-    pub kind: crate::ecs::components::MinimapMarkerKind,
-}
-
-#[derive(Resource, Default, Debug)]
-pub struct MinimapMarkerSyncState {
-    pub handles: std::collections::HashMap<Entity, MinimapMarkerEntry>,
-}
-
 impl MinimapRendererState {
     pub fn new(
         renderer_state: &RendererState,
@@ -161,8 +150,11 @@ impl MinimapRendererState {
             &renderer_state.queue,
             camera_bind_group_layout,
             assets.tiles_ktx2,
-            assets.player_icon_ktx2,
-            assets.creature_icon_ktx2,
+            assets.tiles_width,
+            assets.tiles_height,
+            assets.marker_icon_ktx2,
+            assets.marker_icon_width,
+            assets.marker_icon_height,
             config.layout,
         )?;
         let mut camera = CameraState::new(

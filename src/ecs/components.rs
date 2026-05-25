@@ -5,6 +5,7 @@ use bevy::tasks::Task;
 use packets::types::Direction as PacketDirection;
 use rendering::scene::items::ItemInstanceHandle;
 use rendering::scene::map::renderer::PreparedMap;
+use rendering::scene::minimap::MinimapMarkerHandle;
 use rendering::scene::{
     EffectHandle,
     creatures::AddCreatureResult,
@@ -220,25 +221,56 @@ pub struct PlayerSprite {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MinimapMarkerKind {
-    Player,
-    Creature,
+    CurrentPlayer,
+    OtherPlayer,
+    NamedCreature,
+    UnnamedCreature,
+}
+
+impl MinimapMarkerKind {
+    pub fn tint(self) -> glam::Vec3 {
+        match self {
+            MinimapMarkerKind::CurrentPlayer => glam::Vec3::new(0.973, 0.894, 0.220), // #f8e438
+            MinimapMarkerKind::OtherPlayer => glam::Vec3::new(0.471, 0.643, 0.941),   // #78a4f0
+            MinimapMarkerKind::NamedCreature => glam::Vec3::new(0.0, 0.988, 0.0),     // #00fc00
+            MinimapMarkerKind::UnnamedCreature => glam::Vec3::new(0.784, 0.0, 0.063), // #c80010
+        }
+    }
 }
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+#[component(on_remove = cleanup_minimap_marker)]
 pub struct MinimapMarker {
     pub kind: MinimapMarkerKind,
+    pub handle: Option<MinimapMarkerHandle>,
 }
 
 impl MinimapMarker {
-    pub const fn player() -> Self {
+    pub const fn current_player() -> Self {
         Self {
-            kind: MinimapMarkerKind::Player,
+            kind: MinimapMarkerKind::CurrentPlayer,
+            handle: None,
         }
     }
 
-    pub const fn creature() -> Self {
+    pub const fn other_player() -> Self {
         Self {
-            kind: MinimapMarkerKind::Creature,
+            kind: MinimapMarkerKind::OtherPlayer,
+            handle: None,
+        }
+    }
+
+    pub const fn named_creature() -> Self {
+        Self {
+            kind: MinimapMarkerKind::NamedCreature,
+            handle: None,
+        }
+    }
+
+    pub const fn unnamed_creature() -> Self {
+        Self {
+            kind: MinimapMarkerKind::UnnamedCreature,
+            handle: None,
         }
     }
 }
@@ -696,5 +728,30 @@ fn cleanup_effect_instance(mut world: DeferredWorld, ctx: HookContext) {
     };
     unsafe {
         effects.effect_manager.remove_effect(&*queue_ptr, &handle);
+    }
+}
+
+fn cleanup_minimap_marker(mut world: DeferredWorld, ctx: HookContext) {
+    let entity = ctx.entity;
+    let handle = if let Some(marker) = world.get::<MinimapMarker>(entity) {
+        marker.handle
+    } else {
+        return;
+    };
+    let Some(handle) = handle else {
+        return;
+    };
+    let queue_ptr = if let Some(renderer) = world.get_resource::<crate::RendererState>() {
+        &renderer.queue as *const _
+    } else {
+        return;
+    };
+    let cell = world.as_unsafe_world_cell();
+    let minimap_state = unsafe { cell.get_resource::<crate::MinimapRendererState>() };
+    let Some(minimap_state) = minimap_state else {
+        return;
+    };
+    unsafe {
+        minimap_state.renderer.remove_marker(&*queue_ptr, handle);
     }
 }

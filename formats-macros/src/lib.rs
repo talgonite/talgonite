@@ -38,7 +38,7 @@ fn expand_include_png_ktx2(path_lit: &LitStr) -> Result<TokenStream2, syn::Error
     Ok(quote! {{
         const _: &[u8] = include_bytes!(#source_path_lit);
         const _: (u32, u32) = (#width, #height);
-        #bytes
+        (#bytes, #width, #height)
     }})
 }
 
