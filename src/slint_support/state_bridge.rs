@@ -283,6 +283,7 @@ pub fn apply_core_to_slint(
     metafile_store: Res<crate::metafile_store::MetafileStore>,
     inventory: Res<crate::webui::plugin::InventoryState>,
     ability: Res<crate::webui::plugin::AbilityState>,
+    skill_cooldowns: Res<crate::webui::plugin::SkillCooldowns>,
     hotbar: Res<crate::ecs::hotbar::HotbarState>,
     hotbar_panel: Res<crate::ecs::hotbar::HotbarPanelState>,
     lobby_portraits: Res<crate::resources::LobbyPortraits>,
@@ -346,11 +347,12 @@ pub fn apply_core_to_slint(
             let icon = asset_loader
                 .load_skill_icon(&game_files, s.sprite)
                 .unwrap_or_default();
+            let cd = skill_cooldowns.cooldowns.get(&s.slot);
             let skill = crate::Skill {
                 name: slint::SharedString::from(s.display_name().as_str()),
                 icon,
                 slot: s.slot as i32,
-                cooldown: match &s.on_cooldown {
+                cooldown: match cd {
                     Some(cd) => crate::Cooldown {
                         time_left: cd.time_left.as_millis() as i64,
                         total: cd.duration.as_millis() as i64,
@@ -946,9 +948,10 @@ pub fn apply_core_to_slint(
                                 sprite = skill.sprite;
                                 name = slint::SharedString::from(skill.display_name().as_str());
                                 enabled = true;
-                                cooldown = skill
-                                    .on_cooldown
-                                    .clone()
+                                cooldown = skill_cooldowns
+                                    .cooldowns
+                                    .get(&skill.slot)
+                                    .cloned()
                                     .or_else(|| hotbar.cooldowns.get(&slot.action_id).cloned());
                             }
                         }
@@ -1029,6 +1032,79 @@ pub fn apply_core_to_slint(
         game_state.set_world_list_count(world_list.filtered.len() as i32);
         if let Some(raw) = &world_list.raw {
             game_state.set_world_list_total_count(raw.world_member_count as i32);
+        }
+    }
+}
+
+pub fn sync_skill_cooldowns_to_slint(
+    win: Res<SlintWindow>,
+    skill_cooldowns: Res<crate::webui::plugin::SkillCooldowns>,
+    ability: Res<crate::webui::plugin::AbilityState>,
+    hotbar: Res<crate::ecs::hotbar::HotbarState>,
+) {
+    if !skill_cooldowns.is_changed() {
+        return;
+    }
+
+    let Some(strong) = win.0.upgrade() else {
+        return;
+    };
+    let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
+
+    let skills_state = game_state.get_skills();
+    for (slot, cd) in &skill_cooldowns.cooldowns {
+        let index = slot.saturating_sub(1) as usize;
+        if let Some(mut row) = skills_state.row_data(index) {
+            let new_cd = crate::Cooldown {
+                time_left: cd.time_left.as_millis() as i64,
+                total: cd.duration.as_millis() as i64,
+            };
+            if row.cooldown != new_cd {
+                row.cooldown = new_cd;
+                skills_state.set_row_data(index, row);
+            }
+        }
+    }
+
+    for index in 0..60usize {
+        let slot = (index + 1) as u8;
+        if !skill_cooldowns.cooldowns.contains_key(&slot) {
+            if let Some(mut row) = skills_state.row_data(index) {
+                let empty = crate::Cooldown::default();
+                if row.cooldown != empty {
+                    row.cooldown = empty;
+                    skills_state.set_row_data(index, row);
+                }
+            }
+        }
+    }
+
+    let hotbar_state = game_state.get_hotbar();
+    let mut entry_idx = 0i32;
+    for bar in &hotbar.config.bars {
+        for slot_cfg in bar {
+            if !slot_cfg.action_id.is_empty() {
+                let action_id = ActionId::from_str(&slot_cfg.action_id);
+                if action_id.panel_type() == game_types::SlotPanelType::Skill {
+                    if let Some(skill) = ability.skills.iter().find(|s| s.id == action_id) {
+                        let cd = skill_cooldowns.cooldowns.get(&skill.slot);
+                        if let Some(mut row) = hotbar_state.row_data(entry_idx as _) {
+                            let new_cd = match cd {
+                                Some(cd) => crate::Cooldown {
+                                    time_left: cd.time_left.as_millis() as i64,
+                                    total: cd.duration.as_millis() as i64,
+                                },
+                                None => crate::Cooldown::default(),
+                            };
+                            if row.cooldown != new_cd {
+                                row.cooldown = new_cd;
+                                hotbar_state.set_row_data(entry_idx as _, row);
+                            }
+                        }
+                    }
+                }
+            }
+            entry_idx += 1;
         }
     }
 }

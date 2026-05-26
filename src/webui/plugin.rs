@@ -134,6 +134,7 @@ impl Plugin for UiBridgePlugin {
             .add_message::<UiOutbound>()
             .init_resource::<InventoryState>()
             .init_resource::<AbilityState>()
+            .init_resource::<SkillCooldowns>()
             .init_resource::<WorldListState>()
             .init_resource::<EquipmentState>()
             .init_resource::<PlayerProfileState>()
@@ -2494,6 +2495,11 @@ pub struct AbilityState {
 }
 
 #[derive(Resource, Default, Debug, Clone)]
+pub struct SkillCooldowns {
+    pub cooldowns: std::collections::HashMap<u8, Cooldown>,
+}
+
+#[derive(Resource, Default, Debug, Clone)]
 pub struct WorldListState {
     pub raw: Option<packets::server::WorldList>,
     pub filtered: Vec<WorldListMemberUi>,
@@ -2526,7 +2532,7 @@ pub struct GroupState {
 fn update_skill_cooldowns(
     time: Res<Time>,
     mut timer: Local<Timer>,
-    mut state: ResMut<AbilityState>,
+    mut cooldowns: ResMut<SkillCooldowns>,
 ) {
     if timer.duration().is_zero() {
         *timer = Timer::from_seconds(0.1, TimerMode::Repeating);
@@ -2536,25 +2542,27 @@ fn update_skill_cooldowns(
         return;
     }
 
-    if !state.skills.iter().any(|s| s.on_cooldown.is_some()) {
+    if cooldowns.cooldowns.is_empty() {
         return;
     }
 
     let now = Instant::now();
-    for skill in state.skills.iter_mut() {
-        if let Some(cd) = &mut skill.on_cooldown {
-            let time_left = cd
-                .start_time
-                .checked_add(cd.duration)
-                .and_then(|end| end.checked_duration_since(now))
-                .unwrap_or_default();
+    let mut expired = Vec::new();
+    for (slot, cd) in cooldowns.cooldowns.iter_mut() {
+        let time_left = cd
+            .start_time
+            .checked_add(cd.duration)
+            .and_then(|end| end.checked_duration_since(now))
+            .unwrap_or_default();
 
-            if time_left.is_zero() {
-                skill.on_cooldown = None;
-            } else {
-                cd.time_left = time_left;
-            }
+        if time_left.is_zero() {
+            expired.push(*slot);
+        } else {
+            cd.time_left = time_left;
         }
+    }
+    for slot in expired {
+        cooldowns.cooldowns.remove(&slot);
     }
 }
 
@@ -2562,6 +2570,7 @@ fn update_skill_cooldowns(
 fn bridge_ability_events(
     mut ability_events: MessageReader<AbilityEvent>,
     mut state: ResMut<AbilityState>,
+    mut cooldowns: ResMut<SkillCooldowns>,
 ) {
     for evt in ability_events.read() {
         match evt {
@@ -2569,7 +2578,7 @@ fn bridge_ability_events(
                 slot,
                 cooldown_secs,
             } => {
-                let Some(skill) = state.skills.iter().find(|s| s.slot == *slot) else {
+                let Some(skill) = state.skills.iter_mut().find(|s| s.slot == *slot) else {
                     continue;
                 };
 
@@ -2577,12 +2586,10 @@ fn bridge_ability_events(
                     continue;
                 }
 
-                let Some(skill) = state.skills.iter_mut().find(|s| s.slot == *slot) else {
-                    continue;
-                };
-
                 skill.cooldown_secs = Some(*cooldown_secs);
-                skill.on_cooldown = Some(Cooldown::new(*cooldown_secs));
+                cooldowns
+                    .cooldowns
+                    .insert(*slot, Cooldown::new(*cooldown_secs));
             }
             AbilityEvent::UseSkill { slot } => {
                 let Some(skill) = state.skills.iter().find(|s| s.slot == *slot) else {
@@ -2593,11 +2600,7 @@ fn bridge_ability_events(
                     continue;
                 };
 
-                let Some(skill) = state.skills.iter_mut().find(|s| s.slot == *slot) else {
-                    continue;
-                };
-
-                skill.on_cooldown = Some(Cooldown::new(cd));
+                cooldowns.cooldowns.insert(*slot, Cooldown::new(cd));
             }
             AbilityEvent::AddSkill(pkt) => {
                 let parsed = game_ui::parse_ability_name(&pkt.name);
@@ -2610,6 +2613,7 @@ fn bridge_ability_events(
                     if new_id != existing.id {
                         existing.id = new_id;
                         existing.cooldown_secs = None;
+                        cooldowns.cooldowns.remove(&pkt.slot);
                     }
                 } else {
                     state.skills.push(SkillUi {
@@ -2618,12 +2622,12 @@ fn bridge_ability_events(
                         name: parsed.full_name.clone(),
                         sprite: pkt.sprite,
                         cooldown_secs: None,
-                        on_cooldown: None,
                     });
                 }
             }
             AbilityEvent::RemoveSkill(pkt) => {
                 state.skills.retain(|s| s.slot != pkt.slot);
+                cooldowns.cooldowns.remove(&pkt.slot);
             }
             AbilityEvent::AddSpell(pkt) => {
                 let parsed = game_ui::parse_ability_name(&pkt.panel_name);

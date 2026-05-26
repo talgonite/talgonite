@@ -721,7 +721,6 @@ pub struct SkillUi {
     pub slot: u8,
     pub name: String,
     pub sprite: u16,
-    pub on_cooldown: Option<Cooldown>,
     pub cooldown_secs: Option<u32>,
 }
 
