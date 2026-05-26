@@ -915,7 +915,13 @@ pub fn sync_minimap_tiles_to_renderer(
 pub fn sync_minimap_markers_to_renderer(
     renderer: Res<RendererState>,
     minimap_state: Option<ResMut<MinimapRendererState>>,
-    mut marker_query: Query<(&Position, &mut crate::ecs::components::MinimapMarker)>,
+    mut marker_query: Query<
+        (&Position, &mut crate::ecs::components::MinimapMarker),
+        Or<(
+            Changed<Position>,
+            Changed<crate::ecs::components::MinimapMarker>,
+        )>,
+    >,
 ) {
     let Some(minimap_state) = minimap_state else {
         return;
