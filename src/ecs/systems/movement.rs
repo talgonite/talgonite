@@ -201,11 +201,14 @@ fn handle_walk_request(
             }
         }
     } else {
+        // Canonical walk frame count for ECS timing; the render-sync system
+        // maps this into piece-local frame counts per equipment piece.
+        const PLAYER_WALK_FRAME_COUNT: usize = 8;
         entity_commands.insert(AnimationBundle::new(
             AnimationMode::OneShot,
             AnimationType::Player(EpfAnimationType::Walk),
-            0.5,
-            1,
+            0.5 / PLAYER_WALK_FRAME_COUNT as f32,
+            PLAYER_WALK_FRAME_COUNT,
         ));
     }
 
@@ -280,11 +283,12 @@ pub fn entity_motion_system(
                             }
                         }
                     } else if let Some(_player) = player {
+                        const PLAYER_WALK_FRAME_COUNT: usize = 8;
                         commands.entity(entity).insert(AnimationBundle::new(
                             AnimationMode::OneShot,
                             AnimationType::Player(EpfAnimationType::Walk),
-                            0.5,
-                            1,
+                            0.5 / PLAYER_WALK_FRAME_COUNT as f32,
+                            PLAYER_WALK_FRAME_COUNT,
                         ));
                     }
 
@@ -443,11 +447,13 @@ pub fn player_animation_start_system(
                 }
             }
 
+            // Use canonical frame count per animation type so the render-sync
+            // system can map ECS frame progress into piece-local frame counts.
             commands.entity(entity).insert(AnimationBundle::new(
                 AnimationMode::OneShot,
                 AnimationType::Player(anim_type),
-                anim.animation_speed as f32 / 100. * frame_count as f32,
-                1,
+                anim.animation_speed as f32 / 100.,
+                frame_count,
             ));
         }
 

@@ -436,6 +436,23 @@ impl PlayerAssetStore {
     pub fn bind_group(&self) -> &wgpu::BindGroup {
         &self.bind_group
     }
+
+    /// Returns the piece-local frame count for the given animation type and direction,
+    /// or None if the sprite or animation variant is not loaded.
+    pub fn animation_frame_count(
+        &self,
+        handle: &PlayerSpriteHandle,
+        animation_type: EpfAnimationType,
+        is_towards: bool,
+    ) -> Option<usize> {
+        let loaded = self.loaded_sprites.get(&handle.key)?;
+        let dir = if is_towards {
+            AnimationDirection::Towards
+        } else {
+            AnimationDirection::Away
+        };
+        loaded.animations.get(&(animation_type, dir)).map(|a| a.frame_count)
+    }
 }
 
 impl PlayerBatch {
@@ -611,6 +628,17 @@ impl PlayerBatch {
             .any(|(anim_type, _)| *anim_type == animation_type)
     }
 
+    /// Returns the piece-local frame count for the given animation and direction.
+    pub fn animation_frame_count(
+        &self,
+        store: &PlayerAssetStore,
+        handle: &PlayerSpriteHandle,
+        animation_type: EpfAnimationType,
+        is_towards: bool,
+    ) -> Option<usize> {
+        store.animation_frame_count(handle, animation_type, is_towards)
+    }
+
     pub fn update_player_sprite_with_animation(
         &self,
         queue: &wgpu::Queue,
@@ -621,7 +649,7 @@ impl PlayerBatch {
         y: f32,
         color: u8,
         animation_type: EpfAnimationType,
-        progress: f32,
+        frame_index: usize,
         flags: InstanceFlag,
         tint: Vec3,
     ) -> anyhow::Result<()> {
@@ -631,29 +659,6 @@ impl PlayerBatch {
             .ok_or_else(|| anyhow::anyhow!("Sprite not loaded"))?;
 
         let (is_towards, flip) = direction_to_orientation(direction);
-
-        let anim_direction = if is_towards {
-            AnimationDirection::Towards
-        } else {
-            AnimationDirection::Away
-        };
-
-        let anim_data = loaded_sprite
-            .animations
-            .get(&(animation_type, anim_direction))
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Animation {:?} for direction {:?} not found",
-                    animation_type,
-                    anim_direction
-                )
-            })?;
-
-        let frame_index = if anim_data.frame_count <= 1 {
-            0
-        } else {
-            ((progress * anim_data.frame_count as f32) as usize).min(anim_data.frame_count - 1)
-        };
 
         let instance = PlayerAssetStore::get_instance_for_frame(
             &store.palettes,

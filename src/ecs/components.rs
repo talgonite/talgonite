@@ -281,6 +281,22 @@ pub struct PlayerSpriteInstance {
     pub handle: PlayerSpriteHandle,
 }
 
+/// Tracks the last-submitted visual state for a player sprite piece so the
+/// render-sync system can skip redundant GPU instance updates when nothing
+/// changed since the previous frame.
+#[derive(Component, Clone)]
+pub struct PlayerSpriteRenderCache {
+    pub visible: bool,
+    pub anim_type: formats::epf::EpfAnimationType,
+    pub frame_index: usize,
+    pub x: f32,
+    pub y: f32,
+    pub direction: u8,
+    pub color: u8,
+    pub flags: rendering::instance::InstanceFlag,
+    pub tint: glam::Vec3,
+}
+
 #[derive(Bundle)]
 pub struct PlayerBundle {
     pub player: Player,

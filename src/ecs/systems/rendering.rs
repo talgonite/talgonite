@@ -491,7 +491,14 @@ pub fn sync_players_to_renderer(
 }
 
 /// Updates player sprite positions and animations on the GPU.
+///
+/// Computes piece-local frame indices before dispatching to the renderer batch,
+/// so pieces with different animation frame counts each receive the correct
+/// discrete frame for the current animation phase.  A per-piece render cache
+/// suppresses redundant GPU instance updates when the resolved visual state
+/// hasn't changed since the previous frame.
 pub fn update_player_sprites(
+    mut commands: Commands,
     shared_state: Res<RendererState>,
     store_state: Res<PlayerAssetStoreState>,
     batch_state: Res<PlayerBatchState>,
@@ -509,7 +516,11 @@ pub fn update_player_sprites(
         &EntityId,
     )>,
     _removed_hovers: RemovedComponents<TargetingHover>,
-    children_query: Query<(&PlayerSprite, &PlayerSpriteInstance)>,
+    children_query: Query<(
+        &PlayerSprite,
+        &PlayerSpriteInstance,
+        Option<&PlayerSpriteRenderCache>,
+    )>,
     time: Res<Time>,
 ) {
     for (
@@ -525,10 +536,18 @@ pub fn update_player_sprites(
         _entity_id,
     ) in parent_query.iter()
     {
-        let (anim_type, progress) = match (animation, animation_timer) {
-            (Some(anim), Some(timer)) if anim.mode != AnimationMode::Finished => {
+        // Normalized progress through the current animation: 0.0 → 1.0.
+        // For idle cycles this comes from wall-clock time, not ECS animation state.
+        let (anim_type, normalized_time) = match (animation, animation_timer) {
+            (Some(anim), Some(_timer)) if anim.mode != AnimationMode::Finished => {
                 if let AnimationType::Player(at) = anim.anim_type {
-                    (at, timer.0.fraction())
+                    let total = anim.end_index + 1;
+                    let progress = if total <= 1 {
+                        0.0
+                    } else {
+                        anim.current_frame as f32 / total as f32
+                    };
+                    (at, progress)
                 } else {
                     (EpfAnimationType::Idle, time.elapsed_secs() % 1.0)
                 }
@@ -539,14 +558,16 @@ pub fn update_player_sprites(
         let tint = targeting_hover.map(|t| t.tint).unwrap_or(Vec3::ZERO);
         let flags = player_instance_state(render_state, local_player.is_some(), &settings);
 
+        let is_towards = matches!(*direction, Direction::Right | Direction::Down);
+
         for child_entity in children.iter() {
-            if let Ok((sprite, sprite_instance)) = children_query.get(child_entity) {
+            if let Ok((sprite, sprite_instance, cached)) = children_query.get(child_entity) {
                 let target = match (anim_type.is_emote(), sprite.slot) {
-                    (true, PlayerPieceType::Emote) => Some((anim_type, progress)), // Active emote layer
-                    (true, PlayerPieceType::Face) => None, // Hide face when emoting (face usually in emote)
-                    (true, _) => Some((EpfAnimationType::Idle, time.elapsed_secs() % 1.0)), // Base layers go to Idle
-                    (false, PlayerPieceType::Emote) => None, // Hide emote layer when not emoting
-                    (false, _) => Some((anim_type, progress)), // Standard animation
+                    (true, PlayerPieceType::Emote) => Some((anim_type, normalized_time)),
+                    (true, PlayerPieceType::Face) => None,
+                    (true, _) => Some((EpfAnimationType::Idle, time.elapsed_secs() % 1.0)),
+                    (false, PlayerPieceType::Emote) => None,
+                    (false, _) => Some((anim_type, normalized_time)),
                 };
 
                 let hide_sprite = || {
@@ -555,29 +576,106 @@ pub fn update_player_sprites(
                         .hide_player_sprite(&shared_state.queue, &sprite_instance.handle);
                 };
 
-                let Some((at, p)) = target else {
-                    hide_sprite();
+                let Some((at, nt)) = target else {
+                    // Skip if already hidden (cached as invisible).
+                    if cached.map_or(true, |c| c.visible) {
+                        hide_sprite();
+                        commands
+                            .entity(child_entity)
+                            .insert(PlayerSpriteRenderCache {
+                                visible: false,
+                                anim_type: EpfAnimationType::Idle,
+                                frame_index: 0,
+                                x: 0.0,
+                                y: 0.0,
+                                direction: 0,
+                                color: 0,
+                                flags: InstanceFlag::default(),
+                                tint: Vec3::ZERO,
+                            });
+                    }
                     continue;
                 };
 
-                if batch_state
+                // Convert normalized animation time into a piece-local frame index.
+                let piece_frame_count = batch_state
+                    .batch
+                    .animation_frame_count(
+                        &store_state.store,
+                        &sprite_instance.handle,
+                        at,
+                        is_towards,
+                    )
+                    .unwrap_or(1);
+                let frame_index = if piece_frame_count <= 1 {
+                    0
+                } else {
+                    ((nt * piece_frame_count as f32) as usize).min(piece_frame_count - 1)
+                };
+
+                let dir = *direction as u8;
+
+                // Compare against cached state — skip the GPU update if nothing changed.
+                if let Some(c) = cached {
+                    if c.visible
+                        && c.anim_type == at
+                        && c.frame_index == frame_index
+                        && (c.x - position.x).abs() < f32::EPSILON
+                        && (c.y - position.y).abs() < f32::EPSILON
+                        && c.direction == dir
+                        && c.color == sprite.color
+                        && c.flags == flags
+                        && c.tint == tint
+                    {
+                        continue;
+                    }
+                }
+
+                let submitted = batch_state
                     .batch
                     .update_player_sprite_with_animation(
                         &shared_state.queue,
                         &store_state.store,
                         &sprite_instance.handle,
-                        *direction as u8,
+                        dir,
                         position.x,
                         position.y,
                         sprite.color,
                         at,
-                        p,
+                        frame_index,
                         flags,
                         tint,
-                    )
-                    .is_err()
-                {
+                    );
+
+                if submitted.is_err() {
                     hide_sprite();
+                    commands
+                        .entity(child_entity)
+                        .insert(PlayerSpriteRenderCache {
+                            visible: false,
+                            anim_type: EpfAnimationType::Idle,
+                            frame_index: 0,
+                            x: 0.0,
+                            y: 0.0,
+                            direction: 0,
+                            color: 0,
+                            flags: InstanceFlag::default(),
+                            tint: Vec3::ZERO,
+                        });
+                } else {
+                    commands
+                        .entity(child_entity)
+                        .insert(PlayerSpriteRenderCache {
+                            visible: true,
+                            anim_type: at,
+                            frame_index,
+                            x: position.x,
+                            y: position.y,
+                            direction: dir,
+                            color: sprite.color,
+                            flags,
+                            tint,
+                        });
                 }
             }
         }
