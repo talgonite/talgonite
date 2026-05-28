@@ -4,8 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
-bevy = { version = "0.19.0-rc.1", default-features = false }
+serde.workspace = true
+bevy.workspace = true
 
 [dev-dependencies]
 toml = "1.1"

@@ -8,7 +8,7 @@ name = "network"
 path = "src/lib.rs"
 
 [dependencies]
-async-std = "1.13"
-futures-lite = "2.6"
-md5 = "0.8"
+async-std.workspace = true
+futures-lite.workspace = true
+md5.workspace = true
 packets.workspace = true

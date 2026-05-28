@@ -56,55 +56,49 @@ game-types.workspace = true
 game-input.workspace = true
 game-ui.workspace = true
 
-bytemuck = { version = "1.24", features = ["derive"] }
-ktx2 = "0.5"
-glam = "0.32"
-anyhow = "1"
-byteorder = "1.5"
-wgpu = "28"
-libarx = { version = "0.4", features = ["zstd"] }
-jubako = "*"
-async-std = "1.13"
-rand = { version = "0.10", features = ["log", "std"] }
-md5 = "0.8"
-bevy = { version = "0.19.0-rc.1", default-features = false, features = ["bevy_state"] }
-gilrs = "0.11"
+bytemuck.workspace = true
+ktx2.workspace = true
+glam.workspace = true
+anyhow.workspace = true
+byteorder.workspace = true
+wgpu.workspace = true
+libarx.workspace = true
+jubako.workspace = true
+async-std.workspace = true
+rand.workspace = true
+md5.workspace = true
+bevy.workspace = true
+gilrs.workspace = true
 kira = { version = "0.12", default-features = false, features = [
     "mp3",
     "cpal",
 ] }
-crossbeam-channel = "0.5"
+crossbeam-channel.workspace = true
 paste = "1"
 pathfinding = "4.11"
-bevy_tasks = "0.19.0-rc.1"
-bevy_input_focus = "0.19.0-rc.1"
-futures-lite = "2.6"
-serde = { version = "1.0", features = ["derive"] }
+bevy_tasks = "0.19.0-rc.2"
+bevy_input_focus = "0.19.0-rc.2"
+futures-lite.workspace = true
+serde.workspace = true
 serde_json = "1.0"
 dirs = "6"
-flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+flate2.workspace = true
 base64 = "0.22"
 keyring-core = { version = "1" }
-oxicode = { version = "0.2", features = ["simd"] }
+oxicode.workspace = true
 
-slint = { version = "1.16.1", default-features = false, features = [
-    "backend-default",
-    "compat-1-2",
-    "unstable-wgpu-28",
-    "renderer-skia",
-    "backend-android-activity-06",
-] }
-i-slint-core = "=1.16.1"
+slint.workspace = true
+i-slint-core.workspace = true
 toml = "1.1"
 windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
-rangemap = { version = "1.7", features = ["serde1"] }
+rangemap.workspace = true
 rhai = { version = "1.24.0", features = ["sync"] }
 
 [dev-dependencies]
 insta = "1.44"
 pollster = "0.4"
 png = "0.18"
-anyhow = "1"
+anyhow.workspace = true
 
 [workspace.package]
 version = "0.1.8"
@@ -137,6 +131,39 @@ game-input = { path = "game-input" }
 game-ui = { path = "game-ui" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Shared third-party dependencies
+anyhow = "1"
+async-std = "1.13"
+bevy = { version = "0.19.0-rc.2", default-features = false, features = [
+    "bevy_state",
+] }
+bytemuck = { version = "1.24", features = ["derive"] }
+byteorder = "1.5"
+crossbeam-channel = "0.5"
+encoding = "0.2"
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+futures-lite = "2.6"
+gilrs = "0.11"
+glam = "0.32"
+i-slint-core = "=1.16.1"
+jubako = "*"
+ktx2 = "0.5"
+libarx = { version = "0.4", features = ["zstd"] }
+md5 = "0.8"
+num_enum = "0.7"
+oxicode = { version = "0.2", features = ["simd", "serde"] }
+rand = { version = "0.10", features = ["log", "std"] }
+rangemap = { version = "1.7", features = ["serde1"] }
+serde = { version = "1.0", features = ["derive"] }
+slint = { version = "1.16.1", default-features = false, features = [
+    "backend-default",
+    "compat-1-2",
+    "unstable-wgpu-28",
+    "renderer-skia",
+    "backend-android-activity-06",
+] }
+wgpu = "28"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 apple-native-keyring-store = { version = "1", features = ["keychain"] }

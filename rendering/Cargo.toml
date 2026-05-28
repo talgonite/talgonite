@@ -5,15 +5,15 @@ edition.workspace = true
 
 [dependencies]
 formats.workspace = true
-glam = "0.32"
-bytemuck = { version = "1.24", features = ["derive"] }
-anyhow = "1"
+glam.workspace = true
+bytemuck.workspace = true
+anyhow.workspace = true
 etagere = "0.2"
-rangemap = { version = "1.7", features = ["serde1"] }
-oxicode = { version = "0.2", features = ["serde", "simd"] }
-byteorder = "1.5"
-ktx2 = "0.5"
-wgpu = "28"
+rangemap.workspace = true
+oxicode.workspace = true
+byteorder.workspace = true
+ktx2.workspace = true
+wgpu.workspace = true
 tracing.workspace = true
-num_enum = "0.7"
+num_enum.workspace = true
 rustc-hash = "2.1.1"

@@ -8,11 +8,11 @@ name = "packets"
 path = "src/lib.rs"
 
 [dependencies]
-anyhow = "1"
-async-std = "1.13"
+anyhow.workspace = true
+async-std.workspace = true
 crc.workspace = true
-byteorder = "1.5"
-num_enum = "0.7"
-md5 = "0.8"
-encoding = "0.2"
-rand = "0.10"
+byteorder.workspace = true
+num_enum.workspace = true
+md5.workspace = true
+encoding.workspace = true
+rand.workspace = true
