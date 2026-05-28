@@ -20,7 +20,7 @@ fn main() {
         }
         #[cfg(target_os = "linux")]
         {
-            let store = linux_keyutils_keyring_store::Store::new()
+            let store = dbus_secret_service_keyring_store::Store::new()
                 .expect("Failed to initialize Linux keyutils store");
             keyring_core::set_default_store(store);
         }
