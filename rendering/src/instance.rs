@@ -118,7 +118,7 @@ impl Instance {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct InstanceRaw {
     pub position: [f32; 3],
     pub tex_min: [f32; 2],
@@ -327,6 +327,7 @@ pub struct SharedInstanceBatch {
     pub vertex_buffer: wgpu::Buffer,
     next_index: AtomicUsize,
     free_indices: Arc<Mutex<Vec<usize>>>,
+    written_instances: Arc<Mutex<Vec<InstanceRaw>>>,
 }
 
 impl SharedInstanceBatch {
@@ -354,6 +355,7 @@ impl SharedInstanceBatch {
             vertex_buffer,
             next_index: AtomicUsize::new(0),
             free_indices: Arc::new(Mutex::new(Vec::with_capacity(BATCH_SIZE))),
+            written_instances: Arc::new(Mutex::new(vec![InstanceRaw::default(); BATCH_SIZE])),
         }
     }
 
@@ -370,6 +372,17 @@ impl SharedInstanceBatch {
 
     pub fn update(&self, queue: &wgpu::Queue, index: usize, instance: Instance) {
         let raw_instance = instance.to_raw();
+
+        if let Ok(mut written_instances) = self.written_instances.lock() {
+            if written_instances.get(index) == Some(&raw_instance) {
+                return;
+            }
+
+            if let Some(cached_instance) = written_instances.get_mut(index) {
+                *cached_instance = raw_instance;
+            }
+        }
+
         queue.write_buffer(
             &self.instance_buffer,
             (index * std::mem::size_of::<InstanceRaw>()) as u64,
