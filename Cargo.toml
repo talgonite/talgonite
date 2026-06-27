@@ -101,7 +101,7 @@ png = "0.18"
 anyhow.workspace = true
 
 [workspace.package]
-version = "0.1.8"
+version = "0.1.9-rc.1"
 edition = "2024"
 
 [workspace]
