@@ -25,6 +25,32 @@ pub struct PreLoginSession {
 
 pub use game_ui::LoginError;
 
+macro_rules! await_prelogin_packet {
+    ($slf:expr, $read_error:expr, $opcode:expr, $label:literal, |$packet:ident, $desc:ident| $parse:expr) => {{
+        let mut last_packet_description = None;
+        loop {
+            #[allow(unused_mut)]
+            let mut $packet = $slf.decoder.read().await.map_err(|error| {
+                let detail = last_packet_description
+                    .map(|p| format!("{}: {} (last packet: {})", $read_error, error, p))
+                    .unwrap_or_else(|| format!("{}: {}", $read_error, error));
+                LoginError::Network(detail)
+            })?;
+            let $desc = $slf.describe_prelogin_packet(&$packet);
+            last_packet_description = Some($desc.clone());
+            if $packet[0] != $opcode as u8 {
+                tracing::info!(
+                    "Ignoring prelogin packet while waiting for {}: {}",
+                    $label,
+                    $desc
+                );
+                continue;
+            }
+            break { $parse };
+        }
+    }};
+}
+
 impl PreLoginSession {
     fn format_login_message(message: &server::LoginMessage) -> String {
         match message.msg_type {
@@ -131,47 +157,55 @@ impl PreLoginSession {
         }
     }
 
+    async fn read_redirect(&mut self, read_error: &str) -> Result<server::Redirect, LoginError> {
+        await_prelogin_packet!(
+            self,
+            read_error,
+            server::Codes::Redirect,
+            "redirect",
+            |packet, desc| {
+                let redirect = server::Redirect::try_from_bytes(&packet[1..]).map_err(|error| {
+                    LoginError::Network(format!(
+                        "{read_error}: failed to parse redirect from {desc}: {error}"
+                    ))
+                })?;
+                tracing::info!(
+                    "Received prelogin redirect: addr={}, name={}",
+                    redirect.addr,
+                    redirect.name
+                );
+                Ok(redirect)
+            }
+        )
+    }
+
     async fn read_login_message(
         &mut self,
         read_error: &str,
     ) -> Result<server::LoginMessage, LoginError> {
-        let mut last_packet_description = None;
-
-        loop {
-            let mut packet = self.decoder.read().await.map_err(|error| {
-                let detail = last_packet_description
-                    .map(|packet| format!("{read_error}: {error} (last packet: {packet})"))
-                    .unwrap_or_else(|| format!("{read_error}: {error}"));
-                LoginError::Network(detail)
-            })?;
-
-            let packet_description = self.describe_prelogin_packet(&packet);
-            last_packet_description = Some(packet_description.clone());
-
-            if packet[0] != server::Codes::LoginMessage as u8 {
+        await_prelogin_packet!(
+            self,
+            read_error,
+            server::Codes::LoginMessage,
+            "login message",
+            |packet, desc| {
+                let message = server::LoginMessage::try_from_bytes(
+                    &self
+                        .decrypter
+                        .decrypt(&mut packet[1..], EncryptionType::Normal),
+                )
+                .map_err(|error| {
+                    LoginError::Network(format!(
+                        "{read_error}: failed to parse login message from {desc}: {error}"
+                    ))
+                })?;
                 tracing::info!(
-                    "Ignoring prelogin packet while waiting for login message: {}",
-                    packet_description
+                    "Received prelogin login message: {}",
+                    Self::format_login_message(&message)
                 );
-                continue;
+                Ok(message)
             }
-
-            let message = server::LoginMessage::try_from_bytes(
-                &self
-                    .decrypter
-                    .decrypt(&mut packet[1..], EncryptionType::Normal),
-            )
-            .map_err(|error| {
-                LoginError::Network(format!(
-                    "{read_error}: failed to parse login message from {packet_description}: {error}"
-                ))
-            })?;
-            tracing::info!(
-                "Received prelogin login message while waiting for response: {}",
-                Self::format_login_message(&message)
-            );
-            return Ok(message);
-        }
+        )
     }
 
     pub async fn new(server_address: &str, server_port: u16) -> anyhow::Result<Self> {
@@ -293,17 +327,7 @@ impl PreLoginSession {
             });
         }
 
-        let packet = self
-            .decoder
-            .read()
-            .await
-            .map_err(|_| LoginError::Network("Failed to read redirect packet".to_string()))?;
-        assert_eq!(packet[0], server::Codes::Redirect as u8);
-
-        let redirect = match server::Redirect::try_from_bytes(&packet[1..]) {
-            Ok(r) => r,
-            Err(_) => return Err(LoginError::Unknown),
-        };
+        let redirect = self.read_redirect("Failed to read redirect packet").await?;
 
         let redirect_response = client::ClientRedirected {
             seed: redirect.seed,
