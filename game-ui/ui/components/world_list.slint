@@ -81,6 +81,7 @@ export component WorldListPanel inherits BasePanel {
                 for class-name[i] in ["All", "Peasant", "Warrior", "Rogue", "Wizard", "Priest", "Monk"]: Button {
                     text: class-name;
                     primary: class-filter.current-value == class-name;
+                    col: Math.mod(i, 4);
                     row: i / 4;
                     clicked => {
                         class-filter.current-value = class-name;

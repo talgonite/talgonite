@@ -21,4 +21,4 @@ oxicode.workspace = true
 serde.workspace = true
 
 [build-dependencies]
-slint-build = "1.16.1"
+slint-build = "1.17.0"

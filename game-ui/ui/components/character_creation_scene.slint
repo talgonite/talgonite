@@ -204,6 +204,7 @@ export component CharacterCreationScene inherits Rectangle {
                             spacing: 6px;
 
                             for color-opt[i] in root.hair-colors: Rectangle {
+                                col: Math.mod(i, 7);
                                 row: i / 7;
                                 width: 18px;
                                 height: 18px;

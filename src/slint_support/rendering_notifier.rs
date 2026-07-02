@@ -89,7 +89,7 @@ pub fn handle_before_rendering<W: slint::ComponentHandle>(
 
         if let Some(new_texture) = new_texture {
             let current = get_texture(slint_app);
-            if let Some(old) = current.to_wgpu_28_texture() {
+            if let Some(old) = current.to_wgpu_29_texture() {
                 let _ = ch
                     .control_tx
                     .try_send(ControlMessage::ReleaseFrontBufferTexture { texture: old });

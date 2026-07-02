@@ -224,6 +224,7 @@ export component NpcDialog inherits Rectangle {
                                             spacing: 10px;
                                             padding: 5px;
                                             for entry[idx] in NpcDialogState.data.menu_entries: Rectangle {
+                                                col: Math.mod(idx, 2);
                                                 row: Math.floor(idx / 2);
                                                 item-touch := TouchArea {
                                                     mouse-cursor: pointer;

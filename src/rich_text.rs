@@ -95,7 +95,7 @@ impl RichText {
     }
 
     pub fn to_slint_styled_text(&self) -> StyledText {
-        let parsed = StyledText::parse_interpolated(&self.to_html_string(), &[] as &[StyledText]);
+        let parsed = StyledText::from_markdown(&self.to_html_string());
 
         match parsed {
             Ok(styled) => styled,
