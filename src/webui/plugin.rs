@@ -161,6 +161,7 @@ impl Plugin for UiBridgePlugin {
                     forward_outbound_to_webview,
                     handle_ui_inbound_login.run_if(not(in_state(AppState::InGame))),
                     handle_ui_inbound_ingame.run_if(in_state(AppState::InGame)),
+                    handle_popup_requests,
                     handle_prelogin_connect_tasks,
                     handle_login_tasks,
                     handle_login_results,
@@ -1147,6 +1148,78 @@ fn handle_ui_inbound_ingame(
             }
             _ => {}
         }
+    }
+}
+
+/// Route UI popup open/close requests into [`PopupManager`]. User-initiated
+/// closes also run server/client cleanup (NPC dialog, mail board, context menu).
+pub fn handle_popup_requests(
+    mut inbound: MessageReader<UiInbound>,
+    mut popup_manager: ResMut<crate::slint_support::popups::PopupManager>,
+    outbox: Res<crate::network::PacketOutbox>,
+    mut menu_ctx: ResMut<ActiveMenuContext>,
+    mut board_state: ResMut<BoardSessionState>,
+    mut world_context: ResMut<ActiveWorldContextMenu>,
+    mut outbound: MessageWriter<UiOutbound>,
+) {
+    use crate::slint_support::popups::PopupId;
+
+    for UiInbound(msg) in inbound.read() {
+        let closed = match msg {
+            UiToCore::PopupOpenRequest { id } => {
+                popup_manager.open(PopupId::from_slint(*id));
+                None
+            }
+            UiToCore::PopupCloseRequest { id } => {
+                let id = PopupId::from_slint(*id);
+                popup_manager.close(id).then_some(id)
+            }
+            UiToCore::PopupCloseTop => popup_manager.close_top(),
+            _ => None,
+        };
+        if let Some(id) = closed {
+            popup_close_coordination(
+                id, &outbox, &mut menu_ctx, &mut board_state, &mut world_context, &mut outbound,
+            );
+        }
+    }
+}
+
+/// Server/client cleanup for user-initiated closes (skipped for
+/// server-initiated ones like `DisplayMenuClose`).
+fn popup_close_coordination(
+    id: crate::slint_support::popups::PopupId,
+    outbox: &Res<crate::network::PacketOutbox>,
+    menu_ctx: &mut ActiveMenuContext,
+    board_state: &mut BoardSessionState,
+    world_context: &mut ActiveWorldContextMenu,
+    outbound: &mut MessageWriter<UiOutbound>,
+) {
+    use crate::slint_support::popups::PopupId;
+    match id {
+        PopupId::NpcDialog => {
+            // Tell the server we closed the dialog (mirrors `UiToCore::MenuClose`).
+            if let Some(dialog_id) = menu_ctx.dialog_id {
+                if let Some(entity_type) = menu_ctx.entity_type {
+                    outbox.send(&packets::client::DialogInteraction {
+                        entity_type,
+                        entity_id: menu_ctx.entity_id,
+                        pursuit_id: menu_ctx.pursuit_id.unwrap_or(0),
+                        dialog_id,
+                        args: packets::client::DialogInteractionArgs::None,
+                    });
+                }
+            }
+        }
+        PopupId::MailBoard => {
+            board_state.invalidate();
+        }
+        PopupId::ContextMenu => {
+            world_context.entries.clear();
+            world_context.title.clear();
+            outbound.write(UiOutbound(CoreToUi::HideWorldContextMenu));
+        }
+        _ => {}
     }
 }
 

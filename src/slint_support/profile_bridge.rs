@@ -161,6 +161,7 @@ pub fn handle_show_self_profile(
     eq_state: Res<crate::webui::plugin::EquipmentState>,
     mut profile_state: ResMut<crate::webui::plugin::PlayerProfileState>,
     mut portrait_state: ResMut<crate::resources::ProfilePortraitState>,
+    mut popup_manager: ResMut<crate::slint_support::popups::PopupManager>,
 ) {
     let Some(strong) = win.0.upgrade() else {
         return;
@@ -175,9 +176,7 @@ pub fn handle_show_self_profile(
                 // When requesting another player, clear stale state and HIDE the panel
                 // until we get the actual data from the server.
                 profile_state.clear();
-                let mut profile = game_state.get_profile();
-                profile.visible = false;
-                game_state.set_profile(profile);
+                popup_manager.close(crate::slint_support::popups::PopupId::Profile);
 
                 portrait_state.dirty = true;
                 continue;
@@ -191,8 +190,7 @@ pub fn handle_show_self_profile(
             }
             ShowSelfProfileEvent::SelfUpdate => {
                 // If this is a response from the server but the user closed the panel already, don't reopen it
-                let current = game_state.get_profile();
-                if !current.visible {
+                if !popup_manager.is_open(crate::slint_support::popups::PopupId::Profile) {
                     continue;
                 }
 
@@ -208,7 +206,6 @@ pub fn handle_show_self_profile(
         let player_name = game_state.get_player_name();
 
         let mut profile = ProfileData {
-            visible: true,
             is_self: true,
             name: player_name,
             preview: portrait_state
@@ -292,6 +289,7 @@ pub fn handle_show_self_profile(
         profile.eq_over_armor = make_slot(EquipmentSlot::Accessory3);
 
         game_state.set_profile(profile);
+        popup_manager.open(crate::slint_support::popups::PopupId::Profile);
         tracing::info!("Showing self profile panel");
     }
 }

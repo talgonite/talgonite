@@ -1,0 +1,113 @@
+// PopupLayer — renders every open popup in `open-popups` order (later = on top)
+// behind one shared dim backdrop.
+
+import { PopupManagerState, PopupId } from "../popup_manager.slint";
+import { NpcDialog } from "./menu_dialog.slint";
+import { SettingsPanel } from "settings/panel.slint";
+import { GameMenuPanel } from "settings/game_menu.slint";
+import { InventoryPanel } from "./inventory_panel.slint";
+import { ActionsPanel } from "./actions_panel.slint";
+import { WorldListPanel } from "./world_list.slint";
+import { GroupPanel } from "./group_panel.slint";
+import { ProfilePanel } from "./profile_panel.slint";
+import { WorldContextMenuOverlay } from "./world_context_menu.slint";
+import { GroupInvitePopup } from "./group_invite_popup.slint";
+import { MailBoardPanel } from "./mail_board_panel.slint";
+import { WorldMap } from "./world_map.slint";
+
+// Renders one open popup; close handling lives inside each component.
+export component PopupHost inherits Rectangle {
+    in property <PopupId> id;
+    in property <string> actions-tab: "skills";
+    width: 100%;
+    height: 100%;
+
+    // ---- Modals ----
+    if (id == PopupId.GameMenu): VerticalLayout {
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            GameMenuPanel { }
+        }
+    }
+    if (id == PopupId.Settings): HorizontalLayout {
+        alignment: center;
+        VerticalLayout {
+            alignment: center;
+            preferred-width: 600px;
+            SettingsPanel { }
+        }
+    }
+    if (id == PopupId.NpcDialog): NpcDialog {
+        width: 100%;
+        height: 100%;
+    }
+    if (id == PopupId.Profile): ProfilePanel {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+    }
+    if (id == PopupId.MailBoard): MailBoardPanel {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+    }
+    if (id == PopupId.WorldMap): WorldMap {
+        width: 100%;
+        height: 100%;
+    }
+
+    // ---- Windows ----
+    if (id == PopupId.Inventory): InventoryPanel {
+        x: parent.width - 420px;
+        y: 60px;
+    }
+    if (id == PopupId.Skills || id == PopupId.Spells): ActionsPanel {
+        x: parent.width - 490px;
+        y: 60px;
+        active-tab: actions-tab;
+    }
+    if (id == PopupId.WorldList): WorldListPanel {
+        x: parent.width - 470px;
+        y: 60px;
+    }
+    if (id == PopupId.Group): GroupPanel {
+        x: parent.width - 350px;
+        y: 60px;
+    }
+
+    // ---- Popovers ----
+    if (id == PopupId.ContextMenu): WorldContextMenuOverlay {
+        width: 100%;
+        height: 100%;
+        screen-width: parent.width;
+        screen-height: parent.height;
+    }
+
+    // ---- Toasts ----
+    if (id == PopupId.GroupInvite): GroupInvitePopup {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - self.height - 120px;
+    }
+}
+
+export component PopupLayer inherits Rectangle {
+    in property <string> actions-tab: "skills";
+    background: transparent;
+
+    // Shared dim backdrop; clicking closes the topmost popup.
+    if (PopupManagerState.has-modal): Rectangle {
+        background: #0007;
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => {
+                PopupManagerState.close-top-request();
+            }
+        }
+    }
+
+    // Render open popups in stack order (later = on top).
+    for id in PopupManagerState.open-popups: PopupHost {
+        id: id;
+        actions-tab: root.actions-tab;
+    }
+}

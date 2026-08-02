@@ -6,6 +6,7 @@ import {
     Spell,
     PopupState,
 } from "../game_state.slint";
+import { PopupManagerState, PopupId } from "../popup_manager.slint";
 import { Theme } from "../theme.slint";
 import { ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
 import { CancelDrag, DragDropItem } from "drag_drop.slint";
@@ -169,8 +170,8 @@ export component ActionsPanel inherits BasePanel {
     width: 340px;
     height: 520px;
     close => {
-        GameState.show-skills = false;
-        GameState.show-spells = false;
+        PopupManagerState.close-request(PopupId.Skills);
+        PopupManagerState.close-request(PopupId.Spells);
     }
     VerticalBox {
         padding: Theme.spacing-medium;

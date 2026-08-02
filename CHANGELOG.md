@@ -1,5 +1,10 @@
 # Unreleased
 
+## Escape closes windows
+
+- Pressing Escape closes open windows one by one; with nothing open it opens the game menu.
+- Modals stack above panels, dim the game behind them, and close when you click outside.
+
 ## Character creation
 
 Characters can be created now with an interface that's close to the official client.

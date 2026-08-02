@@ -1,4 +1,5 @@
 import { SettingsState } from "../../settings_state.slint";
+import { PopupManagerState, PopupId } from "../../popup_manager.slint";
 import { Theme } from "../../theme.slint";
 import { VerticalBox } from "std-widgets.slint";
 import { MenuButton } from "widgets.slint";
@@ -9,7 +10,7 @@ export component GameMenuPanel inherits BasePanel {
     preferred-width: 240px;
     preferred-height: 320px;
     close => {
-        SettingsState.show-game-menu = false;
+        PopupManagerState.close-request(PopupId.GameMenu);
     }
     VerticalBox {
         padding: 20px;
@@ -18,15 +19,15 @@ export component GameMenuPanel inherits BasePanel {
         MenuButton {
             label: "Resume";
             clicked => {
-                SettingsState.show-game-menu = false;
+                PopupManagerState.close-request(PopupId.GameMenu);
             }
         }
 
         MenuButton {
             label: "Settings";
             clicked => {
-                SettingsState.show-game-menu = false;
-                SettingsState.show-settings = true;
+                PopupManagerState.close-request(PopupId.GameMenu);
+                PopupManagerState.open-request(PopupId.Settings);
             }
         }
 
@@ -38,7 +39,7 @@ export component GameMenuPanel inherits BasePanel {
             label: "Log Out";
             clicked => {
                 SettingsState.logout-requested();
-                SettingsState.show-game-menu = false;
+                PopupManagerState.close-request(PopupId.GameMenu);
             }
         }
 
@@ -47,7 +48,7 @@ export component GameMenuPanel inherits BasePanel {
             danger: true;
             clicked => {
                 SettingsState.exit-requested();
-                SettingsState.show-game-menu = false;
+                PopupManagerState.close-request(PopupId.GameMenu);
             }
         }
     }

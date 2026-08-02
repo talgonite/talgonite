@@ -1,4 +1,10 @@
-import { GameState, WorldListMemberUi, SocialStatusState, SocialStatusEntry } from "../game_state.slint";
+import {
+    GameState,
+    WorldListMemberUi,
+    SocialStatusState,
+    SocialStatusEntry,
+} from "../game_state.slint";
+import { PopupManagerState, PopupId } from "../popup_manager.slint";
 import { SocialStatusOptions } from "social_status_panel.slint";
 import { Theme } from "../theme.slint";
 import {
@@ -15,7 +21,7 @@ export component WorldListPanel inherits BasePanel {
     width: 420px;
     height: 520px;
     close => {
-        GameState.show-world-list = false;
+        PopupManagerState.close-request(PopupId.WorldList);
     }
     VerticalBox {
         padding: Theme.spacing-medium;
@@ -111,19 +117,15 @@ export component WorldListPanel inherits BasePanel {
                         height: 32px;
                         background: Theme.surface-card;
                         border-radius: Theme.radius-small;
-                        
                         private property <SocialStatusEntry> status-entry: SocialStatusOptions.get-entry(member.social_status);
-                        
                         HorizontalBox {
                             padding-left: Theme.spacing-small;
                             padding-right: Theme.spacing-small;
                             spacing: Theme.spacing-small;
-                            
                             Rectangle {
                                 width: 20px;
                                 height: 20px;
                                 y: (parent.height - self.height) / 2;
-                                
                                 Text {
                                     text: status-entry.icon;
                                     color: status-entry.color;
@@ -132,7 +134,7 @@ export component WorldListPanel inherits BasePanel {
                                     vertical-alignment: center;
                                 }
                             }
-                            
+
                             Text {
                                 text: member.name;
                                 color: member.color;

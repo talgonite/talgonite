@@ -6,7 +6,7 @@ use slint::ComponentHandle;
 use crate::webui::ipc::{UiToCore, WorldListFilter};
 use crate::{
     ContextMenuState, DragDropState, GameState, MailBoardState, MainWindow, NpcDialogState,
-    SlotPanelType, SocialStatus, SocialStatusState,
+    PopupManagerState, SlotPanelType, SocialStatus, SocialStatusState,
 };
 
 /// Convert Slint SlotPanelType to game types.
@@ -53,13 +53,8 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
         });
     }
 
-    // Close dialog
-    {
-        let tx = tx.clone();
-        npc_dialog.on_close_request(move || {
-            let _ = tx.send(UiToCore::MenuClose);
-        });
-    }
+    // Close dialog: the close is routed through `PopupManagerState` and its
+    // server coordination happens in `handle_popup_requests`.
 
     // Text entry submission
     {
@@ -86,13 +81,6 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
         let tx = tx.clone();
         context_menu.on_item_selected_request(move |id| {
             let _ = tx.send(UiToCore::WorldContextMenuSelect { id });
-        });
-    }
-
-    {
-        let tx = tx.clone();
-        context_menu.on_close_request(move || {
-            let _ = tx.send(UiToCore::WorldContextMenuClose);
         });
     }
 
@@ -230,13 +218,8 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
         });
     }
 
-    {
-        let tx = tx.clone();
-        let mail_board = slint_app.global::<MailBoardState>();
-        mail_board.on_close_request(move || {
-            let _ = tx.send(UiToCore::MailBoardClose);
-        });
-    }
+    // Mail board close is routed through `PopupManagerState`; its coordination
+    // (board session invalidation) happens in `handle_popup_requests`.
 
     // === Group callbacks ===
     {
@@ -322,6 +305,33 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
                 .is_err()
             {
                 tracing::error!("Failed to send SetSocialStatus message");
+            }
+        });
+    }
+
+    // Popup manager requests (open/close/close-top)
+    let popup_state = slint_app.global::<PopupManagerState>();
+    {
+        let tx = tx.clone();
+        popup_state.on_open_request(move |id| {
+            if tx.send(UiToCore::PopupOpenRequest { id }).is_err() {
+                tracing::error!("Failed to send PopupOpenRequest message");
+            }
+        });
+    }
+    {
+        let tx = tx.clone();
+        popup_state.on_close_request(move |id| {
+            if tx.send(UiToCore::PopupCloseRequest { id }).is_err() {
+                tracing::error!("Failed to send PopupCloseRequest message");
+            }
+        });
+    }
+    {
+        let tx = tx.clone();
+        popup_state.on_close_top_request(move || {
+            if tx.send(UiToCore::PopupCloseTop).is_err() {
+                tracing::error!("Failed to send PopupCloseTop message");
             }
         });
     }

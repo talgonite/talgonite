@@ -1,4 +1,5 @@
 import { GameState } from "../game_state.slint";
+import { PopupManagerState, PopupId } from "../popup_manager.slint";
 import { Theme } from "../theme.slint";
 import { VerticalBox } from "std-widgets.slint";
 
@@ -20,17 +21,17 @@ export component GameSidebar inherits Rectangle {
         inv-btn := Rectangle {
             width: 48px;
             height: 48px;
-            background: GameState.show-inventory ? Theme.accent-subtle : Theme.surface-muted;
+            background: PopupManagerState.inventory-open ? Theme.accent-subtle : Theme.surface-muted;
             border-radius: Theme.radius-small;
             border-width: 1px;
-            border-color: GameState.show-inventory ? Theme.accent : Theme.border-muted;
+            border-color: PopupManagerState.inventory-open ? Theme.accent : Theme.border-muted;
             Image {
                 source: @image-url("../icons/backpack.svg");
                 width: 28px;
                 height: 28px;
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
-                colorize: GameState.show-inventory ? Theme.accent : Theme.foreground-muted;
+                colorize: PopupManagerState.inventory-open ? Theme.accent : Theme.foreground-muted;
             }
 
             states [
@@ -41,9 +42,13 @@ export component GameSidebar inherits Rectangle {
             ]
             inv-btn-touch := TouchArea {
                 clicked => {
-                    GameState.show-inventory = !GameState.show-inventory;
-                    GameState.show-skills = false;
-                    GameState.show-spells = false;
+                    if (PopupManagerState.inventory-open) {
+                        PopupManagerState.close-request(PopupId.Inventory);
+                    } else {
+                        PopupManagerState.close-request(PopupId.Skills);
+                        PopupManagerState.close-request(PopupId.Spells);
+                        PopupManagerState.open-request(PopupId.Inventory);
+                    }
                 }
             }
         }
@@ -51,17 +56,17 @@ export component GameSidebar inherits Rectangle {
         actions-btn := Rectangle {
             width: 48px;
             height: 48px;
-            background: (GameState.show-skills || GameState.show-spells) ? Theme.accent-subtle : Theme.surface-muted;
+            background: (PopupManagerState.skills-open || PopupManagerState.spells-open) ? Theme.accent-subtle : Theme.surface-muted;
             border-radius: Theme.radius-small;
             border-width: 1px;
-            border-color: (GameState.show-skills || GameState.show-spells) ? Theme.accent : Theme.border-muted;
+            border-color: (PopupManagerState.skills-open || PopupManagerState.spells-open) ? Theme.accent : Theme.border-muted;
             Image {
                 source: @image-url("../icons/magic.svg");
                 width: 28px;
                 height: 28px;
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
-                colorize: (GameState.show-skills || GameState.show-spells) ? Theme.accent : Theme.foreground-muted;
+                colorize: (PopupManagerState.skills-open || PopupManagerState.spells-open) ? Theme.accent : Theme.foreground-muted;
             }
 
             states [
@@ -72,13 +77,13 @@ export component GameSidebar inherits Rectangle {
             ]
             actions-btn-touch := TouchArea {
                 clicked => {
-                    if (GameState.show-skills || GameState.show-spells) {
-                        GameState.show-skills = false;
-                        GameState.show-spells = false;
+                    if (PopupManagerState.skills-open || PopupManagerState.spells-open) {
+                        PopupManagerState.close-request(PopupId.Skills);
+                        PopupManagerState.close-request(PopupId.Spells);
                     } else {
-                        GameState.show-skills = true;
-                        GameState.show-inventory = false;
-                        GameState.show-world-list = false;
+                        PopupManagerState.close-request(PopupId.Inventory);
+                        PopupManagerState.close-request(PopupId.WorldList);
+                        PopupManagerState.open-request(PopupId.Skills);
                     }
                 }
             }
@@ -87,17 +92,17 @@ export component GameSidebar inherits Rectangle {
         world-btn := Rectangle {
             width: 48px;
             height: 48px;
-            background: GameState.show-world-list ? Theme.accent-subtle : Theme.surface-muted;
+            background: PopupManagerState.world-list-open ? Theme.accent-subtle : Theme.surface-muted;
             border-radius: Theme.radius-small;
             border-width: 1px;
-            border-color: GameState.show-world-list ? Theme.accent : Theme.border-muted;
+            border-color: PopupManagerState.world-list-open ? Theme.accent : Theme.border-muted;
             Image {
                 source: @image-url("../icons/sword.svg");
                 width: 28px;
                 height: 28px;
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
-                colorize: GameState.show-world-list ? Theme.accent : Theme.foreground-muted;
+                colorize: PopupManagerState.world-list-open ? Theme.accent : Theme.foreground-muted;
             }
 
             states [
@@ -108,12 +113,14 @@ export component GameSidebar inherits Rectangle {
             ]
             world-btn-touch := TouchArea {
                 clicked => {
-                    GameState.show-world-list = !GameState.show-world-list;
-                    if (GameState.show-world-list) {
-                        GameState.show-inventory = false;
-                        GameState.show-skills = false;
-                        GameState.show-spells = false;
+                    if (PopupManagerState.world-list-open) {
+                        PopupManagerState.close-request(PopupId.WorldList);
+                    } else {
+                        PopupManagerState.close-request(PopupId.Inventory);
+                        PopupManagerState.close-request(PopupId.Skills);
+                        PopupManagerState.close-request(PopupId.Spells);
                         GameState.world-list-loading = true;
+                        PopupManagerState.open-request(PopupId.WorldList);
                         GameState.refresh-world-list();
                     }
                 }
@@ -123,17 +130,17 @@ export component GameSidebar inherits Rectangle {
         group-btn := Rectangle {
             width: 48px;
             height: 48px;
-            background: GameState.show-group ? Theme.accent-subtle : Theme.surface-muted;
+            background: PopupManagerState.group-open ? Theme.accent-subtle : Theme.surface-muted;
             border-radius: Theme.radius-small;
             border-width: 1px;
-            border-color: GameState.show-group ? Theme.accent : Theme.border-muted;
+            border-color: PopupManagerState.group-open ? Theme.accent : Theme.border-muted;
             Image {
                 source: @image-url("../icons/group.svg");
                 width: 28px;
                 height: 28px;
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
-                colorize: GameState.show-group ? Theme.accent : Theme.foreground-muted;
+                colorize: PopupManagerState.group-open ? Theme.accent : Theme.foreground-muted;
             }
 
             states [
@@ -144,12 +151,14 @@ export component GameSidebar inherits Rectangle {
             ]
             group-btn-touch := TouchArea {
                 clicked => {
-                    GameState.show-group = !GameState.show-group;
-                    if (GameState.show-group) {
-                        GameState.show-inventory = false;
-                        GameState.show-skills = false;
-                        GameState.show-spells = false;
-                        GameState.show-world-list = false;
+                    if (PopupManagerState.group-open) {
+                        PopupManagerState.close-request(PopupId.Group);
+                    } else {
+                        PopupManagerState.close-request(PopupId.Inventory);
+                        PopupManagerState.close-request(PopupId.Skills);
+                        PopupManagerState.close-request(PopupId.Spells);
+                        PopupManagerState.close-request(PopupId.WorldList);
+                        PopupManagerState.open-request(PopupId.Group);
                         GameState.request-self-profile();
                     }
                 }

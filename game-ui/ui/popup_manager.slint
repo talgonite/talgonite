@@ -1,0 +1,51 @@
+// Render-side mirror of the Rust `PopupManager` stack, synced by
+// `sync_popup_to_slint`. Keep the `PopupId` enum in sync with the Rust one.
+
+export enum PopupId {
+    GameMenu,
+    Settings,
+    NpcDialog,
+    Profile,
+    MailBoard,
+    WorldMap,
+    Inventory,
+    Skills,
+    Spells,
+    WorldList,
+    Group,
+    ContextMenu,
+    GroupInvite,
+    LoginModal,
+    ServerManager,
+    CharacterCreation,
+}
+
+export global PopupManagerState {
+    // Open popups, bottom -> top (render order); synced from Rust.
+    in-out property <[PopupId]> open-popups: [];
+    // At least one Modal open — drives the shared dim backdrop.
+    in-out property <bool> has-modal: false;
+    // Per-popup open flags for pure bindings (Slint can't indexOf enum arrays).
+    in-out property <bool> settings-open: false;
+    in-out property <bool> game-menu-open: false;
+    in-out property <bool> npc-dialog-open: false;
+    in-out property <bool> profile-open: false;
+    in-out property <bool> mail-board-open: false;
+    in-out property <bool> world-map-open: false;
+    in-out property <bool> inventory-open: false;
+    in-out property <bool> skills-open: false;
+    in-out property <bool> spells-open: false;
+    in-out property <bool> world-list-open: false;
+    in-out property <bool> group-open: false;
+    in-out property <bool> context-menu-open: false;
+    in-out property <bool> group-invite-open: false;
+
+    // User requests, forwarded to Rust via the UI bridge.
+    callback open-request(PopupId);
+    callback close-request(PopupId);
+    callback close-top-request();
+
+    public function count() -> int {
+        return open-popups.length;
+    }
+}

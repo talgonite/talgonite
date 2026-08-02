@@ -2,49 +2,20 @@ import {
     GameState,
     DragDropState,
     SlotPanelType,
-    SocialStatusState,
 } from "../game_state.slint";
-import { MailBoardState } from "../mail_board_state.slint";
 import { InputBridge } from "../input_bridge.slint";
 import { PlatformState } from "../platform_state.slint";
-import { UiSettings } from "../ui-settings.slint";
 import { SettingsState } from "../settings_state.slint";
-import { NpcDialog } from "./menu_dialog.slint";
-import { SettingsPanel } from "settings/panel.slint";
-import { GameMenuPanel } from "settings/game_menu.slint";
 import { Theme } from "../theme.slint";
-import { InventoryPanel } from "./inventory_panel.slint";
-import { ActionsPanel } from "./actions_panel.slint";
 import { GameSidebar } from "./game_sidebar.slint";
-import { WorldMap } from "./world_map.slint";
 import { WorldLabels } from "./world_labels.slint";
 import { HotBar } from "./hot_bar.slint";
 import { PlayerHUD } from "./player_hud.slint";
 import { ActionBarMessages } from "./action_bar_messages.slint";
 import { ChatLog } from "./chat_log.slint";
 import { PopupPanel } from "./popup_panel.slint";
-import { ProfilePanel } from "./profile_panel.slint";
-import { WorldContextMenuOverlay } from "./world_context_menu.slint";
-import { WorldListPanel } from "./world_list.slint";
-import { MailBoardPanel } from "./mail_board_panel.slint";
-import {
-    SocialStatusDropdown,
-    SocialStatusDropdownOverlay,
-} from "./social_status_panel.slint";
-import { GroupPanel } from "./group_panel.slint";
-import { GroupInvitePopup } from "./group_invite_popup.slint";
-import {
-    PopupState,
-    ContextMenuState,
-    NpcDialogState,
-} from "../game_state.slint";
-import {
-    HorizontalBox,
-    VerticalBox,
-    ScrollView,
-    LineEdit,
-    Button,
-} from "std-widgets.slint";
+import { PopupLayer } from "./popup_layer.slint";
+import { PopupManagerState, PopupId } from "../popup_manager.slint";
 
 export component GameScene inherits Rectangle {
     callback request-snapshot();
@@ -60,19 +31,18 @@ export component GameScene inherits Rectangle {
                 chat-log.enter-whisper-mode();
                 return accept;
             }
-            if (event.text == "\u{001b}") { // Escape
-                if (SettingsState.show-settings) {
-                    SettingsState.show-settings = false;
-                    SettingsState.show-game-menu = true;
-                    return accept;
-                }
-                SettingsState.show-game-menu = !SettingsState.show-game-menu;
-                return accept;
-            }
             if (SettingsState.is-rebinding) {
                 if (InputBridge.rebind-key-event(event)) {
                     return accept;
                 }
+            }
+            if (event.text == "\u{001b}") { // Escape
+                if (PopupManagerState.count() > 0) {
+                    PopupManagerState.close-top-request();
+                } else {
+                    PopupManagerState.open-request(PopupId.GameMenu);
+                }
+                return accept;
             }
             return InputBridge.key-pressed(event);
         }
@@ -164,71 +134,10 @@ export component GameScene inherits Rectangle {
         y: parent.height - self.height - Theme.spacing-small;
     }
 
-    if (GameState.show-inventory): InventoryPanel {
-        x: parent.width - 420px;
-        y: 60px;
-    }
-    if (GameState.show-world-list): WorldListPanel {
-        x: parent.width - 470px;
-        y: 60px;
-    }
-    if (GameState.show-group): GroupPanel {
-        x: parent.width - 350px;
-        y: 60px;
-    }
-    if (GameState.show-skills || GameState.show-spells): ActionsPanel {
-        x: parent.width - 490px;
-        y: 60px;
-        active-tab: actions-tab;
-    }
-    if (NpcDialogState.data.visible): NpcDialog {
-        width: 100%;
-        height: 100%;
-    }
-    if (SettingsState.show-settings): HorizontalLayout {
-        alignment: center;
-        VerticalLayout {
-            alignment: center;
-            preferred-width: 600px;
-            SettingsPanel { }
-        }
-    }
-    if (SettingsState.show-game-menu): VerticalLayout {
-        alignment: center;
-        HorizontalLayout {
-            alignment: center;
-            GameMenuPanel { }
-        }
-    }
-
-    if (ContextMenuState.visible): WorldContextMenuOverlay {
-        width: 100%;
-        height: 100%;
-        screen-width: parent.width;
-        screen-height: parent.height;
-    }
-
-    // Profile panel (centered modal)
-    if (GameState.profile.visible): ProfilePanel {
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
-    }
-
-    // Group invite popup (bottom-center, above hotbar)
-    if (GameState.group-invite.visible): GroupInvitePopup {
-        x: (parent.width - self.width) / 2;
-        y: parent.height - self.height - 120px;
-    }
-
-    // World map overlay (on top of normal UI)
-    if (GameState.show-world-map): WorldMap {
-        width: 100%;
-        height: 100%;
-    }
-
-    if MailBoardState.visible: MailBoardPanel {
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
+    // Central popup/window stack — all windows/modals render here, in stack
+    // order, driven by the Rust `PopupManager` (see PopupLayer/PopupHost).
+    PopupLayer {
+        actions-tab: actions-tab;
     }
 
     PopupPanel {

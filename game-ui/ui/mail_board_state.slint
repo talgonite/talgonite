@@ -1,3 +1,5 @@
+import { PopupManagerState, PopupId } from "popup_manager.slint";
+
 export struct MailBoardPost {
     post-id: int,
     author: string,
@@ -11,7 +13,6 @@ export struct MailBoardPost {
 }
 
 export global MailBoardState {
-    in-out property <bool> visible: false;
     in-out property <string> board-name: "";
     in-out property <int> selected-index: -1;
     in-out property <int> loading-post-id: -1;
@@ -35,9 +36,8 @@ export global MailBoardState {
 
     public function close() {
         session-token += 1;
-        visible = false;
         selected-index = -1;
         loading-post-id = -1;
-        close-request();
+        PopupManagerState.close-request(PopupId.MailBoard);
     }
 }

@@ -1,4 +1,6 @@
 // Social status enum
+import { PopupManagerState, PopupId } from "popup_manager.slint";
+
 export enum SocialStatus {
     Online,
     DoNotDisturb,
@@ -24,7 +26,6 @@ export struct GroupMember {
 }
 
 export struct GroupInviteNotification {
-    visible: bool,
     source-name: string,
     group-name: string,
     group-note: string,
@@ -146,7 +147,6 @@ export struct WorldListMemberUi {
 }
 
 export struct NpcDialogData {
-    visible: bool,
     text_entry_visible: bool,
     is_shop: bool,
     interaction_enabled: bool,
@@ -181,7 +181,6 @@ export struct LegendMarkData {
 
 // Profile data for player/character profile display
 export struct ProfileData {
-    visible: bool,
     is-self: bool,
     name: string,
     class: string,
@@ -265,22 +264,16 @@ export global GameState {
     in-out property <[WorldMapNode]> world-map-nodes: [];
     in-out property <image> world-map-image: @image-url("");
     in-out property <string> world-map-name: "";
-    in-out property <bool> show-world-map: false;
     in-out property <[InventoryItem]> inventory: [];
     in-out property <[Skill]> skills: [];
     in-out property <[Spell]> spells: [];
     in-out property <[HotbarEntry]> hotbar: [];
-    in-out property <bool> show-inventory: false;
-    in-out property <bool> show-skills: false;
-    in-out property <bool> show-spells: false;
-    in-out property <bool> show-world-list: false;
     in-out property <bool> world-list-loading: false;
     in-out property <[WorldListMemberUi]> world-list-members: [];
     in-out property <int> world-list-count: 0;
     in-out property <int> world-list-total-count: 0;
     in-out property <ProfileData> profile: {
         is-self: false,
-        visible: false,
         name: "Unknown",
         class: "Peasant",
         guild: "",
@@ -293,11 +286,10 @@ export global GameState {
     };
     in-out property <int> current-hotbar-panel: 0;
     in-out property <int> hotbar-row-count: 1;
-    in-out property <bool> show-group: false;
     in-out property <bool> is-groupable: false;
     in-out property <bool> is-group-leader: false;
     in-out property <[GroupMember]> group-members: [];
-    in-out property <GroupInviteNotification> group-invite: { visible: false, source-name: "", group-name: "", group-note: "" };
+    in-out property <GroupInviteNotification> group-invite: { source-name: "", group-name: "", group-note: "" };
     callback world-map-click(int, int, int, int);
     callback set-hotbar-panel(int);
     callback expand-hotbar();
@@ -341,7 +333,6 @@ export global PopupState {
 export global ContextMenuState {
     in-out property <string> title: "";
     in-out property <[ContextMenuEntry]> items: [];
-    in-out property <bool> visible: false;
     in-out property <length> x: 0px;
     in-out property <length> y: 0px;
     in-out property <length> anchor-width: 0px;
@@ -349,6 +340,8 @@ export global ContextMenuState {
     callback item-selected-request(int);
     callback close-request();
 
+    // Only sets data; open/close ownership lives in the Rust `PopupManager`
+    // (Rust calls `open` on show and `close` on hide).
     public function show(title: string, items: [ContextMenuEntry], x: length, y: length, w: length, h: length) {
         root.title = title;
         root.items = items;
@@ -356,21 +349,18 @@ export global ContextMenuState {
         root.y = y;
         root.anchor-width = w;
         root.anchor-height = h;
-        root.visible = true;
     }
 
     public function select-item(id: int) {
-        root.visible = false;
+        PopupManagerState.close-request(PopupId.ContextMenu);
         item-selected-request(id);
     }
 
     public function close() {
-        root.visible = false;
-        close-request();
+        PopupManagerState.close-request(PopupId.ContextMenu);
     }
 
     public function hide() {
-        root.visible = false;
         root.title = "";
         root.items = [];
     }
@@ -380,7 +370,6 @@ export global ContextMenuState {
 export global NpcDialogState {
     in-out property <NpcDialogData> data: {
         interaction_enabled: true,
-        visible: false,
     };
 
     // Internal request callbacks (Rust listens to these)
@@ -398,9 +387,8 @@ export global NpcDialogState {
     public function close() {
         if data.interaction_enabled {
             data.interaction_enabled = false;
-            data.visible = false;
             data.text_entry_visible = false;
-            close-request();
+            PopupManagerState.close-request(PopupId.NpcDialog);
         }
     }
     public function submit-text(text: string) {
@@ -413,7 +401,6 @@ export global NpcDialogState {
     public function reset() {
         data = {
             interaction_enabled: true,
-            visible: false,
         };
     }
 }

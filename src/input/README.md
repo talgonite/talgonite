@@ -106,6 +106,25 @@ Each action can have multiple input sources:
 | Refresh      | F5          | Select                         |
 | Tab overview | Tab         | -                              |
 
+## Escape / Settings ("Back/Dismiss") Behavior
+
+`GameAction::Settings` (keyboard Escape, gamepad Start) now acts as a
+**back/dismiss** action backed by the centralized popup stack
+(`src/slint_support/popups.rs`):
+
+- If any window/modal is open, it closes the **topmost** one (LIFO). Pressing
+  Escape repeatedly closes windows one at a time.
+- If nothing is open, it opens the game menu.
+
+Keyboard Escape is intercepted by the Slint `FocusScope` and routed through
+`PopupManagerState.close-top-request()`; gamepad Start flows through the Bevy
+action system (`popup_control_system` in `src/plugins/input.rs`). Both converge
+on the same `PopupManager`, so keyboard and gamepad behave identically.
+
+The I / K / P hotkeys toggle the inventory / skills / spells panels through the
+same manager (Skills and Spells share one panel, so opening one closes the
+other).
+
 ## Migration Guide
 
 ### From Direct Settings Access

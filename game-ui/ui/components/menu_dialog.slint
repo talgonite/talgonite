@@ -17,13 +17,12 @@ import "../fonts/Lato-BlackItalic.ttf";
 
 export component NpcDialog inherits Rectangle {
     property <image> npc-portrait: NpcDialogState.data.npc_portrait;
+    // Click-away to close (the shared dim backdrop is provided by PopupLayer).
     TouchArea {
         clicked => {
             NpcDialogState.close();
         }
     }
-
-    background: #0007;
 
     if (!NpcDialogState.data.interaction_enabled): TouchArea {
         z: 100;

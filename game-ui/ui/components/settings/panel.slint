@@ -1,4 +1,5 @@
 import { SettingsState } from "../../settings_state.slint";
+import { PopupManagerState, PopupId } from "../../popup_manager.slint";
 import { Theme } from "../../theme.slint";
 import { ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
 import { MenuButton } from "widgets.slint";
@@ -10,7 +11,7 @@ export component SettingsPanel inherits BasePanel {
     in-out property <int> active-tab: 0;
     title: "Settings";
     close => {
-        SettingsState.show-settings = false;
+        PopupManagerState.close-request(PopupId.Settings);
     }
     TouchArea {
         scroll-event(event) => {

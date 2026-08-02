@@ -3,6 +3,7 @@ pub mod callbacks;
 pub mod frame_exchange;
 pub mod gpu_init;
 pub mod input_bridge;
+pub mod popups;
 pub mod profile_bridge;
 pub mod rendering_notifier;
 pub mod state_bridge;

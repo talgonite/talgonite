@@ -6,6 +6,8 @@ use game_types::{KeyBindings, SavedCredentialPublic, ServerEntry, SlotPanelType}
 use packets::server::{LoginMessageType, SpellType};
 use regex::Regex;
 
+use crate::slint_types::PopupId;
+
 static LEVEL_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\s*\(Lev:\s*(\d+)/(\d+)\)$").expect("valid level pattern"));
 
@@ -171,6 +173,16 @@ pub enum UiToCore {
     },
     /// Close the NPC dialog.
     MenuClose,
+    /// User requested to open a popup/window (routed to the `PopupManager`).
+    PopupOpenRequest {
+        id: PopupId,
+    },
+    /// User requested to close a specific popup/window.
+    PopupCloseRequest {
+        id: PopupId,
+    },
+    /// User requested to close the topmost popup/window (e.g. Escape).
+    PopupCloseTop,
     SettingsChange {
         xray_size: u8,
     },

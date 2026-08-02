@@ -1,6 +1,6 @@
 export global SettingsState {
-    in-out property <bool> show-settings: true;
-    in-out property <bool> show-game-menu: false;
+    // NOTE: Open/close of the settings and game menu windows is owned by the
+    // popup stack (`PopupManagerState`); there are no `show-*` booleans here.
     in-out property <int> xray-size: 0;  // 0=Off, 1=Small, 2=Medium, 3=Large
     in-out property <float> sfx-volume: 1.0;  // 0.0 to 1.0
     in-out property <float> music-volume: 1.0;  // 0.0 to 1.0

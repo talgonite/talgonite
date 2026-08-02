@@ -5,6 +5,7 @@ import {
     SocialStatusState,
     SocialStatus,
 } from "../game_state.slint";
+import { PopupManagerState, PopupId } from "../popup_manager.slint";
 import { Theme } from "../theme.slint";
 import { ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
 import { Icon } from "icon.slint";
@@ -148,7 +149,7 @@ export component ProfilePanel inherits Rectangle {
         title: data.name == "" ? "Profile" : data.name;
         show-close: true;
         close => {
-            GameState.profile.visible = false;
+            PopupManagerState.close-request(PopupId.Profile);
         }
 
         if active-tab == "profile": HorizontalLayout {

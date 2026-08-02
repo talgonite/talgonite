@@ -1,5 +1,6 @@
 // Group panel: accept-invites toggle, member list (local player first = Leave, others = Kick).
 import { GameState } from "../game_state.slint";
+import { PopupManagerState, PopupId } from "../popup_manager.slint";
 import { Theme } from "../theme.slint";
 import { BasePanel } from "base_panel.slint";
 import { ScrollView, VerticalBox } from "std-widgets.slint";
@@ -9,7 +10,7 @@ export component GroupPanel inherits BasePanel {
     width: 280px;
     height: 380px;
     close => {
-        GameState.show-group = false;
+        PopupManagerState.close-request(PopupId.Group);
     }
 
     VerticalBox {
@@ -19,9 +20,7 @@ export component GroupPanel inherits BasePanel {
         // Toggle groupable button
         groupable-btn := Rectangle {
             height: 32px;
-            background: GameState.is-groupable
-                ? (groupable-touch.has-hover ? #1d4ed8 : #2563eb)
-                : (groupable-touch.has-hover ? #4b5563 : #374151);
+            background: GameState.is-groupable ? (groupable-touch.has-hover ? #1d4ed8 : #2563eb) : (groupable-touch.has-hover ? #4b5563 : #374151);
             border-radius: 6px;
             border-width: 1px;
             border-color: GameState.is-groupable ? #60a5fa : #4b5563;
@@ -34,13 +33,19 @@ export component GroupPanel inherits BasePanel {
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
+
             groupable-touch := TouchArea {
                 mouse-cursor: pointer;
-                clicked => { GameState.toggle-groupable(); }
+                clicked => {
+                    GameState.toggle-groupable();
+                }
             }
         }
 
-        Rectangle { height: 1px; background: #ffffff10; }
+        Rectangle {
+            height: 1px;
+            background: #ffffff10;
+        }
 
         // Count line (e.g. "2 Group members"); backend filters out "Group members" / "Total N" from list.
         if GameState.group-members.length > 0: Text {
@@ -63,6 +68,7 @@ export component GroupPanel inherits BasePanel {
                     color: #6b7280;
                     horizontal-alignment: center;
                 }
+
                 Text {
                     text: "Request from another player's profile.";
                     font-size: 11px;
@@ -95,6 +101,7 @@ export component GroupPanel inherits BasePanel {
                                 background: member.is-leader ? #3b82f6 : #22c55e;
                                 border-radius: 4px;
                             }
+
                             Text {
                                 text: member.name + (member.is-leader ? " ★" : "");
                                 font-size: 12px;
@@ -102,6 +109,7 @@ export component GroupPanel inherits BasePanel {
                                 vertical-alignment: center;
                                 overflow: elide;
                             }
+
                             Rectangle { }
                             // Position 1 (is-leader) = self: always show Leave. Others: show Kick only when we are group leader.
                             if (member.is-leader || GameState.is-group-leader): action-btn := Rectangle {
@@ -120,6 +128,7 @@ export component GroupPanel inherits BasePanel {
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
                                 }
+
                                 action-touch := TouchArea {
                                     mouse-cursor: pointer;
                                     clicked => {

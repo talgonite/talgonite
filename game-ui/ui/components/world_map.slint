@@ -1,4 +1,5 @@
 import { GameState, WorldMapNode } from "../game_state.slint";
+import { PopupManagerState, PopupId } from "../popup_manager.slint";
 import { Theme } from "../theme.slint";
 import { VerticalBox, ScrollView } from "std-widgets.slint";
 
@@ -61,7 +62,7 @@ export component WorldMap inherits Rectangle {
             map-scale: map-scale;
             clicked => {
                 GameState.world-map-click(node.map_id, node.dest_x, node.dest_y, node.check_sum);
-                GameState.show-world-map = false;
+                PopupManagerState.close-request(PopupId.WorldMap);
             }
         }
     }
@@ -89,7 +90,7 @@ export component WorldMap inherits Rectangle {
                         area := TouchArea {
                             clicked => {
                                 GameState.world-map-click(node.map_id, node.dest_x, node.dest_y, node.check_sum);
-                                GameState.show-world-map = false;
+                                PopupManagerState.close-request(PopupId.WorldMap);
                             }
                         }
 

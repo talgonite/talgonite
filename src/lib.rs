@@ -5,9 +5,9 @@ pub use game_ui::slint_types::{
     EquipmentSlotData, GameState, GroupInviteNotification, GroupMember, HotbarEntry, InputBridge,
     InstallerState, InventoryItem, LegendMarkData, LobbyState, LoginBridge, LoginState,
     MailBoardPost, MailBoardState, MainWindow, MenuEntry, NpcDialogData, NpcDialogState,
-    PlatformState, ProfileData, SavedLoginItem, ServerItem, SettingsState, Skill, SlotPanelType,
-    SocialStatus, SocialStatusEntry, SocialStatusState, SpeechBubble, Spell, WorldLabel,
-    WorldListMemberUi, WorldMapNode,
+    PlatformState, PopupId, PopupManagerState, ProfileData, SavedLoginItem, ServerItem,
+    SettingsState, Skill, SlotPanelType, SocialStatus, SocialStatusEntry, SocialStatusState,
+    SpeechBubble, Spell, WorldLabel, WorldListMemberUi, WorldMapNode,
 };
 
 #[cfg(target_os = "android")]

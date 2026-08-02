@@ -6,10 +6,11 @@
 use bevy::prelude::*;
 
 use crate::app_state::AppState;
+use crate::slint_support::popups::PopupManager;
 use crate::slint_support::state_bridge::{
     SlintUiChannels, apply_core_to_slint, drain_slint_inbound, sync_group_to_slint,
-    sync_installer_to_slint, sync_map_name_to_slint, sync_settings_to_slint,
-    sync_skill_cooldowns_to_slint, sync_world_labels_to_slint,
+    sync_installer_to_slint, sync_map_name_to_slint, sync_popup_to_slint,
+    sync_settings_to_slint, sync_skill_cooldowns_to_slint, sync_world_labels_to_slint,
 };
 use crate::slint_support::{handle_show_self_profile, sync_profile_to_slint};
 
@@ -26,6 +27,7 @@ pub struct SlintBridgePlugin;
 impl Plugin for SlintBridgePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SlintGpuReady>()
+            .init_resource::<PopupManager>()
             .insert_resource(SlintUiChannels::default())
             .add_message::<SlintDoubleClickEvent>()
             .add_message::<ShowSelfProfileEvent>()
@@ -41,6 +43,9 @@ impl Plugin for SlintBridgePlugin {
                     apply_core_to_slint
                         .run_if(resource_exists::<crate::slint_support::state_bridge::SlintWindow>)
                         .run_if(in_ui_state),
+                    sync_popup_to_slint
+                        .after(crate::webui::plugin::handle_popup_requests)
+                        .run_if(resource_exists::<crate::slint_support::state_bridge::SlintWindow>),
                     sync_settings_to_slint
                         .run_if(resource_exists::<crate::slint_support::state_bridge::SlintWindow>),
                     crate::slint_support::state_bridge::sync_portrait_to_slint

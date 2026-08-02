@@ -165,14 +165,17 @@ pub struct SlintWindow(pub slint::Weak<crate::MainWindow>);
 #[derive(Resource)]
 pub struct SlintAssetLoaderRes(pub SlintAssetLoader);
 
-pub fn show_prelogin_ui(win: Res<SlintWindow>) {
+pub fn show_prelogin_ui(
+    win: Res<SlintWindow>,
+    mut popup_manager: ResMut<crate::slint_support::popups::PopupManager>,
+) {
     let Some(strong) = win.0.upgrade() else {
         return;
     };
+    // Close every open window when returning to the main menu.
+    popup_manager.clear();
     reset_game_state_for_main_menu(&strong);
     strong.set_show_prelogin(true);
-    let settings_state = slint::ComponentHandle::global::<crate::SettingsState>(&strong);
-    settings_state.set_show_settings(false);
     strong.invoke_request_snapshot();
 }
 
@@ -234,7 +237,6 @@ fn reset_game_state_for_main_menu(window: &crate::MainWindow) {
     game_state.set_world_map_nodes(empty_model());
     game_state.set_world_map_image(slint::Image::default());
     game_state.set_world_map_name(slint::SharedString::from(""));
-    game_state.set_show_world_map(false);
 
     // Reset NPC dialog state
     slint::ComponentHandle::global::<crate::NpcDialogState>(window).invoke_reset();
@@ -243,36 +245,66 @@ fn reset_game_state_for_main_menu(window: &crate::MainWindow) {
     game_state.set_skills(empty_model());
     game_state.set_spells(empty_model());
     game_state.set_hotbar(empty_model());
-    game_state.set_show_inventory(false);
-    game_state.set_show_skills(false);
-    game_state.set_show_spells(false);
     game_state.set_hotbar_row_count(1);
 
-    game_state.set_show_world_list(false);
     game_state.set_world_list_loading(false);
     game_state.set_world_list_members(empty_model());
     game_state.set_world_list_count(0);
     game_state.set_world_list_total_count(0);
 
     let mail_board = slint::ComponentHandle::global::<crate::MailBoardState>(window);
-    mail_board.set_visible(false);
     mail_board.set_board_name(slint::SharedString::from(""));
     mail_board.set_selected_index(-1);
     mail_board.set_loading_post_id(-1);
     mail_board.set_posts(empty_model());
 
-    let mut profile = crate::ProfileData::default();
-    profile.visible = false;
-    game_state.set_profile(profile);
+    game_state.set_profile(crate::ProfileData::default());
 
     game_state.set_current_hotbar_panel(0);
 
     // Reset group state
-    game_state.set_show_group(false);
     game_state.set_is_groupable(false);
     game_state.set_is_group_leader(false);
     game_state.set_group_members(empty_model());
     game_state.set_group_invite(crate::GroupInviteNotification::default());
+}
+
+/// Sync the [`PopupManager`] stack into Slint's `PopupManagerState`.
+pub fn sync_popup_to_slint(
+    popup_manager: Res<crate::slint_support::popups::PopupManager>,
+    win: Res<SlintWindow>,
+) {
+    use crate::slint_support::popups::{PopupId, PopupKind};
+
+    if !popup_manager.is_changed() {
+        return;
+    }
+    let Some(strong) = win.0.upgrade() else {
+        return;
+    };
+
+    let state = slint::ComponentHandle::global::<crate::PopupManagerState>(&strong);
+    let ids: Vec<crate::PopupId> =
+        popup_manager.open_ids().map(PopupId::to_slint).collect();
+    state.set_open_popups(slint::ModelRc::new(slint::VecModel::from(ids)));
+    let has_modal = popup_manager
+        .open_ids()
+        .any(|id| id.kind() == PopupKind::Modal);
+    state.set_has_modal(has_modal);
+    // Per-popup convenience flags for pure Slint bindings.
+    state.set_settings_open(popup_manager.is_open(PopupId::Settings));
+    state.set_game_menu_open(popup_manager.is_open(PopupId::GameMenu));
+    state.set_npc_dialog_open(popup_manager.is_open(PopupId::NpcDialog));
+    state.set_profile_open(popup_manager.is_open(PopupId::Profile));
+    state.set_mail_board_open(popup_manager.is_open(PopupId::MailBoard));
+    state.set_world_map_open(popup_manager.is_open(PopupId::WorldMap));
+    state.set_inventory_open(popup_manager.is_open(PopupId::Inventory));
+    state.set_skills_open(popup_manager.is_open(PopupId::Skills));
+    state.set_spells_open(popup_manager.is_open(PopupId::Spells));
+    state.set_world_list_open(popup_manager.is_open(PopupId::WorldList));
+    state.set_group_open(popup_manager.is_open(PopupId::Group));
+    state.set_context_menu_open(popup_manager.is_open(PopupId::ContextMenu));
+    state.set_group_invite_open(popup_manager.is_open(PopupId::GroupInvite));
 }
 
 pub fn apply_core_to_slint(
@@ -288,6 +320,7 @@ pub fn apply_core_to_slint(
     hotbar_panel: Res<crate::ecs::hotbar::HotbarPanelState>,
     lobby_portraits: Res<crate::resources::LobbyPortraits>,
     world_list: Res<crate::webui::plugin::WorldListState>,
+    mut popup_manager: ResMut<crate::slint_support::popups::PopupManager>,
 ) {
     let Some(strong) = win.0.upgrade() else {
         return;
@@ -613,7 +646,7 @@ pub fn apply_core_to_slint(
                 }
                 let model = std::rc::Rc::new(slint::VecModel::from(slint_nodes));
                 game_state.set_world_map_nodes(model.clone().into());
-                game_state.set_show_world_map(true);
+                popup_manager.open(crate::slint_support::popups::PopupId::WorldMap);
             }
             crate::webui::ipc::CoreToUi::DisplayMenu {
                 title,
@@ -671,7 +704,6 @@ pub fn apply_core_to_slint(
                 }
 
                 npc_dialog.set_data(crate::NpcDialogData {
-                    visible: true,
                     text_entry_visible: false,
                     is_shop: *entry_type != crate::webui::ipc::MenuEntryType::TextOptions,
                     interaction_enabled: true,
@@ -682,6 +714,7 @@ pub fn apply_core_to_slint(
                     text_entry_prompt: slint::SharedString::default(),
                     text_entry_args: slint::SharedString::default(),
                 });
+                popup_manager.open(crate::slint_support::popups::PopupId::NpcDialog);
             }
             crate::webui::ipc::CoreToUi::ShowWorldContextMenu {
                 title,
@@ -709,12 +742,15 @@ pub fn apply_core_to_slint(
                     *anchor_width,
                     *anchor_height,
                 );
+                popup_manager.open(crate::slint_support::popups::PopupId::ContextMenu);
             }
             crate::webui::ipc::CoreToUi::HideWorldContextMenu => {
                 slint::ComponentHandle::global::<crate::ContextMenuState>(&strong).invoke_hide();
+                popup_manager.close(crate::slint_support::popups::PopupId::ContextMenu);
             }
             crate::webui::ipc::CoreToUi::DisplayMenuClose => {
                 slint::ComponentHandle::global::<crate::NpcDialogState>(&strong).invoke_reset();
+                popup_manager.close(crate::slint_support::popups::PopupId::NpcDialog);
             }
             crate::webui::ipc::CoreToUi::DisplayMenuTextEntry {
                 title,
@@ -746,7 +782,6 @@ pub fn apply_core_to_slint(
                 }
 
                 npc_dialog.set_data(crate::NpcDialogData {
-                    visible: true,
                     text_entry_visible: true,
                     is_shop: false,
                     interaction_enabled: true,
@@ -757,6 +792,7 @@ pub fn apply_core_to_slint(
                     text_entry_prompt: slint::SharedString::from(prompt.as_str()),
                     text_entry_args: slint::SharedString::from(args.as_str()),
                 });
+                popup_manager.open(crate::slint_support::popups::PopupId::NpcDialog);
             }
             crate::webui::ipc::CoreToUi::DisplayBoard(board_state) => {
                 let board = slint::ComponentHandle::global::<crate::MailBoardState>(&strong);
@@ -781,8 +817,12 @@ pub fn apply_core_to_slint(
                 }
 
                 board.set_session_token(board_state.session_token);
-                board.set_visible(board_state.visible);
                 board.set_board_name(slint::SharedString::from(board_state.board_name.as_str()));
+                if board_state.visible {
+                    popup_manager.open(crate::slint_support::popups::PopupId::MailBoard);
+                } else {
+                    popup_manager.close(crate::slint_support::popups::PopupId::MailBoard);
+                }
 
                 if board_state.append {
                     let existing_posts = board.get_posts();
@@ -1312,6 +1352,7 @@ pub fn sync_group_to_slint(
         With<crate::ecs::components::LocalPlayer>,
     >,
     win: Res<SlintWindow>,
+    mut popup_manager: ResMut<crate::slint_support::popups::PopupManager>,
 ) {
     if !group_state.is_changed() {
         return;
@@ -1356,17 +1397,13 @@ pub fn sync_group_to_slint(
 
     if let Some(invite) = &group_state.pending_invite {
         game_state.set_group_invite(crate::GroupInviteNotification {
-            visible: true,
             source_name: slint::SharedString::from(invite.source_name.as_str()),
             group_name: slint::SharedString::from(invite.group_name.as_str()),
             group_note: slint::SharedString::from(invite.group_note.as_str()),
         });
+        popup_manager.open(crate::slint_support::popups::PopupId::GroupInvite);
     } else {
-        let mut gi = game_state.get_group_invite();
-        if gi.visible {
-            gi.visible = false;
-            game_state.set_group_invite(gi);
-        }
+        popup_manager.close(crate::slint_support::popups::PopupId::GroupInvite);
     }
 }
 

@@ -5,6 +5,7 @@ import {
     InventoryItem,
     PopupState,
 } from "../game_state.slint";
+import { PopupManagerState, PopupId } from "../popup_manager.slint";
 import { CancelDrag, DragDropItem } from "drag_drop.slint";
 import { Theme } from "../theme.slint";
 import { ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
@@ -78,7 +79,7 @@ export component InventoryPanel inherits BasePanel {
     width: 324px;
     height: 380px;
     close => {
-        GameState.show-inventory = false;
+        PopupManagerState.close-request(PopupId.Inventory);
     }
     ScrollView {
         viewport-width: self.visible-width;

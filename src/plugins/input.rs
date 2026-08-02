@@ -1,6 +1,7 @@
 use crate::{
     app_state::AppState,
     ecs::components::{Direction, LocalPlayer, MovementTween},
+    ecs::hotbar::{HotbarPanel, HotbarPanelState, HotbarRows},
     ecs::systems::GameSet,
     events::{ClickSource, InputSource, PlayerAction, ResolvedPointerClickEvent},
     input::{
@@ -9,6 +10,7 @@ use crate::{
     },
     network::PacketOutbox,
     settings_types::Settings,
+    slint_support::popups::{PopupId, PopupManager},
 };
 use bevy::prelude::MessageReader;
 use bevy::prelude::*;
@@ -72,21 +74,21 @@ const HOTBAR_SLOT_ACTIONS: [GameAction; 48] = [
     GameAction::HotbarSlot48,
 ];
 
-fn hotbar_panel_category(panel: crate::ecs::hotbar::HotbarPanel) -> Option<SlotPanelType> {
+fn hotbar_panel_category(panel: HotbarPanel) -> Option<SlotPanelType> {
     match panel {
-        crate::ecs::hotbar::HotbarPanel::Inventory => Some(SlotPanelType::Item),
-        crate::ecs::hotbar::HotbarPanel::Skills => Some(SlotPanelType::Skill),
-        crate::ecs::hotbar::HotbarPanel::Spells => Some(SlotPanelType::Spell),
-        crate::ecs::hotbar::HotbarPanel::Hotbar1
-        | crate::ecs::hotbar::HotbarPanel::Hotbar2
-        | crate::ecs::hotbar::HotbarPanel::Hotbar3 => Some(SlotPanelType::Hotbar),
+        HotbarPanel::Inventory => Some(SlotPanelType::Item),
+        HotbarPanel::Skills => Some(SlotPanelType::Skill),
+        HotbarPanel::Spells => Some(SlotPanelType::Spell),
+        HotbarPanel::Hotbar1
+        | HotbarPanel::Hotbar2
+        | HotbarPanel::Hotbar3 => Some(SlotPanelType::Hotbar),
     }
 }
 
-fn hotbar_panel_base_offset(panel_state: &crate::ecs::hotbar::HotbarPanelState) -> usize {
+fn hotbar_panel_base_offset(panel_state: &HotbarPanelState) -> usize {
     let panel = panel_state.current_panel as u8;
-    let expanded_custom = panel_state.rows != crate::ecs::hotbar::HotbarRows::One
-        && panel_state.current_panel.is_custom();
+    let expanded_custom =
+        panel_state.rows != HotbarRows::One && panel_state.current_panel.is_custom();
 
     match panel {
         0..=2 => 0,
@@ -98,7 +100,7 @@ fn hotbar_panel_base_offset(panel_state: &crate::ecs::hotbar::HotbarPanelState) 
 
 fn resolve_hotbar_slot_target(
     slot_index: usize,
-    panel_state: &crate::ecs::hotbar::HotbarPanelState,
+    panel_state: &HotbarPanelState,
     settings: &Settings,
 ) -> Option<(SlotPanelType, usize)> {
     let row = slot_index / 12;
@@ -149,12 +151,78 @@ impl Plugin for InputPlugin {
                     gamepad_rebinding_system,
                     crate::input::gamepad::gamepad_connection_system,
                     input_handling_system.run_if(in_state(AppState::InGame)),
+                    popup_control_system.run_if(in_state(AppState::InGame)),
                     reset_walk_timer_on_map_change_system.run_if(in_state(AppState::InGame)),
                 )
                     .chain()
                     .after(InputPumpSet)
                     .in_set(GameSet::EventProcessing),
             );
+    }
+}
+
+/// Gamepad Start ("back") + side-panel toggles; keyboard Escape is handled in
+/// Slint's FocusScope instead.
+pub fn popup_control_system(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    unified_bindings: Res<UnifiedInputBindings>,
+    gamepad_query: Query<&Gamepad>,
+    gamepad_config: Res<GamepadConfig>,
+    mut popup_manager: ResMut<PopupManager>,
+) {
+    let bindings = unified_bindings;
+
+    // Back: close the topmost window, or open the game menu if nothing is open.
+    if bindings.is_just_pressed(
+        GameAction::Settings,
+        &keyboard_input,
+        Some(&gamepad_query),
+        Some(&gamepad_config),
+    ) {
+        if popup_manager.close_top().is_none() {
+            popup_manager.open(PopupId::GameMenu);
+        }
+    }
+
+    // Toggle side panels; Skills/Spells share one panel (opening one closes the
+    // other). Modal-blocked opens are ignored (modal exclusivity).
+    if bindings.is_just_pressed(
+        GameAction::Inventory,
+        &keyboard_input,
+        Some(&gamepad_query),
+        Some(&gamepad_config),
+    ) {
+        if popup_manager.is_open(PopupId::Inventory) {
+            popup_manager.close(PopupId::Inventory);
+        } else {
+            popup_manager.open(PopupId::Inventory);
+        }
+    }
+    if bindings.is_just_pressed(
+        GameAction::Skills,
+        &keyboard_input,
+        Some(&gamepad_query),
+        Some(&gamepad_config),
+    ) {
+        if popup_manager.is_open(PopupId::Skills) {
+            popup_manager.close(PopupId::Skills);
+        } else {
+            popup_manager.close(PopupId::Spells);
+            popup_manager.open(PopupId::Skills);
+        }
+    }
+    if bindings.is_just_pressed(
+        GameAction::Spells,
+        &keyboard_input,
+        Some(&gamepad_query),
+        Some(&gamepad_config),
+    ) {
+        if popup_manager.is_open(PopupId::Spells) {
+            popup_manager.close(PopupId::Spells);
+        } else {
+            popup_manager.close(PopupId::Skills);
+            popup_manager.open(PopupId::Spells);
+        }
     }
 }
 
@@ -394,9 +462,9 @@ mod tests {
     #[test]
     fn modifier_rows_target_next_hotbar_row() {
         let settings = Settings::default();
-        let panel_state = crate::ecs::hotbar::HotbarPanelState {
-            current_panel: crate::ecs::hotbar::HotbarPanel::Inventory,
-            rows: crate::ecs::hotbar::HotbarRows::Three,
+        let panel_state = HotbarPanelState {
+            current_panel: HotbarPanel::Inventory,
+            rows: HotbarRows::Three,
         };
 
         let resolved = resolve_hotbar_slot_target(12, &panel_state, &settings);
@@ -436,14 +504,13 @@ pub fn input_handling_system(
     gamepad_query: Query<&Gamepad>,
     gamepad_config: Res<GamepadConfig>,
     minimap_renderer_state: Option<ResMut<crate::resources::MinimapRendererState>>,
-    window: Option<Res<crate::slint_support::state_bridge::SlintWindow>>,
     mut player_actions: MessageWriter<PlayerAction>,
     mut player_query: Query<
         (&mut LocalPlayer, &mut Direction, Option<&MovementTween>),
         With<LocalPlayer>,
     >,
     outbox: Res<PacketOutbox>,
-    mut hotbar_panel_state: ResMut<crate::ecs::hotbar::HotbarPanelState>,
+    mut hotbar_panel_state: ResMut<HotbarPanelState>,
     mut ui_inbound: MessageWriter<crate::webui::plugin::UiInbound>,
     mut inventory_events: MessageWriter<crate::events::InventoryEvent>,
     mut ability_events: MessageWriter<crate::events::AbilityEvent>,
@@ -500,71 +567,14 @@ pub fn input_handling_system(
         }
     }
 
-    // Toggle Panels
-    if let Some(strong) = window.as_ref().and_then(|w| w.0.upgrade()) {
-        let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
-
-        if bindings.is_just_pressed(
-            GameAction::Inventory,
-            &keyboard_input,
-            Some(&gamepad_query),
-            Some(&gamepad_config),
-        ) {
-            game_state.set_show_inventory(!game_state.get_show_inventory());
-        }
-        if bindings.is_just_pressed(
-            GameAction::Skills,
-            &keyboard_input,
-            Some(&gamepad_query),
-            Some(&gamepad_config),
-        ) {
-            game_state.set_show_skills(!game_state.get_show_skills());
-        }
-        if bindings.is_just_pressed(
-            GameAction::Spells,
-            &keyboard_input,
-            Some(&gamepad_query),
-            Some(&gamepad_config),
-        ) {
-            game_state.set_show_spells(!game_state.get_show_spells());
-        }
-        if bindings.is_just_pressed(
-            GameAction::Settings,
-            &keyboard_input,
-            Some(&gamepad_query),
-            Some(&gamepad_config),
-        ) {
-            let settings_state = slint::ComponentHandle::global::<crate::SettingsState>(&strong);
-            settings_state.set_show_game_menu(!settings_state.get_show_game_menu());
-        }
-    }
-
     // Panel switching
     let panel_actions = [
-        (
-            GameAction::SwitchToInventory,
-            crate::ecs::hotbar::HotbarPanel::Inventory,
-        ),
-        (
-            GameAction::SwitchToSkills,
-            crate::ecs::hotbar::HotbarPanel::Skills,
-        ),
-        (
-            GameAction::SwitchToSpells,
-            crate::ecs::hotbar::HotbarPanel::Spells,
-        ),
-        (
-            GameAction::SwitchToHotbar1,
-            crate::ecs::hotbar::HotbarPanel::Hotbar1,
-        ),
-        (
-            GameAction::SwitchToHotbar2,
-            crate::ecs::hotbar::HotbarPanel::Hotbar2,
-        ),
-        (
-            GameAction::SwitchToHotbar3,
-            crate::ecs::hotbar::HotbarPanel::Hotbar3,
-        ),
+        (GameAction::SwitchToInventory, HotbarPanel::Inventory),
+        (GameAction::SwitchToSkills, HotbarPanel::Skills),
+        (GameAction::SwitchToSpells, HotbarPanel::Spells),
+        (GameAction::SwitchToHotbar1, HotbarPanel::Hotbar1),
+        (GameAction::SwitchToHotbar2, HotbarPanel::Hotbar2),
+        (GameAction::SwitchToHotbar3, HotbarPanel::Hotbar3),
     ];
 
     for (action, panel) in &panel_actions {
