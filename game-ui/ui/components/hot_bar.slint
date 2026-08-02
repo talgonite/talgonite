@@ -162,6 +162,7 @@ component HotBarSelectorButton inherits Rectangle {
 component InventorySlots inherits GridLayout {
     spacing: 4px;
     for idx in 12: HotBarSlotView {
+        col: PlatformState.is-android ? Math.mod(idx, 6) : idx;
         row: PlatformState.is-android ? idx / 6 : 0;
         key-num: idx;
         panel-type: SlotPanelType.item;
@@ -175,6 +176,7 @@ component InventorySlots inherits GridLayout {
 component SpellSlots inherits GridLayout {
     spacing: 4px;
     for idx in 12: HotBarSlotView {
+        col: PlatformState.is-android ? Math.mod(idx, 6) : idx;
         row: PlatformState.is-android ? idx / 6 : 0;
         key-num: idx;
         panel-type: SlotPanelType.spell;
@@ -187,6 +189,7 @@ component SpellSlots inherits GridLayout {
 component SkillSlots inherits GridLayout {
     spacing: 4px;
     for idx in 12: HotBarSlotView {
+        col: PlatformState.is-android ? Math.mod(idx, 6) : idx;
         row: PlatformState.is-android ? idx / 6 : 0;
         key-num: idx;
         panel-type: SlotPanelType.skill;
@@ -202,6 +205,7 @@ component CustomHotBarSlots inherits GridLayout {
     in property <int> offset: 0;
     spacing: 4px;
     for idx in 12: HotBarSlotView {
+        col: PlatformState.is-android ? Math.mod(idx, 6) : idx;
         row: PlatformState.is-android ? idx / 6 : 0;
         key-num: idx;
         panel-type: SlotPanelType.hotbar;
@@ -232,6 +236,7 @@ component DesktopInventorySlotsThree inherits GridLayout {
     spacing: 4px;
 
     for idx in 36: HotBarSlotView {
+        col: Math.mod(idx, 12);
         row: idx / 12;
         key-num: idx;
         panel-type: SlotPanelType.item;
@@ -246,6 +251,7 @@ component DesktopInventorySlotsFive inherits GridLayout {
     spacing: 4px;
 
     for idx in 60: HotBarSlotView {
+        col: Math.mod(idx, 12);
         row: idx / 12;
         key-num: idx;
         panel-type: SlotPanelType.item;
@@ -273,6 +279,7 @@ component DesktopSpellSlotsThree inherits GridLayout {
     spacing: 4px;
 
     for idx in 36: HotBarSlotView {
+        col: Math.mod(idx, 12);
         row: idx / 12;
         key-num: idx;
         panel-type: SlotPanelType.spell;
@@ -286,6 +293,7 @@ component DesktopSpellSlotsFive inherits GridLayout {
     spacing: 4px;
 
     for idx in 60: HotBarSlotView {
+        col: Math.mod(idx, 12);
         row: idx / 12;
         key-num: idx;
         panel-type: SlotPanelType.spell;
@@ -314,6 +322,7 @@ component DesktopSkillSlotsThree inherits GridLayout {
     spacing: 4px;
 
     for idx in 36: HotBarSlotView {
+        col: Math.mod(idx, 12);
         row: idx / 12;
         key-num: idx;
         panel-type: SlotPanelType.skill;
@@ -329,6 +338,7 @@ component DesktopSkillSlotsFive inherits GridLayout {
     spacing: 4px;
 
     for idx in 60: HotBarSlotView {
+        col: Math.mod(idx, 12);
         row: idx / 12;
         key-num: idx;
         panel-type: SlotPanelType.skill;
@@ -361,6 +371,7 @@ component DesktopExpandedCustomHotBarSlotsThree inherits GridLayout {
     spacing: 4px;
 
     for idx in 36: HotBarSlotView {
+        col: Math.mod(idx, 12);
         row: idx / 12;
         key-num: idx < 12 ? Math.mod(idx, 12) : -1;
         panel-type: SlotPanelType.hotbar;
@@ -377,6 +388,7 @@ component DesktopExpandedCustomHotBarSlotsFive inherits GridLayout {
     spacing: 4px;
 
     for idx in 60: HotBarSlotView {
+        col: Math.mod(idx, 12);
         row: idx / 12;
         key-num: idx < 12 ? Math.mod(idx, 12) : -1;
         panel-type: SlotPanelType.hotbar;

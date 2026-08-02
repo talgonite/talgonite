@@ -14,7 +14,7 @@ pub use profile_bridge::{ShowSelfProfileEvent, handle_show_self_profile, sync_pr
 
 use bevy::prelude::*;
 use slint::ComponentHandle;
-use slint::wgpu_28::{WGPUConfiguration, WGPUSettings};
+use slint::wgpu_29::{WGPUConfiguration, WGPUSettings};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -63,7 +63,7 @@ pub fn attach_slint_ui(mut app: App) -> MainWindow {
     wgpu_settings.device_required_limits.max_immediate_size = 16;
 
     slint::BackendSelector::new()
-        .require_wgpu_28(WGPUConfiguration::Automatic(wgpu_settings))
+        .require_wgpu_29(WGPUConfiguration::Automatic(wgpu_settings))
         .select()
         .expect("Unable to create Slint backend with WGPU based renderer");
 
@@ -125,7 +125,7 @@ pub fn attach_slint_ui(mut app: App) -> MainWindow {
             let mut app = app_for_notifier.borrow_mut();
             match rendering_state {
                 slint::RenderingState::RenderingSetup => {
-                    if let slint::GraphicsAPI::WGPU28 { device, queue, .. } = graphics_api {
+                    if let slint::GraphicsAPI::WGPU29 { device, queue, .. } = graphics_api {
                         let Some(strong) = slint_app_handle.upgrade() else {
                             return;
                         };

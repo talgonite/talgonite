@@ -39,10 +39,8 @@ impl TestScene {
         let maps_dir = storage_config.server_maps_dir(1);
 
         let (device, queue) = pollster::block_on(async {
-            let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-                backends: wgpu::Backends::VULKAN | wgpu::Backends::GL,
-                ..Default::default()
-            });
+            let instance =
+                wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
 
             let adapters = instance.enumerate_adapters(wgpu::Backends::all()).await;
             let adapter = adapters.into_iter().next().expect("No adapters found");

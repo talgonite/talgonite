@@ -146,7 +146,7 @@ flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 futures-lite = "2.6"
 gilrs = "0.11"
 glam = "0.32"
-i-slint-core = "=1.16.1"
+i-slint-core = "=1.17.0"
 jubako = "*"
 ktx2 = "0.5"
 libarx = { version = "0.4", features = ["zstd"] }
@@ -156,14 +156,14 @@ oxicode = { version = "0.2", features = ["simd", "serde"] }
 rand = { version = "0.10", features = ["log", "std"] }
 rangemap = { version = "1.7", features = ["serde1"] }
 serde = { version = "1.0", features = ["derive"] }
-slint = { version = "1.16.1", default-features = false, features = [
+slint = { version = "1.17.0", default-features = false, features = [
     "backend-default",
     "compat-1-2",
-    "unstable-wgpu-28",
+    "unstable-wgpu-29",
     "renderer-skia",
     "backend-android-activity-06",
 ] }
-wgpu = "28"
+wgpu = "29"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 apple-native-keyring-store = { version = "1", features = ["keychain"] }
