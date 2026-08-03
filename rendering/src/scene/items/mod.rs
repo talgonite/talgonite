@@ -171,38 +171,30 @@ impl ItemBatch {
                 .allocation_atlas
                 .allocate(etagere::size2(w as i32, h as i32))
             {
-                let mut data: Vec<u8> = vec![0; w * h];
-                data.copy_from_slice(&frame.data);
-
                 let texture = &store.diffuse;
-                for row in 0..h {
-                    let start = row * w;
-                    let end = start + w;
-                    let row_data = &data[start..end];
-                    queue.write_texture(
-                        wgpu::TexelCopyTextureInfo {
-                            texture: &texture.texture,
-                            mip_level: 0,
-                            origin: wgpu::Origin3d {
-                                x: allocation.rectangle.min.x as u32,
-                                y: allocation.rectangle.min.y as u32 + row as u32,
-                                z: 0,
-                            },
-                            aspect: wgpu::TextureAspect::All,
+                queue.write_texture(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &texture.texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d {
+                            x: allocation.rectangle.min.x as u32,
+                            y: allocation.rectangle.min.y as u32,
+                            z: 0,
                         },
-                        row_data,
-                        wgpu::TexelCopyBufferLayout {
-                            offset: 0,
-                            bytes_per_row: Some(w as u32),
-                            rows_per_image: Some(1),
-                        },
-                        wgpu::Extent3d {
-                            width: w as u32,
-                            height: 1,
-                            depth_or_array_layers: 1,
-                        },
-                    );
-                }
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    &frame.data,
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(w as u32),
+                        rows_per_image: None,
+                    },
+                    wgpu::Extent3d {
+                        width: w as u32,
+                        height: h as u32,
+                        depth_or_array_layers: 1,
+                    },
+                );
                 sheet.allocations[frame_index] = Some(allocation);
             } else {
                 error!("Item atlas full - cannot allocate sprite {}", item.sprite);
