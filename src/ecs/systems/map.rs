@@ -14,7 +14,7 @@ pub fn map_system(
     mut commands: Commands,
     mut map_events: MessageReader<MapEvent>,
     archive: Res<GameFiles>,
-    scoped_q: Query<Entity, With<MapScoped>>,
+    scoped_q: Query<(Entity, Option<&LocalPlayer>), With<MapScoped>>,
     map_entities: Query<&GameMap>,
     renderer: Option<Res<RendererState>>,
     mut camera: Option<ResMut<Camera>>,
@@ -27,6 +27,10 @@ pub fn map_system(
     // Track if we cleared the map this frame - if so, don't skip SetInfo even if
     // the old GameMap entity still appears in queries (despawn is deferred)
     let mut cleared_this_frame = false;
+    // The map entity spawned by SetInfo isn't visible to `map_entities` until
+    // this system's commands are applied, so track it locally to avoid spawning
+    // a second GameMap when multiple SetInfo events arrive in the same batch.
+    let mut spawned_this_frame = false;
 
     for event in map_events.read() {
         match event {
@@ -41,6 +45,14 @@ pub fn map_system(
                 cleared_this_frame = true;
             }
             MapEvent::SetInfo(map_info, map_bytes) => {
+                if spawned_this_frame {
+                    info!(
+                        map_id = map_info.map_id,
+                        "Skipping SetInfo for map_id {} - map entity already spawned this frame",
+                        map_info.map_id
+                    );
+                    continue;
+                }
                 // Check if we're already on this map (happens during refresh)
                 // Skip this check if we just cleared the map this frame, since the
                 // old GameMap entity is still visible due to deferred despawning
@@ -66,6 +78,7 @@ pub fn map_system(
                     map_info,
                     map_bytes,
                 );
+                spawned_this_frame = true;
             }
             MapEvent::SetLightLevel(kind) => {
                 handle_light_level(camera.as_deref_mut(), renderer.as_deref(), kind);
@@ -83,13 +96,19 @@ pub fn map_system(
 
 fn handle_map_clear(
     commands: &mut Commands,
-    scoped_q: &Query<Entity, With<MapScoped>>,
+    scoped_q: &Query<(Entity, Option<&LocalPlayer>), With<MapScoped>>,
     local_map_renderer: &mut Option<MapRenderer>,
     tile_counters: &mut crate::resources::ItemTileCounters,
 ) {
     info!("Map change pending: clearing current map entities");
     let mut count = 0;
-    for e in scoped_q.iter() {
+    for (e, local_player) in scoped_q.iter() {
+        // The local player survives map changes; the server repositions it via
+        // Location / DisplayPlayer, and dedupe_entities_by_id swaps in a fresh
+        // entity if a new DisplayPlayer arrives. Everything else is despawned.
+        if local_player.is_some() {
+            continue;
+        }
         commands.entity(e).despawn();
         count += 1;
     }
