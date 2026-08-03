@@ -4,15 +4,14 @@ pub use types::*;
 use etagere::AtlasAllocator;
 use formats::epf::EpfImage;
 use glam::Vec2;
-use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 use tracing::error;
 
 use crate::{
-    SharedInstanceBatch,
     instance::InstanceFlag,
     scene::{
-        Instance, get_isometric_coordinate, texture_bind::TextureBind, utils::calculate_tile_z,
+        Instance, Z_ITEMS, get_isometric_coordinate, sprite::SpriteBatch, texture_bind::TextureBind,
+        utils::{atlas_uv, calculate_tile_z},
     },
     texture,
 };
@@ -30,11 +29,10 @@ pub struct ItemAssetStore {
 }
 
 pub struct ItemBatch {
-    pub(crate) instances: SharedInstanceBatch,
-    handles: std::sync::Mutex<FxHashMap<usize, u16>>,
+    batch: SpriteBatch<u16>,
 }
 
-pub const ITEM_Z_RANGE: f32 = 0.1;
+pub const ITEM_Z_RANGE: f32 = Z_ITEMS;
 /// Item z-order is based on item.id % this value for deterministic ordering
 const ITEM_COUNT_BUCKET_SIZE: u32 = 20;
 
@@ -67,8 +65,7 @@ impl ItemAssetStore {
             oxicode::serde::decode_from_slice(&palette_table_data, oxicode::config::standard())
                 .unwrap();
 
-        let tb = TextureBind::default();
-        let bind_group = tb.to_bind_group(
+        let bind_group = TextureBind::to_bind_group(
             device,
             &diffuse,
             &palette,
@@ -136,26 +133,18 @@ impl ItemAssetStore {
 impl ItemBatch {
     pub fn new(device: &wgpu::Device, store: &ItemAssetStore) -> Self {
         let vertices = crate::make_quad(512, 512).to_vec();
-        let batch = SharedInstanceBatch::new(device, vertices, store.bind_group.clone());
         Self {
-            instances: batch,
-            handles: std::sync::Mutex::new(FxHashMap::default()),
+            batch: SpriteBatch::new(device, vertices, store.bind_group.clone()),
         }
     }
 
     /// Clear all item instances.
     pub fn clear(&self) {
-        self.instances.clear();
-        self.handles.lock().unwrap().clear();
+        self.batch.clear();
     }
 
     pub fn clear_and_unload(&self, store: &mut ItemAssetStore) {
-        let mut handles = self.handles.lock().unwrap();
-        for sprite_id in handles.values() {
-            store.unload_sprite(*sprite_id);
-        }
-        handles.clear();
-        self.instances.clear();
+        self.batch.clear_and_unload(|sprite_id| store.unload_sprite(*sprite_id));
     }
 
     pub fn add_item(
@@ -220,74 +209,19 @@ impl ItemBatch {
                 return None;
             }
         }
-        let allocation = sheet.allocations[frame_index].as_ref()?;
-        let frame = &sheet.epf.frames[frame_index];
-        let frame_w = (frame.right - frame.left) as f32;
-        let frame_h = (frame.bottom - frame.top) as f32;
+        let instance = get_instance_for_frame(&store.palette_table, sheet, &item, frame_index)?;
 
-        let atlas_w = ITEM_ATLAS_WIDTH as f32;
-        let atlas_h = ITEM_ATLAS_HEIGHT as f32;
-        let world_pos = get_isometric_coordinate(item.x as f32, item.y as f32);
-
-        let epf_w = sheet.epf.width as f32;
-        let epf_h = sheet.epf.height as f32;
-
-        let offset_x = -(epf_w / 2.0).floor() + frame.left as f32;
-        let offset_y = -(epf_h / 2.0).floor() + frame.top as f32 - 2.0;
-
-        let item_offset = Vec2::new(offset_x, offset_y);
-
-        // Use spawn_order for z-ordering (set by network receive order)
-        // Modulo ensures we stay within ITEM_Z_RANGE even if spawn_order exceeds bucket size
-        let item_order = item.spawn_order.min(ITEM_COUNT_BUCKET_SIZE as u8 - 1);
-        let z_within_tile = (item_order as f32 / ITEM_COUNT_BUCKET_SIZE as f32) * ITEM_Z_RANGE;
-        let z = calculate_tile_z(item.x as f32, item.y as f32, z_within_tile);
-
-        let instance = Instance::with_texture_atlas(
-            (world_pos + item_offset).extend(z),
-            Vec2::new(
-                allocation.rectangle.min.x as f32 / atlas_w,
-                allocation.rectangle.min.y as f32 / atlas_h,
-            ),
-            Vec2::new(
-                (allocation.rectangle.min.x as f32 + frame_w) / atlas_w,
-                (allocation.rectangle.min.y as f32 + frame_h) / atlas_h,
-            ),
-            Vec2::new(frame_w / 512., frame_h / 512.),
-            (store
-                .palette_table
-                .get(&item.sprite)
-                .copied()
-                .unwrap_or_default() as f32
-                + 0.5)
-                / 256.,
-            -1.,
-            false,
-            false,
-            InstanceFlag::None,
-        );
-
-        let idx = self.instances.add(queue, instance)?;
+        let idx = self.batch.add_instance(queue, instance)?;
         let handle = ItemInstanceHandle {
             index: idx,
             sprite_id: item.sprite,
         };
-        self.handles
-            .lock()
-            .unwrap()
-            .insert(handle.index, handle.sprite_id);
+        self.batch.insert_handle(handle.index, handle.sprite_id);
         Some(handle)
     }
 
-    pub fn render(&self, render_pass: &mut wgpu::RenderPass) {
-        let batch = &self.instances;
-        let instance_count = batch.len();
-        if instance_count > 0 {
-            render_pass.set_bind_group(0, &batch.bind_group, &[]);
-            render_pass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
-            render_pass.set_vertex_buffer(1, batch.instance_buffer.slice(..));
-            render_pass.draw(0..batch.vertices.len() as u32, 0..instance_count as u32);
-        }
+    pub fn render<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
+        self.batch.draw(render_pass);
     }
 
     pub fn update_item(
@@ -303,56 +237,13 @@ impl ItemBatch {
         let Some(sheet) = store.loaded_sheets.get(&sheet_index) else {
             return;
         };
-        let Some(allocation) = sheet.allocations.get(frame_index).and_then(|a| a.as_ref()) else {
+
+        let Some(instance) = get_instance_for_frame(&store.palette_table, sheet, &item, frame_index)
+        else {
             return;
         };
 
-        let frame = &sheet.epf.frames[frame_index];
-        let frame_w = (frame.right - frame.left) as f32;
-        let frame_h = (frame.bottom - frame.top) as f32;
-
-        let atlas_w = ITEM_ATLAS_WIDTH as f32;
-        let atlas_h = ITEM_ATLAS_HEIGHT as f32;
-        let world_pos = get_isometric_coordinate(item.x as f32, item.y as f32);
-
-        let epf_w = sheet.epf.width as f32;
-        let epf_h = sheet.epf.height as f32;
-
-        let offset_x = -(epf_w / 2.0).floor() + frame.left as f32;
-        let offset_y = -(epf_h / 2.0).floor() + frame.top as f32 - 2.0;
-
-        let item_offset = Vec2::new(offset_x, offset_y);
-
-        // Apply modulo to ensure z stays within ITEM_Z_RANGE
-        let item_order = item.spawn_order.min(ITEM_COUNT_BUCKET_SIZE as u8 - 1);
-        let z_within_tile = (item_order as f32 / ITEM_COUNT_BUCKET_SIZE as f32) * ITEM_Z_RANGE;
-        let z = calculate_tile_z(item.x as f32, item.y as f32, z_within_tile);
-
-        let instance = Instance::with_texture_atlas(
-            (world_pos + item_offset).extend(z),
-            Vec2::new(
-                allocation.rectangle.min.x as f32 / atlas_w,
-                allocation.rectangle.min.y as f32 / atlas_h,
-            ),
-            Vec2::new(
-                (allocation.rectangle.min.x as f32 + frame_w) / atlas_w,
-                (allocation.rectangle.min.y as f32 + frame_h) / atlas_h,
-            ),
-            Vec2::new(frame_w / 512., frame_h / 512.),
-            (store
-                .palette_table
-                .get(&item.sprite)
-                .copied()
-                .unwrap_or_default() as f32
-                + 0.5)
-                / 256.,
-            -1.,
-            false,
-            false,
-            InstanceFlag::None,
-        );
-
-        self.instances.update(queue, handle.index, instance);
+        self.batch.update_instance(queue, handle.index, instance);
     }
 
     pub fn remove_item(
@@ -361,9 +252,69 @@ impl ItemBatch {
         store: &mut ItemAssetStore,
         handle: ItemInstanceHandle,
     ) {
-        self.instances.remove(queue, handle.index);
+        self.batch.remove_instance(queue, handle.index);
         store.unload_sprite(handle.sprite_id);
-
-        self.handles.lock().unwrap().remove(&handle.index);
     }
+}
+
+/// Build the GPU instance for an item at its current position/sprite.
+///
+/// Shared by `add_item` and `update_item` so the instance construction stays in
+/// one place.
+fn get_instance_for_frame(
+    palette_table: &rangemap::RangeMap<u16, u16>,
+    sheet: &LoadedItemSheet,
+    item: &Item,
+    frame_index: usize,
+) -> Option<Instance> {
+    let allocation = sheet.allocations.get(frame_index)?.as_ref()?;
+    let frame = &sheet.epf.frames[frame_index];
+    let frame_w = (frame.right - frame.left) as f32;
+    let frame_h = (frame.bottom - frame.top) as f32;
+
+    let atlas_w = ITEM_ATLAS_WIDTH as f32;
+    let atlas_h = ITEM_ATLAS_HEIGHT as f32;
+    let world_pos = get_isometric_coordinate(item.x as f32, item.y as f32);
+
+    let epf_w = sheet.epf.width as f32;
+    let epf_h = sheet.epf.height as f32;
+
+    let offset_x = -(epf_w / 2.0).floor() + frame.left as f32;
+    let offset_y = -(epf_h / 2.0).floor() + frame.top as f32 - 2.0;
+
+    let item_offset = Vec2::new(offset_x, offset_y);
+
+    // Use spawn_order for z-ordering (set by network receive order).
+    // Modulo ensures we stay within ITEM_Z_RANGE even if spawn_order exceeds bucket size.
+    let item_order = item.spawn_order.min(ITEM_COUNT_BUCKET_SIZE as u8 - 1);
+    let z_within_tile = (item_order as f32 / ITEM_COUNT_BUCKET_SIZE as f32) * ITEM_Z_RANGE;
+    let z = calculate_tile_z(item.x as f32, item.y as f32, z_within_tile);
+
+    let (tex_min, tex_max) = atlas_uv(
+        Vec2::new(
+            allocation.rectangle.min.x as f32,
+            allocation.rectangle.min.y as f32,
+        ),
+        frame_w,
+        frame_h,
+        atlas_w,
+        atlas_h,
+    );
+
+    Some(Instance::with_texture_atlas(
+        (world_pos + item_offset).extend(z),
+        tex_min,
+        tex_max,
+        Vec2::new(frame_w / 512., frame_h / 512.),
+        (palette_table
+            .get(&item.sprite)
+            .copied()
+            .unwrap_or_default() as f32
+            + 0.5)
+            / 256.,
+        -1.,
+        false,
+        false,
+        InstanceFlag::None,
+    ))
 }

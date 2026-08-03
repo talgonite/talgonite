@@ -2,7 +2,6 @@ pub mod types;
 pub use types::*;
 
 use formats::{
-    epf::AnimationDirection,
     mpf::{MpfAnimation, MpfAnimationType, MpfFile},
 };
 use glam::{Vec2, Vec3};
@@ -10,13 +9,14 @@ use rustc_hash::FxHashMap;
 use wgpu;
 
 use crate::{
-    instance::{InstanceFlag, SharedInstanceBatch},
+    instance::InstanceFlag,
     make_quad,
-    scene::utils::calculate_tile_z,
+    scene::utils::{atlas_uv, calculate_tile_z, direction_to_orientation},
 };
 use crate::{
     scene::{
-        Instance, get_isometric_coordinate, texture_atlas::TextureAtlas, texture_bind::TextureBind,
+        Instance, Z_CREATURES, get_isometric_coordinate, sprite::SpriteBatch,
+        texture_atlas::TextureAtlas, texture_bind::TextureBind,
     },
     texture,
 };
@@ -37,8 +37,7 @@ pub struct CreatureAssetStore {
 }
 
 pub struct CreatureBatch {
-    pub(crate) instances: SharedInstanceBatch,
-    handles: std::sync::Mutex<FxHashMap<usize, u16>>,
+    batch: SpriteBatch<u16>,
 }
 
 impl CreatureAssetStore {
@@ -60,8 +59,7 @@ impl CreatureAssetStore {
             texture::Texture::from_ktx2_rgba8(device, queue, "creature_palette", &palette_data)
                 .unwrap();
 
-        let tb = TextureBind::default();
-        let bind_group = tb.to_bind_group(
+        let bind_group = TextureBind::to_bind_group(
             device,
             &diffuse_texture,
             &palette_texture,
@@ -97,26 +95,17 @@ impl CreatureAssetStore {
 impl CreatureBatch {
     pub fn new(device: &wgpu::Device, store: &CreatureAssetStore) -> Self {
         let vertices = make_quad(VERTEX_WIDTH as u32, VERTEX_HEIGHT as u32).to_vec();
-        let creature_batch = SharedInstanceBatch::new(device, vertices, store.bind_group.clone());
-
         Self {
-            instances: creature_batch,
-            handles: std::sync::Mutex::new(FxHashMap::default()),
+            batch: SpriteBatch::new(device, vertices, store.bind_group.clone()),
         }
     }
 
     pub fn clear(&self) {
-        self.instances.clear();
-        self.handles.lock().unwrap().clear();
+        self.batch.clear();
     }
 
     pub fn clear_and_unload(&self, store: &mut CreatureAssetStore) {
-        let mut handles = self.handles.lock().unwrap();
-        for sprite_id in handles.values() {
-            store.unload_sprite(*sprite_id);
-        }
-        handles.clear();
-        self.instances.clear();
+        self.batch.clear_and_unload(|sprite_id| store.unload_sprite(*sprite_id));
     }
 
     pub fn add_creature(
@@ -180,18 +169,15 @@ impl CreatureBatch {
             get_instance_for_frame(loaded_sprite, frame_index as usize, Vec2::new(x, y), flip)?;
 
         let instance_index = self
-            .instances
-            .add(queue, instance)
+            .batch
+            .add_instance(queue, instance)
             .ok_or_else(|| anyhow::anyhow!("Failed to add creature instance"))?;
 
         let handle = CreateInstanceHandle {
             index: instance_index,
             sprite_id,
         };
-        self.handles
-            .lock()
-            .unwrap()
-            .insert(handle.index, handle.sprite_id);
+        self.batch.insert_handle(handle.index, handle.sprite_id);
 
         Ok(AddCreatureResult {
             handle,
@@ -205,10 +191,8 @@ impl CreatureBatch {
         store: &mut CreatureAssetStore,
         handle: CreateInstanceHandle,
     ) {
-        self.instances.remove(queue, handle.index);
+        self.batch.remove_instance(queue, handle.index);
         store.unload_sprite(handle.sprite_id);
-
-        self.handles.lock().unwrap().remove(&handle.index);
     }
 
     pub fn update_creature(
@@ -231,32 +215,15 @@ impl CreatureBatch {
                 get_instance_for_frame(loaded_sprite, frame_index, Vec2::new(x, y), flip)
             {
                 instance.tint = tint;
-                self.instances.update(queue, handle.index, instance);
+                self.batch.update_instance(queue, handle.index, instance);
                 return true;
             }
         }
         false
     }
 
-    pub fn render(&self, render_pass: &mut wgpu::RenderPass) {
-        let batch = &self.instances;
-        let instance_count = batch.len();
-        if instance_count > 0 {
-            render_pass.set_bind_group(0, &batch.bind_group, &[]);
-            render_pass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
-            render_pass.set_vertex_buffer(1, batch.instance_buffer.slice(..));
-            render_pass.draw(0..batch.vertices.len() as u32, 0..instance_count as u32);
-        }
-    }
-}
-
-fn direction_to_orientation(dir: u8) -> (AnimationDirection, bool) {
-    match dir {
-        0 => (AnimationDirection::Away, false),    // Up
-        1 => (AnimationDirection::Towards, false), // Right
-        2 => (AnimationDirection::Towards, true),  // Down
-        3 => (AnimationDirection::Away, true),     // Left
-        _ => (AnimationDirection::Towards, false),
+    pub fn render<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
+        self.batch.draw(render_pass);
     }
 }
 
@@ -285,18 +252,23 @@ fn get_instance_for_frame(
         (frame_detail.center_x - frame_detail.left) as f32
     };
 
+    let (tex_min, tex_max) = atlas_uv(
+        Vec2::new(
+            first_frame.rectangle.min.x as f32,
+            first_frame.rectangle.min.y as f32,
+        ),
+        frame_w as f32,
+        frame_h as f32,
+        ATLAS_WIDTH as f32,
+        ATLAS_HEIGHT as f32,
+    );
+
     Ok(Instance::with_texture_atlas(
         (get_isometric_coordinate(position.x, position.y)
             - Vec2::new(offset_x, (frame_detail.center_y - frame_detail.top) as f32))
-        .extend(calculate_tile_z(position.x, position.y, 0.21)),
-        Vec2::new(
-            first_frame.rectangle.min.x as f32 / ATLAS_WIDTH as f32,
-            first_frame.rectangle.min.y as f32 / ATLAS_HEIGHT as f32,
-        ),
-        Vec2::new(
-            (first_frame.rectangle.min.x + (frame_w as i32)) as f32 / ATLAS_WIDTH as f32,
-            (first_frame.rectangle.min.y + (frame_h as i32)) as f32 / ATLAS_HEIGHT as f32,
-        ),
+        .extend(calculate_tile_z(position.x, position.y, Z_CREATURES)),
+        tex_min,
+        tex_max,
         Vec2::new(
             frame_w as f32 / VERTEX_WIDTH as f32,
             frame_h as f32 / VERTEX_HEIGHT as f32,

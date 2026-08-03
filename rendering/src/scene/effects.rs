@@ -9,7 +9,7 @@ use glam::Vec2;
 use crate::instance::InstanceFlag;
 use crate::scene::texture_atlas::TextureAtlas;
 use crate::scene::utils::calculate_tile_z;
-use crate::scene::{TILE_HEIGHT, get_isometric_coordinate};
+use crate::scene::{TILE_HEIGHT, Z_EFFECTS, get_isometric_coordinate};
 use crate::{Instance, InstanceRaw, SharedInstanceBatch, Vertex, make_quad, texture};
 
 const ATLAS_WIDTH: usize = 2048;
@@ -420,7 +420,7 @@ impl EffectManager {
         let (offset_x, offset_y) = *loaded.frame_offsets.get(frame_index)?;
 
         let world_pos = get_isometric_coordinate(x, y);
-        let z = calculate_tile_z(x, y, 1.0) + z_offset;
+        let z = calculate_tile_z(x, y, Z_EFFECTS) + z_offset;
 
         let alloc = match loaded.allocations.get(frame_index).and_then(|a| a.as_ref()) {
             Some(alloc) => alloc,
@@ -509,19 +509,12 @@ impl EffectManager {
         render_pass: &mut wgpu::RenderPass<'a>,
         camera_bind_group: &'a wgpu::BindGroup,
     ) {
-        let instance_count = self.instances.len();
-        if instance_count == 0 {
+        if self.instances.len() == 0 {
             return;
         }
 
         render_pass.set_pipeline(&self.pipeline);
-        render_pass.set_bind_group(0, &self.instances.bind_group, &[]);
         render_pass.set_bind_group(1, camera_bind_group, &[]);
-        render_pass.set_vertex_buffer(0, self.instances.vertex_buffer.slice(..));
-        render_pass.set_vertex_buffer(1, self.instances.instance_buffer.slice(..));
-        render_pass.draw(
-            0..self.instances.vertices.len() as u32,
-            0..instance_count as u32,
-        );
+        self.instances.draw(render_pass);
     }
 }

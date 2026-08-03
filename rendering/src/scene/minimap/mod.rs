@@ -55,7 +55,6 @@ pub struct MinimapMarkerHandle {
 pub struct MinimapRenderer {
     pipeline: wgpu::RenderPipeline,
     tile_bind_group: wgpu::BindGroup,
-    marker_bind_group: wgpu::BindGroup,
     tile_vertices: Vec<Vertex>,
     atlas_slices: [Option<MinimapSlice>; 16],
     tile_batch: Option<InstanceBatch>,
@@ -211,7 +210,6 @@ impl MinimapRenderer {
         Ok(Self {
             pipeline,
             tile_bind_group,
-            marker_bind_group,
             tile_vertices,
             atlas_slices,
             tile_batch: None,
@@ -285,25 +283,19 @@ impl MinimapRenderer {
         self.markers.remove(queue, handle.index);
     }
 
-    pub fn render(
-        &self,
-        render_pass: &mut wgpu::RenderPass<'_>,
-        camera_bind_group: &wgpu::BindGroup,
+    pub fn render<'a>(
+        &'a self,
+        render_pass: &mut wgpu::RenderPass<'a>,
+        camera_bind_group: &'a wgpu::BindGroup,
     ) {
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(1, camera_bind_group, &[]);
 
         if let Some(tile_batch) = &self.tile_batch {
-            render_pass.set_bind_group(0, &tile_batch.bind_group, &[]);
-            render_pass.set_vertex_buffer(0, tile_batch.vertex_buffer.slice(..));
-            render_pass.set_vertex_buffer(1, tile_batch.instance_buffer.slice(..));
-            render_pass.draw(
-                0..tile_batch.vertices.len() as u32,
-                0..tile_batch.instances.len() as u32,
-            );
+            tile_batch.draw(render_pass);
         }
 
-        render_shared_batch(render_pass, &self.markers, &self.marker_bind_group);
+        self.markers.draw(render_pass);
     }
 
     fn tile_instances(&self, tile: MinimapTile) -> Vec<Instance> {
@@ -402,22 +394,6 @@ fn dual_mask_cell(dual_mask: u8) -> (u32, u32) {
 pub fn minimap_tile_atlas_index(dual_mask: u8) -> u8 {
     let (col, row) = dual_mask_cell(dual_mask);
     (row * TILE_GRID_DIMENSION + col) as u8
-}
-
-fn render_shared_batch(
-    render_pass: &mut wgpu::RenderPass<'_>,
-    batch: &SharedInstanceBatch,
-    bind_group: &wgpu::BindGroup,
-) {
-    let instance_count = batch.len();
-    if instance_count == 0 {
-        return;
-    }
-
-    render_pass.set_bind_group(0, bind_group, &[]);
-    render_pass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
-    render_pass.set_vertex_buffer(1, batch.instance_buffer.slice(..));
-    render_pass.draw(0..batch.vertices.len() as u32, 0..instance_count as u32);
 }
 
 #[cfg(test)]

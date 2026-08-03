@@ -367,6 +367,14 @@ fn draw_frame(
 
     // world scene pass (only runs while InGame)
     {
+        // wgpu requires every bind group / vertex buffer referenced by a render
+        // pass to outlive it, so borrow the renderer resources for the whole pass.
+        let map_renderer = map_renderer_state.as_ref().map(|m| &m.map_renderer);
+        let item_batch = item_batch_state.as_ref().map(|im| &im.batch);
+        let creature_batch = creature_batch_state.as_ref().map(|cm| &cm.batch);
+        let player_batch = player_batch_state.as_ref().map(|pb| &pb.batch);
+        let effect_manager = effect_manager_state.as_ref().map(|em| &em.effect_manager);
+
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &view,
@@ -390,21 +398,20 @@ fn draw_frame(
         render_pass.set_stencil_reference(0);
         render_pass.set_pipeline(&render_hardware.scene.pipeline);
         render_pass.set_bind_group(1, &camera.camera.camera_bind_group, &[]);
-        if let Some(m) = map_renderer_state {
-            m.map_renderer.render(&mut render_pass);
+        if let Some(m) = map_renderer {
+            m.render(&mut render_pass);
         }
-        if let Some(im) = &item_batch_state {
-            im.batch.render(&mut render_pass);
+        if let Some(im) = item_batch {
+            im.render(&mut render_pass);
         }
-        if let Some(cm) = creature_batch_state {
-            cm.batch.render(&mut render_pass);
+        if let Some(cm) = creature_batch {
+            cm.render(&mut render_pass);
         }
-        if let Some(pb) = &player_batch_state {
-            pb.batch.render(&mut render_pass);
+        if let Some(pb) = player_batch {
+            pb.render(&mut render_pass);
         }
-        if let Some(em) = &effect_manager_state {
-            em.effect_manager
-                .render(&mut render_pass, &camera.camera.camera_bind_group);
+        if let Some(em) = effect_manager {
+            em.render(&mut render_pass, &camera.camera.camera_bind_group);
         }
     }
 

@@ -14,7 +14,8 @@ use crate::{
         AnimationInstanceData, InstanceReference, TILE_HEIGHT, TILE_WIDTH, TILEMAP_COLUMNS,
         TILEMAP_HEIGHT, TILEMAP_PAGE_HEIGHT, TILEMAP_PAGE_WIDTH, TILEMAP_TILE_HEIGHT,
         TILEMAP_TILE_WIDTH, TILEMAP_TILES_PER_PAGE_ROWS, TILEMAP_TILES_PER_ROW, WALL_ATLAS_HEIGHT,
-        WALL_ATLAS_WIDTH, WorldAnimation, WorldAnimationInstanceData, make_bind_group,
+        WALL_ATLAS_WIDTH, WorldAnimation, WorldAnimationInstanceData, texture_bind::TextureBind,
+        Z_FLOOR, Z_WALLS,
         map::{
             floor::FloorTile,
             map_tile::MapTile,
@@ -91,12 +92,9 @@ impl MapRenderer {
         }
     }
 
-    pub fn render(&self, render_pass: &mut wgpu::RenderPass<'_>) {
+    pub fn render<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
         for batch in &self.instance_batches {
-            render_pass.set_bind_group(0, &batch.bind_group, &[]);
-            render_pass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
-            render_pass.set_vertex_buffer(1, batch.instance_buffer.slice(..));
-            render_pass.draw(0..batch.vertices.len() as _, 0..batch.instances.len() as _);
+            batch.draw(render_pass);
         }
     }
 
@@ -237,7 +235,7 @@ impl MapRenderer {
             let tilemap_x = tile_id - (tilemap_y * TILEMAP_COLUMNS);
             let coord = FloorTile::get_position(x as f32, y as f32);
             Instance {
-                position: coord.extend(0.0),
+                position: coord.extend(Z_FLOOR),
                 tex_min: Vec2::new(
                     tilemap_x as f32 * TILEMAP_TILE_WIDTH,
                     tilemap_y as f32 * TILEMAP_TILE_HEIGHT,
@@ -421,7 +419,7 @@ impl MapRenderer {
             let coord = wall.side.get_position(x, y, height as f32);
             let palette_offset = *wall_palette_table.get(&wall.palette_index()).unwrap_or(&0);
             Instance {
-                position: coord.extend(calculate_tile_z(x, y, 0.98)),
+                position: coord.extend(calculate_tile_z(x, y, Z_WALLS)),
                 tex_min: Vec2::new(
                     a.rectangle.min.x as f32 / WALL_ATLAS_WIDTH as f32,
                     a.rectangle.min.y as f32 / WALL_ATLAS_HEIGHT as f32,
@@ -603,11 +601,8 @@ impl MapRenderer {
         )
         .unwrap();
 
-        let texture_bind_group_layout = Self::make_texture_bind_group_layout(&device);
-
-        let tile_bind_group = make_bind_group(
+        let tile_bind_group = TextureBind::to_bind_group(
             device,
-            &texture_bind_group_layout,
             &diffuse_texture,
             &palette_texture,
             &texture::Texture::empty_view(device, "tile_empty"),
@@ -695,9 +690,8 @@ impl MapRenderer {
                 }
             }
 
-            let wall_bind_group = make_bind_group(
+            let wall_bind_group = TextureBind::to_bind_group(
                 device,
-                &texture_bind_group_layout,
                 &diffuse_texture,
                 &palette_texture,
                 &texture::Texture::empty_view(device, "wall_empty"),
@@ -714,55 +708,5 @@ impl MapRenderer {
         map.animations.extend(map.wall_animations);
 
         MapRenderer::new(instance_batches, map.animations, map.wall_toggle_animations)
-    }
-
-    fn make_texture_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
-        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 4,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    },
-                    count: None,
-                },
-            ],
-            label: Some("texture_bind_group_layout"),
-        })
     }
 }

@@ -35,6 +35,40 @@ fn player_instance_state(
     }
 }
 
+/// The hover tint applied to an entity while it is being targeted, or zero.
+fn resolve_hover_tint(targeting_hover: Option<&TargetingHover>) -> Vec3 {
+    targeting_hover.map(|t| t.tint).unwrap_or(Vec3::ZERO)
+}
+
+/// Build the renderer's item description from ECS components.
+fn build_item(
+    position: &Position,
+    sprite: &ItemSprite,
+    entity_id: &EntityId,
+) -> rendering::scene::items::Item {
+    rendering::scene::items::Item {
+        id: entity_id.id,
+        x: position.x as u16,
+        y: position.y as u16,
+        sprite: sprite.id,
+        color: sprite.color,
+        spawn_order: sprite.spawn_order,
+    }
+}
+
+/// Collect the union of entities from `changed` and entities whose hover was
+/// recently removed, used to decide which sprites need a GPU update.
+fn collect_dirty_entities(
+    changed: impl IntoIterator<Item = Entity>,
+    removed_hovers: &mut RemovedComponents<TargetingHover>,
+) -> std::collections::HashSet<Entity> {
+    let mut dirty = changed.into_iter().collect::<std::collections::HashSet<_>>();
+    for entity in removed_hovers.read() {
+        dirty.insert(entity);
+    }
+    dirty
+}
+
 fn preload_player_sprite_keys(
     renderer: &RendererState,
     game_files: &GameFiles,
@@ -437,14 +471,7 @@ pub fn sync_items_to_renderer(
             &renderer.queue,
             &mut store.store,
             &files.inner().archive(),
-            rendering::scene::items::Item {
-                id: entity_id.id,
-                x: position.x as u16,
-                y: position.y as u16,
-                sprite: sprite.id,
-                color: sprite.color,
-                spawn_order: sprite.spawn_order,
-            },
+            build_item(position, sprite, entity_id),
         ) {
             commands.entity(entity).insert(ItemInstance { handle });
         }
@@ -466,14 +493,7 @@ pub fn update_items_to_renderer(
             &renderer.queue,
             &items_store.store,
             &instance.handle,
-            rendering::scene::items::Item {
-                id: entity_id.id,
-                x: position.x as u16,
-                y: position.y as u16,
-                sprite: sprite.id,
-                color: sprite.color,
-                spawn_order: sprite.spawn_order,
-            },
+            build_item(position, sprite, entity_id),
         );
     }
 }
@@ -557,7 +577,7 @@ pub fn sync_players_to_renderer(
             Gender::Female
         };
 
-        let tint = targeting_hover.map(|t| t.tint).unwrap_or(Vec3::ZERO);
+        let tint = resolve_hover_tint(targeting_hover);
         let flags = player_instance_state(render_state, local_player.is_some(), &settings);
         let result = batch_state.batch.add_player_sprite(
             &shared_state.queue,
@@ -628,12 +648,7 @@ pub fn update_player_sprites(
     time: Res<Time>,
 ) {
     let settings_changed = settings.is_changed();
-    let mut dirty_parents = parent_dirty_query
-        .iter()
-        .collect::<std::collections::HashSet<_>>();
-    for entity in removed_hovers.read() {
-        dirty_parents.insert(entity);
-    }
+    let dirty_parents = collect_dirty_entities(parent_dirty_query.iter(), &mut removed_hovers);
 
     let dirty_children = child_dirty_query
         .iter()
@@ -655,7 +670,7 @@ pub fn update_player_sprites(
         let animation_state =
             resolve_player_animation_state(animation, animation_timer, time.elapsed_secs());
 
-        let tint = targeting_hover.map(|t| t.tint).unwrap_or(Vec3::ZERO);
+        let tint = resolve_hover_tint(targeting_hover);
         let flags = player_instance_state(render_state, local_player.is_some(), &settings);
         let is_towards = matches!(*direction, Direction::Right | Direction::Down);
         let direction = *direction as u8;
@@ -761,12 +776,7 @@ pub fn creature_movement_sync(
 ) {
     use formats::mpf::MpfAnimationType;
 
-    let mut to_update = changed_query
-        .iter()
-        .collect::<std::collections::HashSet<_>>();
-    for entity in removed_hovers.read() {
-        to_update.insert(entity);
-    }
+    let to_update = collect_dirty_entities(changed_query.iter(), &mut removed_hovers);
 
     for entity in to_update {
         if let Ok((creature, pos, dir, anim, targeting_hover, _entity_id)) = query.get(entity) {
@@ -779,7 +789,7 @@ pub fn creature_movement_sync(
             };
 
             if let Some(mpf_anim) = creature.instance.get_animation(actual_anim_type) {
-                let tint = targeting_hover.map(|t| t.tint).unwrap_or(Vec3::ZERO);
+                let tint = resolve_hover_tint(targeting_hover);
                 creatures_batch.batch.update_creature(
                     &renderer.queue,
                     &creatures_store.store,

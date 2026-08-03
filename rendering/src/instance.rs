@@ -257,6 +257,17 @@ impl InstanceBatch {
         Self::new(device, Vec::new(), vertices, bind_group)
     }
 
+    /// Draw all instances with the batch's vertex buffer, instance buffer, and bind group.
+    pub fn draw<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
+        if self.instances.is_empty() {
+            return;
+        }
+        render_pass.set_bind_group(0, &self.bind_group, &[]);
+        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+        render_pass.draw(0..self.vertices.len() as u32, 0..self.instances.len() as u32);
+    }
+
     pub fn update_instance(&mut self, queue: &wgpu::Queue, index: usize, instance: Instance) {
         if index < self.instances.len() {
             let raw_instance = instance.to_raw();
@@ -361,6 +372,18 @@ impl SharedInstanceBatch {
 
     pub fn len(&self) -> usize {
         self.next_index.load(Ordering::Relaxed)
+    }
+
+    /// Draw all live instances with the batch's vertex buffer, instance buffer, and bind group.
+    pub fn draw<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
+        let instance_count = self.len();
+        if instance_count == 0 {
+            return;
+        }
+        render_pass.set_bind_group(0, &self.bind_group, &[]);
+        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+        render_pass.draw(0..self.vertices.len() as u32, 0..instance_count as u32);
     }
 
     pub fn clear(&self) {

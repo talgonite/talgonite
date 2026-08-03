@@ -1,4 +1,5 @@
 use super::constants::{TILE_HEIGHT_HALF, TILE_WIDTH_HALF};
+use formats::epf::AnimationDirection;
 use glam::Vec2;
 
 pub fn get_isometric_coordinate(x: f32, y: f32) -> Vec2 {
@@ -29,6 +30,39 @@ pub fn tile_to_screen(tile: Vec2, camera_pos: Vec2, window_size: Vec2, zoom: f32
     let iso_coords = get_isometric_coordinate(tile.x, tile.y);
     let offset = Vec2::new(0., TILE_HEIGHT_HALF as f32);
     (iso_coords - camera_pos - offset) * zoom + window_size * 0.5
+}
+
+/// Map a direction byte (0=up, 1=right, 2=down, 3=left) to an animation
+/// orientation plus a horizontal-flip flag. Shared by players and creatures.
+pub fn direction_to_orientation(dir: u8) -> (AnimationDirection, bool) {
+    match dir {
+        0 => (AnimationDirection::Away, false),
+        1 => (AnimationDirection::Towards, false),
+        2 => (AnimationDirection::Towards, true),
+        3 => (AnimationDirection::Away, true),
+        _ => (AnimationDirection::Towards, false),
+    }
+}
+
+/// Convert an atlas allocation rectangle (in pixels) into normalized UV min/max.
+///
+/// `allocation_min` is the top-left corner of the sprite in the atlas,
+/// `frame_w`/`frame_h` are the sprite dimensions in pixels, and
+/// `atlas_w`/`atlas_h` are the full atlas dimensions in pixels.
+pub fn atlas_uv(
+    allocation_min: Vec2,
+    frame_w: f32,
+    frame_h: f32,
+    atlas_w: f32,
+    atlas_h: f32,
+) -> (Vec2, Vec2) {
+    (
+        Vec2::new(allocation_min.x / atlas_w, allocation_min.y / atlas_h),
+        Vec2::new(
+            (allocation_min.x + frame_w) / atlas_w,
+            (allocation_min.y + frame_h) / atlas_h,
+        ),
+    )
 }
 
 /// Calculate Z depth for a tile at (x, y) with an intra-tile offset.

@@ -5,7 +5,7 @@ use wgpu;
 pub struct TextureBind;
 
 impl TextureBind {
-    fn to_bind_group_layout(&self, device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    pub fn to_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
@@ -56,13 +56,12 @@ impl TextureBind {
     }
 
     pub fn to_bind_group(
-        &self,
         device: &wgpu::Device,
         diffuse: &texture::Texture,
         palette: &texture::Texture,
         dye_texture_view: &wgpu::TextureView,
     ) -> wgpu::BindGroup {
-        let layout = self.to_bind_group_layout(device);
+        let layout = Self::to_bind_group_layout(device);
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &layout,
             entries: &[
@@ -84,7 +83,7 @@ impl TextureBind {
                 },
                 wgpu::BindGroupEntry {
                     binding: 4,
-                    resource: wgpu::BindingResource::TextureView(&dye_texture_view),
+                    resource: wgpu::BindingResource::TextureView(dye_texture_view),
                 },
             ],
             label: None,
