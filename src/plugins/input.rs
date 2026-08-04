@@ -79,9 +79,9 @@ fn hotbar_panel_category(panel: HotbarPanel) -> Option<SlotPanelType> {
         HotbarPanel::Inventory => Some(SlotPanelType::Item),
         HotbarPanel::Skills => Some(SlotPanelType::Skill),
         HotbarPanel::Spells => Some(SlotPanelType::Spell),
-        HotbarPanel::Hotbar1
-        | HotbarPanel::Hotbar2
-        | HotbarPanel::Hotbar3 => Some(SlotPanelType::Hotbar),
+        HotbarPanel::Hotbar1 | HotbarPanel::Hotbar2 | HotbarPanel::Hotbar3 => {
+            Some(SlotPanelType::Hotbar)
+        }
     }
 }
 

@@ -2,8 +2,8 @@
 
 use super::super::components::*;
 use crate::{
-    Camera, MapRendererState, MinimapCacheState, MinimapRendererState,
-    RendererState, events::MapEvent, game_files::GameFiles,
+    Camera, MapRendererState, MinimapCacheState, MinimapRendererState, RendererState,
+    events::MapEvent, game_files::GameFiles,
 };
 use bevy::prelude::*;
 use rendering::scene::map::renderer::MapRenderer;

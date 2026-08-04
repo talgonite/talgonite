@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use packets::server::EquipmentSlot;
 
 use crate::slint_support::assets::{IconKind, SlintAssetLoader};
-use crate::slint_support::state_bridge::{u8_to_social_status, SlintAssetLoaderRes, SlintWindow};
+use crate::slint_support::state_bridge::{SlintAssetLoaderRes, SlintWindow, u8_to_social_status};
 use crate::{EquipmentSlotData, GameState, LegendMarkData, ProfileData};
 
 /// Event emitted when the player wants to show a profile panel
@@ -204,7 +204,8 @@ pub fn sync_profile_to_slint(
         profile.title = slint::SharedString::from(profile_state.title.as_str());
         profile.town = slint::SharedString::from(format!("{:?}", profile_state.nation));
         profile.group_requests_enabled = profile_state.group_open;
-        profile.profile_text = slint::SharedString::from(profile_state.profile_text.to_plain_string());
+        profile.profile_text =
+            slint::SharedString::from(profile_state.profile_text.to_plain_string());
         profile.social_status = u8_to_social_status(profile_state.social_status as u8);
 
         let legend_marks: Vec<LegendMarkData> = profile_state
@@ -304,7 +305,8 @@ pub fn handle_show_self_profile(
         profile.title = slint::SharedString::from(profile_state.title.as_str());
         profile.town = slint::SharedString::from(format!("{:?}", profile_state.nation));
         profile.group_requests_enabled = profile_state.group_open;
-        profile.profile_text = slint::SharedString::from(profile_state.profile_text.to_plain_string());
+        profile.profile_text =
+            slint::SharedString::from(profile_state.profile_text.to_plain_string());
         profile.social_status = u8_to_social_status(profile_state.social_status as u8);
 
         let legend_marks: Vec<LegendMarkData> = profile_state

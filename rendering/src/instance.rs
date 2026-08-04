@@ -265,7 +265,10 @@ impl InstanceBatch {
         render_pass.set_bind_group(0, &self.bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-        render_pass.draw(0..self.vertices.len() as u32, 0..self.instances.len() as u32);
+        render_pass.draw(
+            0..self.vertices.len() as u32,
+            0..self.instances.len() as u32,
+        );
     }
 
     pub fn update_instance(&mut self, queue: &wgpu::Queue, index: usize, instance: Instance) {

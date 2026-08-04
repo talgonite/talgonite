@@ -14,7 +14,7 @@ impl LocalSocialStatus {
         self.pending_send = Some(status);
         self.version = self.version.wrapping_add(1);
     }
-    
+
     pub fn take_pending(&mut self) -> Option<SocialStatus> {
         self.pending_send.take()
     }

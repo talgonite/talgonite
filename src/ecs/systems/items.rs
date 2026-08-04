@@ -20,7 +20,7 @@ pub fn keyboard_item_pickup_system(
     for event in player_actions.read() {
         if let PlayerAction::ItemPickupBelow = event {
             let Some(outbox) = &outbox else {
-            return;
+                return;
             };
 
             // Check the tile the player is currently standing on first
@@ -35,34 +35,34 @@ pub fn keyboard_item_pickup_system(
             let mut item_in_front = None;
 
             for (item_pos, _) in item_query.iter() {
-            let item_tile = item_pos.to_vec2();
+                let item_tile = item_pos.to_vec2();
 
-            // Check if item is at player's position
-            if item_tile.distance_squared(player_tile) < 0.25 {
-                item_underneath = Some((item_pos.x as u16, item_pos.y as u16));
-                break; // Found item underneath, prioritize this
-            }
-            // Check if item is in front of player
-            else if item_in_front.is_none() && item_tile.distance_squared(front_tile) < 0.25 {
-                item_in_front = Some((item_pos.x as u16, item_pos.y as u16));
-            }
+                // Check if item is at player's position
+                if item_tile.distance_squared(player_tile) < 0.25 {
+                    item_underneath = Some((item_pos.x as u16, item_pos.y as u16));
+                    break; // Found item underneath, prioritize this
+                }
+                // Check if item is in front of player
+                else if item_in_front.is_none() && item_tile.distance_squared(front_tile) < 0.25 {
+                    item_in_front = Some((item_pos.x as u16, item_pos.y as u16));
+                }
             }
 
             // Pick up item underneath first, then front
             if let Some((x, y)) = item_underneath.or(item_in_front) {
-            outbox.send(&Pickup {
-                destination_slot: 0,
-                source_point: (x, y),
-            });
-            tracing::info!("Picking up item at ({}, {})", x, y);
+                outbox.send(&Pickup {
+                    destination_slot: 0,
+                    source_point: (x, y),
+                });
+                tracing::info!("Picking up item at ({}, {})", x, y);
             } else {
-            tracing::debug!(
-                "No item found at player position ({}, {}) or in front ({}, {})",
-                player_tile.x,
-                player_tile.y,
-                front_tile.x,
-                front_tile.y
-            );
+                tracing::debug!(
+                    "No item found at player position ({}, {}) or in front ({}, {})",
+                    player_tile.x,
+                    player_tile.y,
+                    front_tile.x,
+                    front_tile.y
+                );
             }
         }
     }

@@ -10,7 +10,9 @@ use tracing::error;
 use crate::{
     instance::InstanceFlag,
     scene::{
-        Instance, Z_ITEMS, get_isometric_coordinate, sprite::SpriteBatch, texture_bind::TextureBind,
+        Instance, Z_ITEMS, get_isometric_coordinate,
+        sprite::SpriteBatch,
+        texture_bind::TextureBind,
         utils::{atlas_uv, calculate_tile_z},
     },
     texture,
@@ -144,7 +146,8 @@ impl ItemBatch {
     }
 
     pub fn clear_and_unload(&self, store: &mut ItemAssetStore) {
-        self.batch.clear_and_unload(|sprite_id| store.unload_sprite(*sprite_id));
+        self.batch
+            .clear_and_unload(|sprite_id| store.unload_sprite(*sprite_id));
     }
 
     pub fn add_item(
@@ -230,7 +233,8 @@ impl ItemBatch {
             return;
         };
 
-        let Some(instance) = get_instance_for_frame(&store.palette_table, sheet, &item, frame_index)
+        let Some(instance) =
+            get_instance_for_frame(&store.palette_table, sheet, &item, frame_index)
         else {
             return;
         };
@@ -298,12 +302,7 @@ fn get_instance_for_frame(
         tex_min,
         tex_max,
         Vec2::new(frame_w / 512., frame_h / 512.),
-        (palette_table
-            .get(&item.sprite)
-            .copied()
-            .unwrap_or_default() as f32
-            + 0.5)
-            / 256.,
+        (palette_table.get(&item.sprite).copied().unwrap_or_default() as f32 + 0.5) / 256.,
         -1.,
         false,
         false,

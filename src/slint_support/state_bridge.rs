@@ -297,8 +297,7 @@ pub fn sync_popup_to_slint(
     };
 
     let state = slint::ComponentHandle::global::<crate::PopupManagerState>(&strong);
-    let ids: Vec<crate::PopupId> =
-        popup_manager.open_ids().map(PopupId::to_slint).collect();
+    let ids: Vec<crate::PopupId> = popup_manager.open_ids().map(PopupId::to_slint).collect();
     state.set_open_popups(slint::ModelRc::new(slint::VecModel::from(ids)));
     let has_modal = popup_manager
         .open_ids()

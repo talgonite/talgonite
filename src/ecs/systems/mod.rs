@@ -3,8 +3,8 @@
 //! Systems are grouped into logical modules and execute in a well-defined order
 //! managed by [`GameSet`].
 
-mod camera;
 mod auto_attack;
+mod camera;
 mod chat;
 mod effects;
 mod entities;
@@ -15,8 +15,8 @@ mod movement;
 mod pathfinding;
 mod rendering;
 
-pub use camera::*;
 pub use auto_attack::*;
+pub use camera::*;
 pub use chat::*;
 pub use effects::*;
 pub use entities::*;

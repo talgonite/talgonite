@@ -2,8 +2,8 @@ use bevy::prelude::*;
 use std::collections::HashMap;
 
 use crate::settings_types::CustomHotBars;
-use crate::{settings::Settings, CurrentSession};
 use crate::webui::ipc::Cooldown;
+use crate::{CurrentSession, settings::Settings};
 
 #[derive(Resource, Default)]
 pub struct HotbarState {

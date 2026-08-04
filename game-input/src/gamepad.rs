@@ -1,6 +1,4 @@
-use bevy::input::gamepad::{
-    GamepadAxis, GamepadButton, GamepadConnectionEvent, RawGamepadEvent,
-};
+use bevy::input::gamepad::{GamepadAxis, GamepadButton, GamepadConnectionEvent, RawGamepadEvent};
 use bevy::prelude::*;
 use std::sync::Mutex;
 
@@ -133,7 +131,10 @@ pub fn gamepad_connection_system(
             config.primary_gamepad = Some(entity);
             tracing::info!("Connected gamepad: {}", name);
         }
-    } else if config.primary_gamepad.is_some_and(|p| gamepads.get(p).is_err()) {
+    } else if config
+        .primary_gamepad
+        .is_some_and(|p| gamepads.get(p).is_err())
+    {
         config.primary_gamepad = None;
         tracing::info!("Gamepad disconnected");
     }

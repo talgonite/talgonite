@@ -50,10 +50,7 @@ struct SimpleDataEntry {
 }
 
 impl SimpleDataEntry {
-    fn from_record(
-        record: AssetRecord,
-        adder: &mut impl ContentAdder,
-    ) -> anyhow::Result<Self> {
+    fn from_record(record: AssetRecord, adder: &mut impl ContentAdder) -> anyhow::Result<Self> {
         let size = jbk::Size::new(record.size());
         let path = arx::PathBuf::from_path(record.path()).unwrap();
         let content_address =
@@ -117,8 +114,11 @@ mod tests {
     fn write_routes_asset_records_through_sink_contract() {
         let mut sink = RecordingSink::default();
 
-        sink.write(AssetRecord::bytes(Path::new("Legend/file.bin"), b"abc".to_vec()))
-            .unwrap();
+        sink.write(AssetRecord::bytes(
+            Path::new("Legend/file.bin"),
+            b"abc".to_vec(),
+        ))
+        .unwrap();
 
         assert_eq!(
             sink.entries,

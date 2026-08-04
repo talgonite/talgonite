@@ -14,7 +14,9 @@ pub(crate) enum InstallSource {
 
 impl InstallSource {
     pub(crate) fn for_output(output: &Path) -> anyhow::Result<Self> {
-        let output_dir = output.parent().context("installer output path must have a parent")?;
+        let output_dir = output
+            .parent()
+            .context("installer output path must have a parent")?;
         let local_path = output_dir.join(INSTALLER_FILE_NAME);
 
         if local_path.exists() {

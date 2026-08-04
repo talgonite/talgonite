@@ -30,7 +30,9 @@ impl MetafileStore {
     }
 
     pub fn set_server(&mut self, config: &crate::resources::StorageConfig, server_id: u32) {
-        if self.server_id == Some(server_id) && self.config.as_ref().map(|c| &c.root) == Some(&config.root) {
+        if self.server_id == Some(server_id)
+            && self.config.as_ref().map(|c| &c.root) == Some(&config.root)
+        {
             return;
         }
         self.config = Some(config.clone());

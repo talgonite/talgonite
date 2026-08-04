@@ -1,9 +1,7 @@
 pub mod types;
 pub use types::*;
 
-use formats::{
-    mpf::{MpfAnimation, MpfAnimationType, MpfFile},
-};
+use formats::mpf::{MpfAnimation, MpfAnimationType, MpfFile};
 use glam::{Vec2, Vec3};
 use rustc_hash::FxHashMap;
 use wgpu;
@@ -105,7 +103,8 @@ impl CreatureBatch {
     }
 
     pub fn clear_and_unload(&self, store: &mut CreatureAssetStore) {
-        self.batch.clear_and_unload(|sprite_id| store.unload_sprite(*sprite_id));
+        self.batch
+            .clear_and_unload(|sprite_id| store.unload_sprite(*sprite_id));
     }
 
     pub fn add_creature(

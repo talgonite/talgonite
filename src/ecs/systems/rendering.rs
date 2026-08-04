@@ -62,7 +62,9 @@ fn collect_dirty_entities(
     changed: impl IntoIterator<Item = Entity>,
     removed_hovers: &mut RemovedComponents<TargetingHover>,
 ) -> std::collections::HashSet<Entity> {
-    let mut dirty = changed.into_iter().collect::<std::collections::HashSet<_>>();
+    let mut dirty = changed
+        .into_iter()
+        .collect::<std::collections::HashSet<_>>();
     for entity in removed_hovers.read() {
         dirty.insert(entity);
     }

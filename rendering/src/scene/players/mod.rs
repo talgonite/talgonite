@@ -13,8 +13,8 @@ use tracing::error;
 use wgpu;
 
 use crate::instance::InstanceFlag;
-use crate::scene::utils::{atlas_uv, calculate_tile_z, direction_to_orientation};
 use crate::make_quad;
+use crate::scene::utils::{atlas_uv, calculate_tile_z, direction_to_orientation};
 use crate::{
     scene::{
         Instance, TILE_WIDTH_HALF, Z_PLAYERS_BASE, get_isometric_coordinate, sprite::SpriteBatch,
@@ -166,7 +166,8 @@ impl PlayerAssetStore {
             position.y,
             // Player Z range is 0.1 to 0.2, with stack_order adding a small offset
             // to separate multiple players on the same tile
-            Z_PLAYERS_BASE + (sprite.slot.z_priority(is_towards) * 0.1)
+            Z_PLAYERS_BASE
+                + (sprite.slot.z_priority(is_towards) * 0.1)
                 + (stack_order as f32 / PLAYERS_PER_TILE as f32) * PLAYER_STACK_Z_RANGE,
         );
 
@@ -414,7 +415,10 @@ impl PlayerAssetStore {
         } else {
             AnimationDirection::Away
         };
-        loaded.animations.get(&(animation_type, dir)).map(|a| a.frame_count)
+        loaded
+            .animations
+            .get(&(animation_type, dir))
+            .map(|a| a.frame_count)
     }
 }
 

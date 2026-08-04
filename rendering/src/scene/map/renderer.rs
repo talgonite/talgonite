@@ -14,13 +14,13 @@ use crate::{
         AnimationInstanceData, InstanceReference, TILE_HEIGHT, TILE_WIDTH, TILEMAP_COLUMNS,
         TILEMAP_HEIGHT, TILEMAP_PAGE_HEIGHT, TILEMAP_PAGE_WIDTH, TILEMAP_TILE_HEIGHT,
         TILEMAP_TILE_WIDTH, TILEMAP_TILES_PER_PAGE_ROWS, TILEMAP_TILES_PER_ROW, WALL_ATLAS_HEIGHT,
-        WALL_ATLAS_WIDTH, WorldAnimation, WorldAnimationInstanceData, texture_bind::TextureBind,
-        Z_FLOOR, Z_WALLS,
+        WALL_ATLAS_WIDTH, WorldAnimation, WorldAnimationInstanceData, Z_FLOOR, Z_WALLS,
         map::{
             floor::FloorTile,
             map_tile::MapTile,
             wall::{Wall, WallSide},
         },
+        texture_bind::TextureBind,
     },
     texture,
 };

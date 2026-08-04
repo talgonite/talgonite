@@ -148,10 +148,7 @@ impl PopupManager {
 
     /// Close the topmost escape-closable popup, skipping (and leaving) toasts.
     pub fn close_top(&mut self) -> Option<PopupId> {
-        let pos = self
-            .stack
-            .iter()
-            .rposition(|&e| e.escape_closable())?;
+        let pos = self.stack.iter().rposition(|&e| e.escape_closable())?;
         Some(self.stack.remove(pos))
     }
 

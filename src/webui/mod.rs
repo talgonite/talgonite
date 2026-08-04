@@ -1,5 +1,5 @@
 pub mod ipc;
-pub mod state;
+pub mod keyring;
 pub mod plugin;
 pub mod settings;
-pub mod keyring;
+pub mod state;

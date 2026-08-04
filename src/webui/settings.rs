@@ -1,6 +1,5 @@
 pub use crate::settings::{
-    SavedCredential, SavedCredentialPublic, ServerEntry, Settings as SettingsFile,
-    CharacterPreview,
+    CharacterPreview, SavedCredential, SavedCredentialPublic, ServerEntry, Settings as SettingsFile,
 };
 
 pub fn load_or_default() -> crate::settings::Settings {

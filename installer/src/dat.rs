@@ -8,10 +8,7 @@ pub(crate) struct DatEntryMetadata {
     pub(crate) size: usize,
 }
 
-pub(crate) fn read_dat_entries<F>(
-    decoder: &mut dyn Read,
-    on_entry: &mut F,
-) -> anyhow::Result<()>
+pub(crate) fn read_dat_entries<F>(decoder: &mut dyn Read, on_entry: &mut F) -> anyhow::Result<()>
 where
     F: FnMut(DatEntryMetadata, &mut dyn Read) -> anyhow::Result<()>,
 {
@@ -166,7 +163,7 @@ impl Read for DatEntryReader<'_, '_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{read_dat_entries, DatEntryMetadata};
+    use super::{DatEntryMetadata, read_dat_entries};
     use byteorder::{LE, WriteBytesExt};
     use std::io::Cursor;
 

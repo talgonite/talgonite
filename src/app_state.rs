@@ -12,10 +12,7 @@ use crate::webui::plugin::{
     AbilityState, ActiveMenuContext, ActiveWindowType, EquipmentState, InventoryState,
     PlayerProfileState, WorldListState,
 };
-use crate::{
-    MapRendererState, MinimapCacheState, MinimapRendererState,
-    network::PacketOutbox,
-};
+use crate::{MapRendererState, MinimapCacheState, MinimapRendererState, network::PacketOutbox};
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
 pub enum AppState {

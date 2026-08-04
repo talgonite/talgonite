@@ -26,7 +26,7 @@ impl Settings {
         } else {
             info!("Creating default settings at {:?}", path);
             let default_settings = Settings::default();
-            // Create a temporary config for the initial save if necessary, 
+            // Create a temporary config for the initial save if necessary,
             // but we can just use the path version for internal load.
             let default_content = toml::to_string_pretty(&default_settings).unwrap();
             let _ = fs::write(&path, default_content);
@@ -74,7 +74,8 @@ impl Settings {
         // Save profiles
         for cred in &self.saved_credentials {
             let hotbars = self.get_hotbars(cred.server_id, &cred.username);
-            let current_hotbar_panel = self.get_current_hotbar_panel(cred.server_id, &cred.username);
+            let current_hotbar_panel =
+                self.get_current_hotbar_panel(cred.server_id, &cred.username);
             let macros = self.get_macros(cred.server_id, &cred.username);
             let hotbar_row_count = self.get_hotbar_row_count(cred.server_id, &cred.username);
             let profile = CharacterProfile {
@@ -91,7 +92,8 @@ impl Settings {
                 macros,
             };
 
-            let profile_path = config.server_characters_dir(cred.server_id)
+            let profile_path = config
+                .server_characters_dir(cred.server_id)
                 .join(format!("{}.toml", cred.username));
 
             match toml::to_string_pretty(&profile) {
@@ -108,7 +110,8 @@ impl Settings {
     pub fn remove_credential(&mut self, id: &str, config: &crate::resources::StorageConfig) {
         if let Some(idx) = self.saved_credentials.iter().position(|c| c.id == id) {
             let cred = self.saved_credentials.remove(idx);
-            let profile_path = config.server_characters_dir(cred.server_id)
+            let profile_path = config
+                .server_characters_dir(cred.server_id)
                 .join(format!("{}.toml", cred.username));
             if profile_path.exists() {
                 let _ = fs::remove_file(profile_path);

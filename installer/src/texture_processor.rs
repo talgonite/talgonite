@@ -18,15 +18,30 @@ impl TextureAssetProcessor {
     ) -> anyhow::Result<Option<Vec<AssetRecord>>> {
         if file_name == "tilea.bmp" || file_name == "tileas.bmp" {
             let tilea_name = file_name.trim_end_matches(".bmp");
-            return Ok(Some(self.process_tile_pages(dat_path, tilea_name, file_size, entry_reader)?));
+            return Ok(Some(self.process_tile_pages(
+                dat_path,
+                tilea_name,
+                file_size,
+                entry_reader,
+            )?));
         }
 
         if file_name.ends_with(".hpf") {
-            return Ok(Some(vec![self.process_hpf(dat_path, file_name, file_size, entry_reader)?]));
+            return Ok(Some(vec![self.process_hpf(
+                dat_path,
+                file_name,
+                file_size,
+                entry_reader,
+            )?]));
         }
 
         if file_name.ends_with(".spf") {
-            return Ok(Some(self.process_spf(dat_path, file_name, file_size, entry_reader)?));
+            return Ok(Some(self.process_spf(
+                dat_path,
+                file_name,
+                file_size,
+                entry_reader,
+            )?));
         }
 
         Ok(None)

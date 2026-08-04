@@ -1179,7 +1179,12 @@ pub fn handle_popup_requests(
         };
         if let Some(id) = closed {
             popup_close_coordination(
-                id, &outbox, &mut menu_ctx, &mut board_state, &mut world_context, &mut outbound,
+                id,
+                &outbox,
+                &mut menu_ctx,
+                &mut board_state,
+                &mut world_context,
+                &mut outbound,
             );
         }
     }

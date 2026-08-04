@@ -11,11 +11,21 @@ impl MapStore {
         Self
     }
 
-    fn map_path(&self, config: &crate::resources::StorageConfig, server_id: u32, id: u16) -> PathBuf {
+    fn map_path(
+        &self,
+        config: &crate::resources::StorageConfig,
+        server_id: u32,
+        id: u16,
+    ) -> PathBuf {
         config.server_map_path(server_id, id)
     }
 
-    pub fn get_map(&self, config: &crate::resources::StorageConfig, server_id: u32, id: u16) -> Option<Vec<u8>> {
+    pub fn get_map(
+        &self,
+        config: &crate::resources::StorageConfig,
+        server_id: u32,
+        id: u16,
+    ) -> Option<Vec<u8>> {
         let path = self.map_path(config, server_id, id);
         if !path.exists() {
             return None;
@@ -30,7 +40,13 @@ impl MapStore {
         }
     }
 
-    pub fn save_map(&self, config: &crate::resources::StorageConfig, server_id: u32, id: u16, data: &[u8]) {
+    pub fn save_map(
+        &self,
+        config: &crate::resources::StorageConfig,
+        server_id: u32,
+        id: u16,
+        data: &[u8],
+    ) {
         let path = self.map_path(config, server_id, id);
         if let Err(e) = fs::write(&path, data) {
             error!("Failed to save map file {:?}: {}", path, e);

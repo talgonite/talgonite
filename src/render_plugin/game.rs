@@ -496,7 +496,9 @@ fn draw_frame(
             }),
             ..Default::default()
         });
-        minimap.renderer.render(&mut minimap_pass, &minimap.camera.camera_bind_group);
+        minimap
+            .renderer
+            .render(&mut minimap_pass, &minimap.camera.camera_bind_group);
     }
 
     render_hardware.queue.submit([encoder.finish()]);

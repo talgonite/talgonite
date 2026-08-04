@@ -17,7 +17,8 @@ impl TryFromBytes for ForceClientPacket {
             let len_raw = cursor.read_u16::<BigEndian>()?;
             let data_len = len_raw
                 .checked_sub(1)
-                .ok_or_else(|| anyhow!("ForceClientPacket length too small: {}", len_raw))? as usize;
+                .ok_or_else(|| anyhow!("ForceClientPacket length too small: {}", len_raw))?
+                as usize;
             let mut buf = vec![0; data_len];
             cursor.read_exact(&mut buf)?;
             buf

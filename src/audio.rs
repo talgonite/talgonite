@@ -91,9 +91,10 @@ pub fn play_sound(
                             });
                         }
 
-                        match audio.music_track.play(
-                            data.with_settings(StaticSoundSettings::new().loop_region(0.0..)),
-                        ) {
+                        match audio
+                            .music_track
+                            .play(data.with_settings(StaticSoundSettings::new().loop_region(0.0..)))
+                        {
                             Ok(handle) => {
                                 audio.music = Some(handle);
                             }
@@ -125,9 +126,10 @@ pub fn sync_audio_settings(settings: Res<crate::settings::Settings>, audio: Opti
     };
 
     if settings.is_changed() {
-        let _ = audio
-            .music_track
-            .set_volume(amplitude_to_db(settings.audio.music_volume), Tween::default());
+        let _ = audio.music_track.set_volume(
+            amplitude_to_db(settings.audio.music_volume),
+            Tween::default(),
+        );
         let _ = audio
             .sfx_track
             .set_volume(amplitude_to_db(settings.audio.sfx_volume), Tween::default());
@@ -143,9 +145,10 @@ pub fn setup_audio_settings(
         None => return,
     };
 
-    let _ = audio
-        .music_track
-        .set_volume(amplitude_to_db(settings.audio.music_volume), Tween::default());
+    let _ = audio.music_track.set_volume(
+        amplitude_to_db(settings.audio.music_volume),
+        Tween::default(),
+    );
     let _ = audio
         .sfx_track
         .set_volume(amplitude_to_db(settings.audio.sfx_volume), Tween::default());

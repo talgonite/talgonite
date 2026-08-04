@@ -54,7 +54,15 @@ impl SpfFile {
             let width = right.saturating_sub(left) as u32;
             let height = bottom.saturating_sub(top) as u32;
 
-            frame_headers.push((left as i16, top as i16, width, height, start_address, byte_width, byte_count));
+            frame_headers.push((
+                left as i16,
+                top as i16,
+                width,
+                height,
+                start_address,
+                byte_width,
+                byte_count,
+            ));
         }
 
         let _total_byte_count = reader.read_u32::<LE>()?;
@@ -63,7 +71,13 @@ impl SpfFile {
         let mut frames = Vec::with_capacity(frame_count);
         for (left, top, width, height, start_address, byte_width, byte_count) in frame_headers {
             if width == 0 || height == 0 {
-                frames.push(SpfFrame { width, height, left, top, data: vec![] });
+                frames.push(SpfFrame {
+                    width,
+                    height,
+                    left,
+                    top,
+                    data: vec![],
+                });
                 continue;
             }
 
@@ -95,7 +109,13 @@ impl SpfFile {
                 rgba
             };
 
-            frames.push(SpfFrame { width, height, left, top, data: rgba });
+            frames.push(SpfFrame {
+                width,
+                height,
+                left,
+                top,
+                data: rgba,
+            });
         }
 
         Ok(SpfFile { frames })
@@ -106,5 +126,9 @@ fn rgb565_to_rgb8(rgb565: u16) -> (u8, u8, u8) {
     let r = ((rgb565 >> 11) & 0x1F) as u8;
     let g = ((rgb565 >> 5) & 0x3F) as u8;
     let b = (rgb565 & 0x1F) as u8;
-    ((r << 3) | (r >> 2), (g << 2) | (g >> 4), (b << 3) | (b >> 2))
+    (
+        (r << 3) | (r >> 2),
+        (g << 2) | (g >> 4),
+        (b << 3) | (b >> 2),
+    )
 }

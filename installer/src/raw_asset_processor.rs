@@ -48,7 +48,8 @@ mod tests {
     fn process_dat_entry_defers_palette_inputs() {
         let processor = RawAssetProcessor;
 
-        let entry = processor.process_dat_entry(Path::new("Legend"), "item.tbl".to_string(), vec![1]);
+        let entry =
+            processor.process_dat_entry(Path::new("Legend"), "item.tbl".to_string(), vec![1]);
         assert!(matches!(entry, RawDatEntry::DeferredPalette { .. }));
     }
 
@@ -56,7 +57,8 @@ mod tests {
     fn process_dat_entry_emits_passthrough_assets() {
         let processor = RawAssetProcessor;
 
-        let entry = processor.process_dat_entry(Path::new("Legend"), "foo.txt".to_string(), vec![1]);
+        let entry =
+            processor.process_dat_entry(Path::new("Legend"), "foo.txt".to_string(), vec![1]);
         assert!(matches!(entry, RawDatEntry::Asset(_)));
     }
 }
