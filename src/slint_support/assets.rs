@@ -71,15 +71,17 @@ impl SlintAssetLoader {
 
         let mut results: Vec<Option<Image>> = Vec::with_capacity(requests.len());
         let mut missing: Vec<(IconKind, u16)> = Vec::new();
+        let mut missing_indices: Vec<usize> = Vec::new();
 
         {
             let cache = self.icon_cache.read().expect("icon cache poisoned");
-            for &request in requests {
+            for (request_index, &request) in requests.iter().enumerate() {
                 match cache.get(&request) {
                     Some(icon) => results.push(icon.clone().map(Image::from_rgba8)),
                     None => {
                         results.push(None);
                         missing.push(request);
+                        missing_indices.push(request_index);
                     }
                 }
             }
@@ -122,8 +124,8 @@ impl SlintAssetLoader {
             }
         }
 
-        for (index, request) in missing.into_iter().enumerate() {
-            results[index] = loaded[unique_index[&request]]
+        for (request, request_index) in missing.into_iter().zip(missing_indices) {
+            results[request_index] = loaded[unique_index[&request]]
                 .as_ref()
                 .ok()
                 .cloned()
