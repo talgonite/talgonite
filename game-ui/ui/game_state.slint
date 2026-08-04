@@ -43,6 +43,7 @@ export struct WorldMapNode {
 
 export struct MenuEntry {
     text: string,
+    styled_text: styled-text,
     id: int,
     icon: image,
     cost: int,
@@ -152,7 +153,7 @@ export struct NpcDialogData {
     interaction_enabled: bool,
     npc_name: string,
     npc_portrait: image,
-    dialog_text: string,
+    dialog_text: styled-text,
     menu_entries: [MenuEntry],
     text_entry_prompt: string,
     text_entry_args: string,

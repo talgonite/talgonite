@@ -727,6 +727,11 @@ pub fn apply_core_to_slint(
                 for (entry, icon) in entries.iter().zip(&slot_icons) {
                     slint_entries.push(crate::MenuEntry {
                         text: slint::SharedString::from(entry.text.as_str()),
+                        styled_text: RichText::parse(entry.text.as_str())
+                            .to_slint_styled_text_opts(crate::rich_text::RichTextOptions {
+                                bold: true,
+                                italic: true,
+                            }),
                         id: entry.id as i32,
                         icon: icon.clone().unwrap_or_default(),
                         cost: entry.cost,
@@ -739,7 +744,7 @@ pub fn apply_core_to_slint(
                     interaction_enabled: true,
                     npc_name: slint::SharedString::from(title.as_str()),
                     npc_portrait,
-                    dialog_text: slint::SharedString::from(text.as_str()),
+                    dialog_text: RichText::parse(text.as_str()).to_slint_styled_text_bold(),
                     menu_entries: slint::ModelRc::new(slint::VecModel::from(slint_entries)),
                     text_entry_prompt: slint::SharedString::default(),
                     text_entry_args: slint::SharedString::default(),
@@ -805,6 +810,11 @@ pub fn apply_core_to_slint(
                 for entry in entries {
                     slint_entries.push(crate::MenuEntry {
                         text: slint::SharedString::from(entry.text.as_str()),
+                        styled_text: RichText::parse(entry.text.as_str())
+                            .to_slint_styled_text_opts(crate::rich_text::RichTextOptions {
+                                bold: true,
+                                italic: true,
+                            }),
                         id: entry.id as i32,
                         icon: slint::Image::default(),
                         cost: entry.cost,
@@ -817,7 +827,7 @@ pub fn apply_core_to_slint(
                     interaction_enabled: true,
                     npc_name: slint::SharedString::from(title.as_str()),
                     npc_portrait,
-                    dialog_text: slint::SharedString::from(text.as_str()),
+                    dialog_text: RichText::parse(text.as_str()).to_slint_styled_text_bold(),
                     menu_entries: slint::ModelRc::new(slint::VecModel::from(slint_entries)),
                     text_entry_prompt: slint::SharedString::from(prompt.as_str()),
                     text_entry_args: slint::SharedString::from(args.as_str()),

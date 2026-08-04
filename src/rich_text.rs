@@ -13,6 +13,13 @@ pub struct RichText {
     pub chunks: Vec<RichTextChunk>,
 }
 
+/// Styling options applied when converting a [`RichText`] to rendered text.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RichTextOptions {
+    pub bold: bool,
+    pub italic: bool,
+}
+
 impl RichText {
     /// Parse a string containing color codes like `{=c` into chunks.
     pub fn parse(input: &str) -> Self {
@@ -57,41 +64,53 @@ impl RichText {
     pub fn to_html_string(&self) -> String {
         self.chunks
             .iter()
-            .map(|c| {
-                let mut escaped = String::with_capacity(c.text.len() + 20);
-                for ch in c.text.chars() {
-                    match ch {
-                        // HTML Escapes
-                        '&' => escaped.push_str("&amp;"),
-                        '<' => escaped.push_str("&lt;"),
-                        '>' => escaped.push_str("&gt;"),
-                        '"' => escaped.push_str("&quot;"),
-                        '\'' => escaped.push_str("&#39;"),
-                        // Markdown escapes (note: * and _ are intentionally unescaped to allow bold/italics)
-                        '\\' => escaped.push_str("\\\\"),
-                        '`' => escaped.push_str("\\`"),
-                        '~' => escaped.push_str("\\~"),
-                        '[' => escaped.push_str("\\["),
-                        ']' => escaped.push_str("\\]"),
-                        '#' => escaped.push_str("\\#"),
-                        '\r' | '\n' => escaped.push_str("&zwj;\n"), // fixes empty newlines being ignored
-                        _ => escaped.push(ch),
-                    }
-                }
-
-                if let Some(code) = c.color_code {
-                    if let Some(color) = RichTextColor::from_char_code(code) {
-                        let [r, g, b, _] = color.to_color();
-                        return format!(
-                            "<font color=\"#{:02x}{:02x}{:02x}\">{}</font>",
-                            r, g, b, escaped
-                        );
-                    }
-                }
-
-                escaped
-            })
+            .map(|chunk| chunk.wrap_color(RichTextChunk::escape_text(&chunk.text)))
             .collect()
+    }
+
+    /// Same as [`Self::to_html_string`], with the given styling applied.
+    /// Each line is escaped, coloured, and wrapped individually so bold and
+    /// italic spans never cross paragraph breaks.
+    pub fn to_html_string_opts(&self, options: RichTextOptions) -> String {
+        // Build each line's core content (escaped + colour-wrapped), merging
+        // fragments from adjacent chunks that share a line.
+        let mut line_cores: Vec<String> = Vec::new();
+        let mut line_index = 0usize;
+        for chunk in &self.chunks {
+            let mut lines = chunk.text.split('\n').peekable();
+            while let Some(line) = lines.next() {
+                if line_cores.len() <= line_index {
+                    line_cores.push(String::new());
+                }
+                line_cores[line_index].push_str(&chunk.color_wrapped_line(line, options));
+                if lines.peek().is_some() {
+                    line_index += 1;
+                }
+            }
+        }
+
+        // Wrap each whole line in the requested styling, keeping leading and
+        // trailing whitespace outside the markers so it can't create `****`.
+        let mut lines = line_cores
+            .into_iter()
+            .map(|core| wrap_line_style(core, options))
+            .collect::<Vec<_>>();
+        let last = lines.len().saturating_sub(1);
+        for (idx, line) in lines.iter_mut().enumerate() {
+            if idx < last {
+                line.push_str("&zwj;\n");
+            }
+        }
+        lines.concat()
+    }
+
+    /// Same as [`Self::to_html_string`], but wraps every line in markdown
+    /// bold so the whole string renders with bold styling.
+    pub fn to_html_string_bold(&self) -> String {
+        self.to_html_string_opts(RichTextOptions {
+            bold: true,
+            ..Default::default()
+        })
     }
 
     pub fn to_slint_styled_text(&self) -> StyledText {
@@ -109,6 +128,86 @@ impl RichText {
                 string_to_styled_text(plain_string)
             }
         }
+    }
+
+    /// Convert to styled text with every chunk rendered bold (in addition to
+    /// any colour codes).
+    pub fn to_slint_styled_text_bold(&self) -> StyledText {
+        self.to_slint_styled_text_opts(RichTextOptions {
+            bold: true,
+            ..Default::default()
+        })
+    }
+
+    /// Convert to styled text with the given styling options applied on top of
+    /// any colour codes.
+    pub fn to_slint_styled_text_opts(&self, options: RichTextOptions) -> StyledText {
+        let parsed = StyledText::from_markdown(&self.to_html_string_opts(options));
+
+        match parsed {
+            Ok(styled) => styled,
+            Err(err) => {
+                let plain_string = self.to_plain_string();
+                tracing::error!(
+                    "Failed to parse styled text: {:?}\r\n falling back to plain string: {}",
+                    err,
+                    plain_string
+                );
+                string_to_styled_text(plain_string)
+            }
+        }
+    }
+}
+
+impl RichTextChunk {
+    fn escape_text(text: &str) -> String {
+        Self::escape_text_with(text, false)
+    }
+
+    fn escape_text_with(text: &str, escape_markdown_emphasis: bool) -> String {
+        let mut escaped = String::with_capacity(text.len() + 20);
+        for ch in text.chars() {
+            match ch {
+                '&' => escaped.push_str("&amp;"),
+                '<' => escaped.push_str("&lt;"),
+                '>' => escaped.push_str("&gt;"),
+                '"' => escaped.push_str("&quot;"),
+                '\'' => escaped.push_str("&#39;"),
+                '\\' => escaped.push_str("\\\\"),
+                '`' => escaped.push_str("\\`"),
+                '~' => escaped.push_str("\\~"),
+                '[' => escaped.push_str("\\["),
+                ']' => escaped.push_str("\\]"),
+                '#' => escaped.push_str("\\#"),
+                '\r' | '\n' => escaped.push_str("&zwj;\n"), // fixes empty newlines being ignored
+                '*' if escape_markdown_emphasis => escaped.push_str("\\*"),
+                '_' if escape_markdown_emphasis => escaped.push_str("\\_"),
+                _ => escaped.push(ch),
+            }
+        }
+        escaped
+    }
+
+    /// Escape and colour-wrap a single line (no line breaks). Markdown
+    /// emphasis markers are escaped when needed so they can't collide with
+    /// the delimiters added by [`wrap_line_style`].
+    fn color_wrapped_line(&self, line: &str, options: RichTextOptions) -> String {
+        let escape_markdown_emphasis = options.bold || options.italic;
+        let escaped = Self::escape_text_with(line, escape_markdown_emphasis);
+        self.wrap_color(escaped)
+    }
+
+    fn wrap_color(&self, escaped: String) -> String {
+        if let Some(code) = self.color_code {
+            if let Some(color) = RichTextColor::from_char_code(code) {
+                let [r, g, b, _] = color.to_color();
+                return format!(
+                    "<font color=\"#{:02x}{:02x}{:02x}\">{}</font>",
+                    r, g, b, escaped
+                );
+            }
+        }
+        escaped
     }
 }
 
@@ -194,6 +293,38 @@ impl RichTextColor {
     }
 }
 
+fn wrap_line_style(core: String, options: RichTextOptions) -> String {
+    let leading = core
+        .chars()
+        .take_while(|ch| ch.is_whitespace())
+        .collect::<String>();
+    let trailing = core
+        .chars()
+        .rev()
+        .take_while(|ch| ch.is_whitespace())
+        .collect::<String>();
+    let core_start = leading.len();
+    let core_end = core.len().saturating_sub(trailing.len());
+    let content = if core_end <= core_start {
+        ""
+    } else {
+        &core[core_start..core_end]
+    };
+    if content.is_empty() {
+        return core;
+    }
+
+    let mut prefix = String::new();
+    if options.bold {
+        prefix.push_str("**");
+    }
+    if options.italic {
+        prefix.push('*');
+    }
+    let suffix = prefix.chars().rev().collect::<String>();
+    format!("{leading}{prefix}{content}{suffix}{trailing}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -249,5 +380,67 @@ mod tests {
             rich.to_html_string(),
             "Normal <font color=\"#006100\">Red </font><font color=\"#ff0010\">Blue</font>"
         );
+    }
+
+    #[test]
+    fn test_to_html_string_bold() {
+        let input = "Normal {=rRed";
+        let rich = RichText::parse(input);
+        assert_eq!(
+            rich.to_html_string_bold(),
+            "**Normal <font color=\"#006100\">Red</font>**"
+        );
+    }
+
+    #[test]
+    fn test_to_html_string_bold_multiline() {
+        let input = "First {=rRed\nSecond";
+        let rich = RichText::parse(input);
+        assert_eq!(
+            rich.to_html_string_bold(),
+            "**First <font color=\"#006100\">Red</font>**&zwj;\n**<font color=\"#006100\">Second</font>**"
+        );
+    }
+
+    #[test]
+    fn test_bold_adjacent_color_blocks_have_no_double_asterisks() {
+        let input = "{=rRed {=bBlue";
+        let rich = RichText::parse(input);
+        assert_eq!(
+            rich.to_html_string_bold(),
+            "**<font color=\"#006100\">Red </font><font color=\"#ff0010\">Blue</font>**"
+        );
+        let styled = rich.to_slint_styled_text_bold();
+        let raw = i_slint_core::styled_text::get_raw_text(&styled);
+        assert_eq!(raw, "Red Blue");
+    }
+
+    #[test]
+    fn test_bold_italic_options() {
+        let rich = RichText::parse("Hello {=bWorld");
+        let styled = rich.to_slint_styled_text_opts(crate::rich_text::RichTextOptions {
+            bold: true,
+            italic: true,
+        });
+        let raw = i_slint_core::styled_text::get_raw_text(&styled);
+        assert_eq!(raw, "Hello World");
+
+        let html = rich.to_html_string_opts(crate::rich_text::RichTextOptions {
+            bold: true,
+            italic: true,
+        });
+        assert_eq!(html, "***Hello <font color=\"#ff0010\">World</font>***");
+    }
+
+    #[test]
+    fn test_bold_escapes_markdown_emphasis() {
+        // Stray `*`/`_` must render literally and never leak `****` or
+        // accidentally trigger emphasis inside the bold wrapper.
+        for case in ["**bold?**", "Some *italic* text", "under_score"] {
+            let rich = RichText::parse(case);
+            let styled = rich.to_slint_styled_text_bold();
+            let raw = i_slint_core::styled_text::get_raw_text(&styled);
+            assert_eq!(raw, case, "raw text should round-trip unchanged");
+        }
     }
 }

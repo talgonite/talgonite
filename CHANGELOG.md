@@ -1,5 +1,9 @@
 # Unreleased
 
+## NPC dialog rich text
+
+NPC dialog text and menu options now support the same `{=c` colour codes as chat messages and profiles, and render bold (options bold+italic) by default.
+
 ## Escape closes windows
 
 - Pressing Escape closes open windows one by one; with nothing open it opens the game menu.

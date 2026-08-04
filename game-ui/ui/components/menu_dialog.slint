@@ -180,25 +180,24 @@ export component NpcDialog inherits Rectangle {
                                         padding: 24px;
                                         for entry in NpcDialogState.data.menu_entries: Rectangle {
                                             animate background { duration: 100ms; }
-                                            touch := TouchArea {
-                                                mouse-cursor: pointer;
-                                                clicked => {
-                                                    NpcDialogState.select-option(entry.id, entry.text);
-                                                }
-                                            }
 
                                             HorizontalLayout {
                                                 padding: 22px;
                                                 padding-top: 6px;
                                                 padding-bottom: self.padding-top;
-                                                Text {
-                                                    text: entry.text;
-                                                    font-size: 14px;
-                                                    font-family: "Lato";
-                                                    color: Theme.foreground;
-                                                    horizontal-alignment: left;
-                                                    font-weight: 700;
-                                                    font-italic: true;
+                                                StyledText {
+                                                    text: entry.styled_text;
+                                                    default-font-size: 14px;
+                                                    default-font-family: "Lato";
+                                                    default-color: Theme.foreground;
+                                                }
+                                            }
+
+                                            touch := TouchArea {
+                                                z: 1;
+                                                mouse-cursor: pointer;
+                                                clicked => {
+                                                    NpcDialogState.select-option(entry.id, entry.text);
                                                 }
                                             }
 
@@ -225,12 +224,6 @@ export component NpcDialog inherits Rectangle {
                                             for entry[idx] in NpcDialogState.data.menu_entries: Rectangle {
                                                 col: Math.mod(idx, 2);
                                                 row: Math.floor(idx / 2);
-                                                item-touch := TouchArea {
-                                                    mouse-cursor: pointer;
-                                                    clicked => {
-                                                        NpcDialogState.select-option(entry.id, entry.text);
-                                                    }
-                                                }
 
                                                 HorizontalLayout {
                                                     padding-left: 4px;
@@ -266,6 +259,14 @@ export component NpcDialog inherits Rectangle {
                                                         }
                                                     }
                                                 }
+
+                                                item-touch := TouchArea {
+                                                    z: 1;
+                                                    mouse-cursor: pointer;
+                                                    clicked => {
+                                                        NpcDialogState.select-option(entry.id, entry.text);
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -295,14 +296,12 @@ export component NpcDialog inherits Rectangle {
                     ScrollView {
                         height: min(text-content.height, 140px);
                         viewport-height: text-content.height;
-                        text-content := Text {
+                        text-content := StyledText {
                             width: 100%;
-                            font-family: "Lato";
-                            font-size: 16px;
-                            font-weight: 700;
                             text: NpcDialogState.data.dialog_text;
-                            wrap: word-wrap;
-                            color: #28210F;
+                            default-font-family: "Lato";
+                            default-font-size: 16px;
+                            default-color: #28210F;
                         }
                     }
                 }
