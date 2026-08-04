@@ -971,13 +971,17 @@ pub fn sync_minimap_tiles_to_renderer(
     let mut minimap_cache = match minimap_cache {
         Some(c) => c,
         None => {
-            minimap_state.renderer.clear();
+            // Deliberately clear only tiles here. Markers are owned by live
+            // entities and are removed by their on_remove hooks; bulk-clearing
+            // the marker batch would orphan every MinimapMarker.handle during
+            // map transitions (where the cache is absent for a frame or more).
+            minimap_state.renderer.clear_tiles();
             return;
         }
     };
 
     let Ok(map) = map_query.single() else {
-        minimap_state.renderer.clear();
+        minimap_state.renderer.clear_tiles();
         return;
     };
 
