@@ -33,7 +33,7 @@ struct InstallerChannels {
 
 #[derive(Resource)]
 pub struct InstallerConfig {
-    pub arx_path: PathBuf,
+    pub squashfs_path: PathBuf,
 }
 
 pub struct InstallerPlugin;
@@ -65,10 +65,10 @@ fn start_installer_once(
     }
 
     // Default path if not provided
-    let arx_path = config
+    let squashfs_path = config
         .as_ref()
-        .map(|c| c.arx_path.clone())
-        .unwrap_or_else(|| storage_config.data_arx_path());
+        .map(|c| c.squashfs_path.clone())
+        .unwrap_or_else(|| storage_config.data_squashfs_path());
 
     let (tx, rx): (
         Sender<InstallerProgressEvent>,
@@ -80,7 +80,7 @@ fn start_installer_once(
     // Spawn a background thread to run the blocking installer
     thread::spawn(move || {
         // Use the external workspace crate named `installer`, avoiding module name clash.
-        let result = ::installer::install(&arx_path, Some(proxy.clone()));
+        let result = ::installer::install(&squashfs_path, Some(proxy.clone()));
         match result {
             Ok(()) => {
                 proxy.report(1.0, "Install complete".to_string());

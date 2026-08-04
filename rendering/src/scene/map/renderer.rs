@@ -25,23 +25,15 @@ use crate::{
     },
     texture,
 };
+use formats::game_files::SquashfsArchive;
 use formats::palette::AnimatedPaletteRange;
 
-#[cfg(not(target_arch = "wasm32"))]
-use formats::game_files::ArxArchive;
-#[cfg(target_arch = "wasm32")]
-use formats::game_files::WebArchive;
-
-#[cfg(not(target_arch = "wasm32"))]
-type Archive = ArxArchive;
-#[cfg(target_arch = "wasm32")]
-type Archive = WebArchive;
+type Archive = SquashfsArchive;
 
 /// Palette textures store one 256-color palette per row, matching the
 /// `palette_offset / 256.0` normalization used by the map shader.
 const PALETTE_TEXTURE_WIDTH: u32 = 256;
 
-#[cfg(not(target_arch = "wasm32"))]
 fn get_files_lenient<S>(archive: &Archive, paths: &[S]) -> Vec<Option<Vec<u8>>>
 where
     S: AsRef<str> + Sync,

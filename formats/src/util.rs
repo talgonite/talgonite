@@ -4,7 +4,6 @@
 /// keyed by index. Workers pull the next index from a shared counter, so the
 /// work stays balanced even when individual jobs take different amounts of
 /// time.
-#[cfg(not(target_arch = "wasm32"))]
 pub fn parallel_indexed<T, F>(job_count: usize, worker_count: usize, task: F) -> Vec<(usize, T)>
 where
     T: Send,

@@ -10,13 +10,13 @@ pub struct GameFiles {
 impl GameFiles {
     pub fn from_root(root: &std::path::Path) -> Self {
         let mut path = root.to_path_buf();
-        path.push("data.arx");
+        path.push("data.squashfs");
 
         let inner = FormatGameFiles::new(path.to_str().expect("invalid path"));
         Self { inner }
     }
 
-    pub fn from_archive(archive: formats::game_files::ArxArchive) -> Self {
+    pub fn from_archive(archive: formats::game_files::SquashfsArchive) -> Self {
         let inner = FormatGameFiles::from_archive(archive);
         Self { inner }
     }
@@ -30,7 +30,7 @@ impl GameFiles {
     pub fn get_files_parallel<S>(
         &self,
         paths: &[S],
-    ) -> Vec<Result<Vec<u8>, formats::game_files::ArxError>>
+    ) -> Vec<Result<Vec<u8>, formats::game_files::SquashfsError>>
     where
         S: AsRef<str> + Sync,
     {

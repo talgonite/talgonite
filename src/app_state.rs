@@ -44,15 +44,18 @@ pub fn setup_game_files(
         return;
     }
 
-    let path = storage_config.data_arx_path();
+    let path = storage_config.data_squashfs_path();
     let archive_issue = if !path.exists() {
-        Some(format!("data.arx not found at {:?}", path))
+        Some(format!("data.squashfs not found at {:?}", path))
     } else {
         match installer::is_archive_up_to_date(&path) {
             Ok(true) => None,
-            Ok(false) => Some(format!("data.arx found at {:?} but version is stale", path)),
+            Ok(false) => Some(format!(
+                "data.squashfs found at {:?} but version is stale",
+                path
+            )),
             Err(error) => Some(format!(
-                "failed to verify data.arx at {:?}: {:?}",
+                "failed to verify data.squashfs at {:?}: {:?}",
                 path, error
             )),
         }
@@ -69,7 +72,7 @@ pub fn setup_game_files(
 
     *install_transition_requested = false;
 
-    tracing::info!("data.arx found and version matches, initializing GameFiles");
+    tracing::info!("data.squashfs found and version matches, initializing GameFiles");
     let game_files = GameFiles::from_root(&storage_config.root);
     commands.insert_resource(SlintAssetLoaderRes(SlintAssetLoader::new(&game_files)));
     commands.insert_resource(game_files);

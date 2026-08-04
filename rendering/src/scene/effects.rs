@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use etagere::Allocation;
 use formats::efa::EfaFile;
 use formats::epf::EpfImage;
-use formats::game_files::ArxArchive;
+use formats::game_files::SquashfsArchive;
 use glam::Vec2;
 
 use crate::instance::InstanceFlag;
@@ -54,7 +54,7 @@ impl EffectManager {
     pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        archive: &ArxArchive,
+        archive: &SquashfsArchive,
         camera_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> Self {
         let diffuse_texture = texture::Texture::from_data(
@@ -177,7 +177,7 @@ impl EffectManager {
         }
     }
 
-    fn parse_effect_tbl(archive: &ArxArchive) -> Vec<EffectFrameSequence> {
+    fn parse_effect_tbl(archive: &SquashfsArchive) -> Vec<EffectFrameSequence> {
         let Ok(data) = archive.get_file("roh/effect.tbl") else {
             tracing::error!("Failed to load effect.tbl");
             return Vec::new();
@@ -203,7 +203,7 @@ impl EffectManager {
             .collect()
     }
 
-    fn parse_palette_indices(archive: &ArxArchive) -> rangemap::RangeMap<u16, u16> {
+    fn parse_palette_indices(archive: &SquashfsArchive) -> rangemap::RangeMap<u16, u16> {
         let Ok(data) = archive.get_file("roh/eff.tbl.bin") else {
             tracing::error!("Failed to load eff.tbl.bin");
             return rangemap::RangeMap::new();
@@ -221,7 +221,7 @@ impl EffectManager {
         }
     }
 
-    fn load_palette(archive: &ArxArchive) -> Option<Vec<u8>> {
+    fn load_palette(archive: &SquashfsArchive) -> Option<Vec<u8>> {
         let data = archive.get_file("roh/eff.ktx2").ok()?;
         let reader = ktx2::Reader::new(&data).ok()?;
         let level = reader.levels().next()?;
@@ -231,7 +231,7 @@ impl EffectManager {
     pub fn spawn_effect(
         &mut self,
         queue: &wgpu::Queue,
-        archive: &ArxArchive,
+        archive: &SquashfsArchive,
         effect_id: u16,
         x: f32,
         y: f32,
@@ -259,7 +259,7 @@ impl EffectManager {
     fn load_effect(
         &mut self,
         queue: &wgpu::Queue,
-        archive: &ArxArchive,
+        archive: &SquashfsArchive,
         effect_id: u16,
     ) -> Option<()> {
         let sequence = self
@@ -330,7 +330,7 @@ impl EffectManager {
     fn load_epf(
         &mut self,
         queue: &wgpu::Queue,
-        archive: &ArxArchive,
+        archive: &SquashfsArchive,
         effect_id: u16,
         sequence: Option<Vec<usize>>,
     ) -> Option<()> {

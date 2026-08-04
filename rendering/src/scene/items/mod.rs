@@ -42,7 +42,7 @@ impl ItemAssetStore {
     pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        archive: &formats::game_files::ArxArchive,
+        archive: &formats::game_files::SquashfsArchive,
     ) -> Self {
         let diffuse = texture::Texture::from_data(
             device,
@@ -88,7 +88,7 @@ impl ItemAssetStore {
 
     pub(crate) fn ensure_sheet(
         &mut self,
-        archive: &formats::game_files::ArxArchive,
+        archive: &formats::game_files::SquashfsArchive,
         sheet_index: u32,
     ) -> anyhow::Result<()> {
         if let Some(sheet) = self.loaded_sheets.get_mut(&sheet_index) {
@@ -154,7 +154,7 @@ impl ItemBatch {
         &mut self,
         queue: &wgpu::Queue,
         store: &mut ItemAssetStore,
-        archive: &formats::game_files::ArxArchive,
+        archive: &formats::game_files::SquashfsArchive,
         item: Item,
     ) -> Option<ItemInstanceHandle> {
         let sheet_index = ((item.sprite - 1) as u32 / ITEMS_PER_EPF_FILE) + 1;

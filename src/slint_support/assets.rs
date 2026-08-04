@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
 
 use formats::epf::EpfImage;
-use formats::game_files::ArxError;
+use formats::game_files::SquashfsError;
 use formats::util::parallel_indexed;
 use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
 use tracing::debug;
@@ -330,7 +330,7 @@ impl SlintAssetLoader {
         }
 
         let file_results = game_files.get_files_parallel(&paths);
-        let mut files: HashMap<String, Result<Vec<u8>, ArxError>> =
+        let mut files: HashMap<String, Result<Vec<u8>, SquashfsError>> =
             HashMap::with_capacity(paths.len());
         for (path, result) in paths.into_iter().zip(file_results) {
             files.insert(path, result);

@@ -1,10 +1,10 @@
 use super::types::{Gender, PlayerPieceType, PlayerSpriteKey};
 use crate::texture;
-use formats::game_files::ArxArchive;
+use formats::game_files::SquashfsArchive;
 use rangemap::RangeMap;
 use rustc_hash::FxHashMap;
 
-type Archive = ArxArchive;
+type Archive = SquashfsArchive;
 
 const PALETTE_CHARS: [char; 9] = ['b', 'c', 'e', 'f', 'h', 'l', 'm', 'u', 'w'];
 
@@ -85,7 +85,6 @@ impl PlayerPalettes {
         palette_table
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn load_palettes(
         archive: &Archive,
         device: &wgpu::Device,

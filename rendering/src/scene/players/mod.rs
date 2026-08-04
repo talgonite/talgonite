@@ -22,9 +22,9 @@ use crate::{
     },
     texture,
 };
-use formats::game_files::ArxArchive;
+use formats::game_files::SquashfsArchive;
 
-type Archive = ArxArchive;
+type Archive = SquashfsArchive;
 
 const ATLAS_WIDTH: usize = 4096;
 const ATLAS_HEIGHT: usize = 8192;
@@ -255,7 +255,7 @@ impl PlayerAssetStore {
         for ((key, _path), file_result) in sprites_to_load.into_iter().zip(file_results) {
             match file_result {
                 Ok(bytes) => bytes_by_sprite.push((key, bytes)),
-                Err(formats::game_files::ArxError::FileNotFound(_)) => {
+                Err(formats::game_files::SquashfsError::FileNotFound(_)) => {
                     self.missing_sprites.insert(key);
                 }
                 Err(error) => return Err(error.into()),
@@ -475,8 +475,8 @@ impl PlayerBatch {
                 ) {
                     Ok(loaded_sprite) => loaded_sprite,
                     Err(error) => {
-                        if let Some(formats::game_files::ArxError::FileNotFound(_)) =
-                            error.downcast_ref::<formats::game_files::ArxError>()
+                        if let Some(formats::game_files::SquashfsError::FileNotFound(_)) =
+                            error.downcast_ref::<formats::game_files::SquashfsError>()
                         {
                             store.missing_sprites.insert(sprite);
                         }

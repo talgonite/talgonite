@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
-use formats::game_files::ArxArchive;
+use formats::game_files::SquashfsArchive;
 use glam::UVec2;
 use packets::server;
 use std::collections::HashMap;
@@ -18,7 +18,7 @@ pub struct TestScene {
     app: App,
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
-    _archive: ArxArchive,
+    _archive: SquashfsArchive,
     maps_dir: PathBuf,
     next_entity_id: u32,
 }
@@ -34,8 +34,8 @@ impl TestScene {
     pub fn new() -> Self {
         let storage_root = storage_root();
         let storage_config = talgonite_lib::StorageConfig::new(storage_root.clone());
-        let archive =
-            ArxArchive::new(storage_config.data_arx_path()).expect("Failed to open archive");
+        let archive = SquashfsArchive::new(storage_config.data_squashfs_path())
+            .expect("Failed to open archive");
         let maps_dir = storage_config.server_maps_dir(1);
 
         let (device, queue) = pollster::block_on(async {

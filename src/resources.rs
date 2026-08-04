@@ -23,8 +23,8 @@ impl StorageConfig {
         Self { root }
     }
 
-    pub fn data_arx_path(&self) -> std::path::PathBuf {
-        self.root.join("data.arx")
+    pub fn data_squashfs_path(&self) -> std::path::PathBuf {
+        self.root.join("data.squashfs")
     }
 
     pub fn settings_path(&self) -> std::path::PathBuf {

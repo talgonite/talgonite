@@ -1,6 +1,9 @@
-use jubako::{self as jbk};
-use libarx::{self as arx, FullBuilder};
-use std::{io::Read, path::Path, sync::Arc};
+use backhand::InnerNode;
+use std::{
+    io::{BufReader, Read},
+    path::Path,
+    sync::Arc,
+};
 use tracing::info;
 
 mod animation_processor;
@@ -19,7 +22,7 @@ mod texture_processor;
 use crate::asset_record::AssetRecord;
 use crate::da741::{Da741ExeReader, PayloadKind};
 use crate::da741_profile::Da741Profile;
-use crate::sink::{ArxAssetSink, AssetSink};
+use crate::sink::{AssetSink, SquashfsAssetSink};
 use crate::source::InstallSource;
 
 const VERSION_BUF: &[u8] = b"741_5";
@@ -28,8 +31,19 @@ pub trait InstallProgress: Send + Sync {
     fn report(&self, percent: f32, message: String);
 }
 
+fn open_archive(path: &Path) -> anyhow::Result<backhand::FilesystemReader<'static>> {
+    let file = std::fs::File::open(path)?;
+    Ok(backhand::FilesystemReader::from_reader(BufReader::new(
+        file,
+    ))?)
+}
+
 pub fn is_archive_up_to_date(path: &Path) -> anyhow::Result<bool> {
-    let existing_archive = libarx::Arx::new(path)?;
+    let existing_archive = match open_archive(path) {
+        Ok(archive) => archive,
+        // Unreadable or old-format archive; the installer will rebuild it.
+        Err(_) => return Ok(false),
+    };
     let version_file = archive_version_file(&existing_archive)?;
 
     Ok(version_file.as_deref() == Some(VERSION_BUF))
@@ -40,25 +54,26 @@ pub fn install(output: &Path, progress: Option<Arc<dyn InstallProgress>>) -> any
         p.report(0.0, "Checking archive...".to_string());
     }
     if output.exists() {
-        let existing_archive = libarx::Arx::new(output).unwrap();
-
-        let version_file = archive_version_file(&existing_archive).unwrap();
-
-        if let Some(version_file) = version_file {
-            if version_file == VERSION_BUF {
-                info!("Archive is up to date");
-                return Ok(());
+        match open_archive(output) {
+            Ok(existing_archive) => {
+                let version_file = archive_version_file(&existing_archive)?;
+                if version_file.as_deref() == Some(VERSION_BUF) {
+                    info!("Archive is up to date");
+                    return Ok(());
+                }
+                info!("Archive is not up to date, updating");
+            }
+            Err(error) => {
+                info!("Existing archive is not readable (old format?): {error}; rebuilding");
             }
         }
-
-        info!("Archive is not up to date, updating");
     } else {
         info!("Archive does not exist, creating");
     }
 
     let install_source = InstallSource::for_output(output)?;
     let mut exe_reader = Da741ExeReader::from_source(install_source.open()?)?;
-    let mut asset_sink = ArxAssetSink::new(output)?;
+    let mut asset_sink = SquashfsAssetSink::new(output)?;
 
     let payloads = exe_reader
         .payloads()
@@ -125,20 +140,24 @@ pub fn install(output: &Path, progress: Option<Arc<dyn InstallProgress>>) -> any
     Ok(())
 }
 
-fn archive_version_file(existing_archive: &libarx::Arx) -> anyhow::Result<Option<Vec<u8>>> {
-    let version_file = match existing_archive.get_entry::<FullBuilder>(arx::Path::new("VERSION")) {
-        Ok(arx::Entry::File(content_address)) => {
-            match existing_archive.get_bytes(content_address.content())? {
-                Some(jbk::reader::MayMissPack::FOUND(Some(bytes))) => {
-                    let mut buf = vec![];
-                    bytes.stream().read_to_end(&mut buf)?;
-                    Some(buf)
-                }
-                _ => None,
+fn archive_version_file(
+    existing_archive: &backhand::FilesystemReader,
+) -> anyhow::Result<Option<Vec<u8>>> {
+    for node in existing_archive.files() {
+        // Normalized components so this also matches Windows separators.
+        let is_version = node
+            .fullpath
+            .components()
+            .filter(|component| matches!(component, std::path::Component::Normal(_)))
+            .eq(Path::new("VERSION").components());
+        if is_version {
+            if let InnerNode::File(file) = &node.inner {
+                let mut reader = existing_archive.file(file).reader();
+                let mut buf = vec![];
+                reader.read_to_end(&mut buf)?;
+                return Ok(Some(buf));
             }
         }
-        _ => None,
-    };
-
-    Ok(version_file)
+    }
+    Ok(None)
 }

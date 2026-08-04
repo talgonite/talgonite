@@ -1,4 +1,3 @@
-use jubako::creator::InputReader;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
@@ -30,8 +29,8 @@ impl AssetRecord {
         self.content.size()
     }
 
-    pub(crate) fn into_input_reader(self) -> Box<dyn InputReader> {
-        self.content.into_input_reader()
+    pub(crate) fn into_reader(self) -> Box<dyn std::io::Read + Send> {
+        self.content.into_reader()
     }
 }
 
@@ -48,7 +47,7 @@ impl AssetContent {
         }
     }
 
-    fn into_input_reader(self) -> Box<dyn InputReader> {
+    fn into_reader(self) -> Box<dyn std::io::Read + Send> {
         match self {
             Self::Bytes(bytes) => Box::new(Cursor::new(bytes)),
             Self::Chunks(chunks) => {
@@ -75,7 +74,7 @@ mod tests {
             Path::new("Legend/test.bin"),
             vec![b"ab".to_vec(), b"cd".to_vec(), b"ef".to_vec()],
         )
-        .into_input_reader();
+        .into_reader();
         let mut buf = vec![];
         reader.read_to_end(&mut buf).unwrap();
 

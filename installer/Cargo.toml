@@ -23,8 +23,7 @@ reqwest = { version = "0.12", features = [
     "rustls-tls",
 ], default-features = false }
 vk2dfd = "0.1.0"
-libarx.workspace = true
-jubako.workspace = true
+backhand.workspace = true
 tracing.workspace = true
 indicatif = "0.18"
 rendering.workspace = true

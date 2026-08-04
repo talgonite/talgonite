@@ -19,12 +19,16 @@ Requires mold linker on Linux. WGPU validation disabled via `.cargo/config.toml`
 
 ## Inspecting Game Data
 
-The installed game archive lives at `~/.local/share/Talgonite/data.arx`. Use the `arx` CLI
-(from the `jubako` toolchain, already on PATH) instead of writing probe code:
+The installed game archive lives at `~/.local/share/Talgonite/data.squashfs`. It is a SquashFS v4.0
+little-endian image (`backhand`'s `le_v4_0` kind) compressed with zstd (level 3, 8 KiB blocks), written by
+the installer. Use the
+`unsquashfs-backhand` CLI (from the `backhand-cli` toolchain, already on PATH) instead of
+writing probe code:
 
 ```bash
-arx list ~/.local/share/Talgonite/data.arx            # list entries
-arx dump ~/.local/share/Talgonite/data.arx ia/sotp.dat # print an entry (or save to a file)
+unsquashfs-backhand -l ~/.local/share/Talgonite/data.squashfs               # list entries
+unsquashfs-backhand -d /tmp/squashfs-out --path-filter /ia/sotp.dat \
+    ~/.local/share/Talgonite/data.squashfs                                   # extract one entry
 ```
 
 Paths use the same layout the game code reads (`ia/...`, `seo/...`), e.g. `ia/sotp.dat`,
@@ -86,7 +90,7 @@ Slint rendering_notifier(BeforeRendering)
 | **formats**    | Game file parsers (EFA, EPF, MPF, HPF for Darkages archives)    |
 | **game-ui**    | Slint UI definitions (.slint files) and Rust bindings           |
 | **game-input** | Unified keyboard/gamepad input abstraction                      |
-| **installer**  | Downloads and installs .arx game archives                       |
+| **installer**  | Builds the game data archive (SquashFS `data.squashfs`) from the DA client exe |
 | **game-types** | Shared types (hotbar, settings)                                 |
 
 ### Key Source Files

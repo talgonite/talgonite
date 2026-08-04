@@ -62,8 +62,6 @@ glam.workspace = true
 anyhow.workspace = true
 byteorder.workspace = true
 wgpu.workspace = true
-libarx.workspace = true
-jubako.workspace = true
 async-std.workspace = true
 rand.workspace = true
 md5.workspace = true
@@ -147,9 +145,8 @@ futures-lite = "2.6"
 gilrs = "0.11"
 glam = "0.32"
 i-slint-core = "=1.17.0"
-jubako = "*"
 ktx2 = "0.5"
-libarx = { version = "0.4", features = ["zstd"] }
+backhand = { version = "0.25", default-features = false, features = ["zstd", "parallel"] }
 md5 = "0.8"
 num_enum = "0.7"
 oxicode = { version = "0.2", features = ["simd", "serde", "derive"] }

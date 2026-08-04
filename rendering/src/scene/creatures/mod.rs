@@ -19,9 +19,9 @@ use crate::{
     texture,
 };
 
-use formats::game_files::ArxArchive;
+use formats::game_files::SquashfsArchive;
 
-type Archive = ArxArchive;
+type Archive = SquashfsArchive;
 
 const ATLAS_WIDTH: usize = 2048;
 const ATLAS_HEIGHT: usize = 4096;
@@ -51,7 +51,7 @@ impl CreatureAssetStore {
         )
         .unwrap();
 
-        let palette_data = archive.get_file_or_panic_async("hades/mns.ktx2").await;
+        let palette_data = archive.get_file_or_panic("hades/mns.ktx2");
 
         let palette_texture =
             texture::Texture::from_ktx2_rgba8(device, queue, "creature_palette", &palette_data)
