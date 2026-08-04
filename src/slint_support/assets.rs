@@ -1,11 +1,45 @@
+use std::collections::{HashMap, HashSet};
+use std::sync::RwLock;
+
+use formats::epf::EpfImage;
+use formats::game_files::ArxError;
+use formats::util::parallel_indexed;
 use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
 use tracing::debug;
 
 use crate::game_files::GameFiles;
 use crate::metafile_store::MetafileStore;
 
+/// Which icon sheet a sprite id refers to. Icons with the same kind share the
+/// same EPF file layout and palette, so sprite ids are only meaningful within
+/// a kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum IconKind {
+    Item,
+    Skill,
+    Spell,
+}
+
+/// Cache of decoded icon pixels: `(kind, sprite_id)` -> decoded RGBA buffer.
+/// `None` entries remember failed loads.
+type IconCache = HashMap<(IconKind, u16), Option<SharedPixelBuffer<Rgba8Pixel>>>;
+
 pub struct SlintAssetLoader {
     item_palette_table: rangemap::RangeMap<u16, u16>,
+    /// Decoded icon pixels keyed by `(kind, sprite_id)`. We cache raw pixel
+    /// buffers rather than `slint::Image` because the latter is not `Send`
+    /// (it can hold backend texture handles) and this resource is shared
+    /// across threads. `None` entries remember failed loads so we do not
+    /// retry them on every UI refresh.
+    icon_cache: RwLock<IconCache>,
+}
+
+/// One icon in a batch, with the exact file + frame + palette it needs.
+struct IconLoadPlan {
+    epf_path: String,
+    palette_path: String,
+    palette_index: usize,
+    frame_index: usize,
 }
 
 impl SlintAssetLoader {
@@ -16,26 +50,87 @@ impl SlintAssetLoader {
         let (item_palette_table, _): (rangemap::RangeMap<u16, u16>, usize) =
             oxicode::serde::decode_from_slice(&table_data, oxicode::config::standard()).unwrap();
 
-        Self { item_palette_table }
+        Self {
+            item_palette_table,
+            icon_cache: RwLock::new(HashMap::new()),
+        }
     }
 
-    pub fn load_item_icon(&self, game_files: &GameFiles, sprite_id: u16) -> Result<Image, String> {
-        const ITEMS_PER_FILE: u16 = 266;
-        let zero_based = sprite_id.saturating_sub(1) as u16;
-        let file_index = zero_based / ITEMS_PER_FILE + 1;
-        let index_in_file = (zero_based % ITEMS_PER_FILE) as usize;
-        let epf_path = format!("Legend/item{:03}.epf.bin", file_index);
+    /// Resolve a batch of icons, loading any uncached sprite ids in parallel
+    /// (shared file reads + shared decode work, like player parts). Results are
+    /// returned in the same order as `requests`; failed or missing icons yield
+    /// `None` and are logged once when first encountered.
+    pub fn icons(
+        &self,
+        game_files: &GameFiles,
+        requests: &[(IconKind, u16)],
+    ) -> Vec<Option<Image>> {
+        if requests.is_empty() {
+            return Vec::new();
+        }
 
-        SlintAssetLoader::decode_epf_to_slint(
-            game_files,
-            &epf_path,
-            index_in_file,
-            "Legend/item.ktx2",
-            self.item_palette_table
-                .get(&sprite_id)
-                .copied()
-                .unwrap_or_default() as usize,
-        )
+        let mut results: Vec<Option<Image>> = Vec::with_capacity(requests.len());
+        let mut missing: Vec<(IconKind, u16)> = Vec::new();
+
+        {
+            let cache = self.icon_cache.read().expect("icon cache poisoned");
+            for &request in requests {
+                match cache.get(&request) {
+                    Some(icon) => results.push(icon.clone().map(Image::from_rgba8)),
+                    None => {
+                        results.push(None);
+                        missing.push(request);
+                    }
+                }
+            }
+        }
+
+        if missing.is_empty() {
+            return results;
+        }
+
+        // Deduplicate the missing set so each sprite is decoded exactly once.
+        let mut unique: Vec<(IconKind, u16)> = Vec::with_capacity(missing.len());
+        let mut unique_index: HashMap<(IconKind, u16), usize> =
+            HashMap::with_capacity(missing.len());
+        for request in &missing {
+            if !unique_index.contains_key(request) {
+                unique_index.insert(*request, unique.len());
+                unique.push(*request);
+            }
+        }
+
+        let loaded = self.load_icons_batch(game_files, &unique);
+
+        {
+            let mut cache = self.icon_cache.write().expect("icon cache poisoned");
+            for (request, result) in unique.iter().zip(&loaded) {
+                match result {
+                    Ok(buffer) => {
+                        cache.insert(*request, Some(buffer.clone()));
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            "Failed to load {:?} icon sprite {}: {}",
+                            request.0,
+                            request.1,
+                            err
+                        );
+                        cache.insert(*request, None);
+                    }
+                }
+            }
+        }
+
+        for (index, request) in missing.into_iter().enumerate() {
+            results[index] = loaded[unique_index[&request]]
+                .as_ref()
+                .ok()
+                .cloned()
+                .map(Image::from_rgba8);
+        }
+
+        results
     }
 
     pub fn load_npc_portrait(
@@ -146,26 +241,6 @@ impl SlintAssetLoader {
         Ok(Image::from_rgba8(pixel_buffer))
     }
 
-    pub fn load_skill_icon(&self, game_files: &GameFiles, sprite_id: u16) -> Result<Image, String> {
-        SlintAssetLoader::decode_epf_to_slint(
-            game_files,
-            &"setoa/skill001.epf.bin",
-            sprite_id as usize,
-            "setoa/gui.ktx2",
-            6,
-        )
-    }
-
-    pub fn load_spell_icon(&self, game_files: &GameFiles, sprite_id: u16) -> Result<Image, String> {
-        SlintAssetLoader::decode_epf_to_slint(
-            game_files,
-            &"setoa/spell001.epf.bin",
-            sprite_id as usize,
-            "setoa/gui.ktx2",
-            6,
-        )
-    }
-
     pub fn load_world_map_image(
         &self,
         game_files: &GameFiles,
@@ -189,63 +264,187 @@ impl SlintAssetLoader {
             palette_rgba[i * 4 + 3] = 255;
         }
 
-        SlintAssetLoader::decode_epf_to_slint_with_palette(game_files, &epf_path, 0, &palette_rgba)
-    }
-
-    fn decode_epf_to_slint(
-        game_files: &GameFiles,
-        epf_path: &str,
-        frame_index: usize,
-        palette_path: &str,
-        palette_index: usize,
-    ) -> Result<Image, String> {
-        let palette_rgba = {
-            let palette_bytes = game_files
-                .get_file(palette_path)
-                .ok_or_else(|| format!("Palette file not found: {}", palette_path))?;
-            if palette_bytes.is_empty() {
-                return Err(format!("Palette file not found: {}", palette_path));
-            }
-            let (_, _, pal_data) = rendering::texture::Texture::load_ktx2(&palette_bytes)
-                .map_err(|e| format!("palette load: {e}"))?;
-            let palette_size = 4 * 256;
-
-            let total_palettes = pal_data.len() / palette_size;
-
-            if palette_index >= total_palettes {
-                return Err(format!(
-                    "palette index {palette_index} out of range (total {total_palettes})"
-                ));
-            }
-            let pal_offset = palette_size * palette_index;
-            let slice = &pal_data[pal_offset..pal_offset + palette_size];
-            slice.to_vec()
-        };
-
-        SlintAssetLoader::decode_epf_to_slint_with_palette(
-            game_files,
-            epf_path,
-            frame_index,
-            &palette_rgba,
-        )
-    }
-
-    fn decode_epf_to_slint_with_palette(
-        game_files: &GameFiles,
-        epf_path: &str,
-        frame_index: usize,
-        palette_rgba: &[u8],
-    ) -> Result<Image, String> {
         let epf_bytes = game_files
-            .get_file(epf_path)
+            .get_file(&epf_path)
             .ok_or_else(|| format!("EPF file not found: {}", epf_path))?;
-        if epf_bytes.is_empty() {
-            return Err(format!("EPF file not found: {}", epf_path));
+        let epf_image = SlintAssetLoader::decode_epf_image(&epf_bytes)?;
+        let buffer = SlintAssetLoader::build_frame_buffer(&epf_image, 0, &palette_rgba)?;
+        Ok(Image::from_rgba8(buffer))
+    }
+
+    /// Load `requests` (assumed deduplicated) in parallel and return a result
+    /// per request. File reads go through the archive's parallel reader, then
+    /// EPF decode and pixel expansion are spread across worker threads.
+    fn load_icons_batch(
+        &self,
+        game_files: &GameFiles,
+        requests: &[(IconKind, u16)],
+    ) -> Vec<Result<SharedPixelBuffer<Rgba8Pixel>, String>> {
+        let plans: Vec<IconLoadPlan> = requests
+            .iter()
+            .map(|&(kind, sprite)| match kind {
+                IconKind::Item => {
+                    const ITEMS_PER_FILE: u16 = 266;
+                    let zero_based = sprite.saturating_sub(1);
+                    let file_index = zero_based / ITEMS_PER_FILE + 1;
+                    let index_in_file = (zero_based % ITEMS_PER_FILE) as usize;
+                    IconLoadPlan {
+                        epf_path: format!("Legend/item{:03}.epf.bin", file_index),
+                        palette_path: "Legend/item.ktx2".to_string(),
+                        palette_index: self
+                            .item_palette_table
+                            .get(&sprite)
+                            .copied()
+                            .unwrap_or_default() as usize,
+                        frame_index: index_in_file,
+                    }
+                }
+                IconKind::Skill => IconLoadPlan {
+                    epf_path: "setoa/skill001.epf.bin".to_string(),
+                    palette_path: "setoa/gui.ktx2".to_string(),
+                    palette_index: 6,
+                    frame_index: sprite as usize,
+                },
+                IconKind::Spell => IconLoadPlan {
+                    epf_path: "setoa/spell001.epf.bin".to_string(),
+                    palette_path: "setoa/gui.ktx2".to_string(),
+                    palette_index: 6,
+                    frame_index: sprite as usize,
+                },
+            })
+            .collect();
+
+        // Collect every distinct archive path (EPF files + palettes) so the
+        // whole batch is read in one parallel pass.
+        let mut paths: Vec<String> = Vec::new();
+        let mut path_index: HashMap<&str, usize> = HashMap::new();
+        for plan in &plans {
+            for path in [&plan.epf_path, &plan.palette_path] {
+                if let std::collections::hash_map::Entry::Vacant(entry) = path_index.entry(path) {
+                    entry.insert(paths.len());
+                    paths.push(path.clone());
+                }
+            }
         }
 
-        let (epf_image, _): (formats::epf::EpfImage, _) =
-            oxicode::decode_from_slice(&epf_bytes).map_err(|e| format!("decode epf: {e}"))?;
+        let file_results = game_files.get_files_parallel(&paths);
+        let mut files: HashMap<String, Result<Vec<u8>, ArxError>> =
+            HashMap::with_capacity(paths.len());
+        for (path, result) in paths.into_iter().zip(file_results) {
+            files.insert(path, result);
+        }
 
+        // Decode each palette file once (shared across every icon in the batch);
+        // individual icons slice out the palette index they need below.
+        let mut palettes: HashMap<String, Result<Vec<u8>, String>> = HashMap::new();
+        for plan in &plans {
+            if palettes.contains_key(&plan.palette_path) {
+                continue;
+            }
+            let palette = match files.get(&plan.palette_path) {
+                Some(Ok(bytes)) => SlintAssetLoader::decode_palette_file(bytes),
+                Some(Err(err)) => Err(format!("{}: {}", plan.palette_path, err)),
+                None => Err(format!("{} not found", plan.palette_path)),
+            };
+            palettes.insert(plan.palette_path.clone(), palette);
+        }
+
+        // Decode each EPF file once, in parallel.
+        let epf_paths: Vec<String> = plans
+            .iter()
+            .map(|plan| plan.epf_path.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        let worker_count = std::thread::available_parallelism()
+            .map(usize::from)
+            .unwrap_or(1)
+            .max(1);
+
+        let mut epf_images: HashMap<String, Result<EpfImage, String>> =
+            HashMap::with_capacity(epf_paths.len());
+        for (_, (path, decoded)) in parallel_indexed(epf_paths.len(), worker_count, |index| {
+            let path = &epf_paths[index];
+            let decoded = match files.get(path) {
+                Some(Ok(bytes)) => SlintAssetLoader::decode_epf_image(bytes),
+                Some(Err(err)) => Err(format!("{}: {}", path, err)),
+                None => Err(format!("{} not found", path)),
+            };
+            (path.clone(), decoded)
+        }) {
+            epf_images.insert(path, decoded);
+        }
+
+        // Build the final RGBA pixel buffers for every request, in parallel.
+        let mut buffers: Vec<Option<Result<SharedPixelBuffer<Rgba8Pixel>, String>>> =
+            vec![None; plans.len()];
+        for (index, result) in
+            parallel_indexed(plans.len(), worker_count.min(plans.len()).max(1), |index| {
+                let plan = &plans[index];
+                Self::build_icon_buffer(plan, &epf_images, &palettes)
+            })
+        {
+            buffers[index] = Some(result);
+        }
+
+        buffers
+            .into_iter()
+            .map(|result| result.expect("every icon request filled"))
+            .collect()
+    }
+
+    fn build_icon_buffer(
+        plan: &IconLoadPlan,
+        epf_images: &HashMap<String, Result<EpfImage, String>>,
+        palettes: &HashMap<String, Result<Vec<u8>, String>>,
+    ) -> Result<SharedPixelBuffer<Rgba8Pixel>, String> {
+        let epf = match epf_images.get(&plan.epf_path) {
+            Some(Ok(image)) => image,
+            Some(Err(err)) => return Err(format!("{}: {}", plan.epf_path, err)),
+            None => return Err(format!("{} not read", plan.epf_path)),
+        };
+        let palette = match palettes.get(&plan.palette_path) {
+            Some(Ok(bytes)) => bytes,
+            Some(Err(err)) => return Err(format!("{}: {}", plan.palette_path, err)),
+            None => return Err(format!("{} not read", plan.palette_path)),
+        };
+
+        const PALETTE_SIZE: usize = 4 * 256;
+        let offset = PALETTE_SIZE * plan.palette_index;
+        let palette_rgba = palette.get(offset..offset + PALETTE_SIZE).ok_or_else(|| {
+            format!(
+                "palette index {} out of range (total {})",
+                plan.palette_index,
+                palette.len() / PALETTE_SIZE
+            )
+        })?;
+
+        SlintAssetLoader::build_frame_buffer(epf, plan.frame_index, palette_rgba)
+    }
+
+    fn decode_palette_file(palette_bytes: &[u8]) -> Result<Vec<u8>, String> {
+        if palette_bytes.is_empty() {
+            return Err("Palette file is empty".to_string());
+        }
+        let (_, _, pal_data) = rendering::texture::Texture::load_ktx2(palette_bytes)
+            .map_err(|e| format!("palette load: {e}"))?;
+        Ok(pal_data)
+    }
+
+    fn decode_epf_image(epf_bytes: &[u8]) -> Result<EpfImage, String> {
+        if epf_bytes.is_empty() {
+            return Err("EPF file is empty".to_string());
+        }
+        let (epf_image, _): (EpfImage, _) =
+            oxicode::decode_from_slice(epf_bytes).map_err(|e| format!("decode epf: {e}"))?;
+        Ok(epf_image)
+    }
+
+    fn build_frame_buffer(
+        epf_image: &EpfImage,
+        frame_index: usize,
+        palette_rgba: &[u8],
+    ) -> Result<SharedPixelBuffer<Rgba8Pixel>, String> {
         if frame_index >= epf_image.frames.len() {
             return Err("frame index out of range".into());
         }
@@ -282,6 +481,6 @@ impl SlintAssetLoader {
             }
         }
 
-        Ok(Image::from_rgba8(pixel_buffer))
+        Ok(pixel_buffer)
     }
 }

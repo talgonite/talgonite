@@ -25,6 +25,15 @@ impl GameFiles {
         self.inner.get_file(path)
     }
 
+    /// Read many files at once, using a worker pool to parallelize archive
+    /// lookups and decompression (mirrors the player-sprite loading path).
+    pub fn get_files_parallel<S>(&self, paths: &[S]) -> Vec<Result<Vec<u8>, formats::game_files::ArxError>>
+    where
+        S: AsRef<str> + Sync,
+    {
+        self.inner.get_files_parallel(paths)
+    }
+
     pub fn inner(&self) -> &FormatGameFiles {
         &self.inner
     }

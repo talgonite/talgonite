@@ -12,44 +12,6 @@ pub struct WebArchive {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl ArxArchive {
-    fn parallel_indexed<T, F>(job_count: usize, worker_count: usize, task: F) -> Vec<(usize, T)>
-    where
-        T: Send,
-        F: Fn(usize) -> T + Sync,
-    {
-        let task = &task;
-
-        std::thread::scope(|scope| {
-            let next_index = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-            let mut jobs = Vec::with_capacity(worker_count);
-
-            for _ in 0..worker_count {
-                let next_index = next_index.clone();
-                jobs.push(scope.spawn(move || {
-                    let mut local_results = Vec::new();
-
-                    loop {
-                        let index = next_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                        if index >= job_count {
-                            break;
-                        }
-
-                        local_results.push((index, task(index)));
-                    }
-
-                    local_results
-                }));
-            }
-
-            let mut results = Vec::with_capacity(job_count);
-            for job in jobs {
-                results.extend(job.join().expect("parallel archive worker thread panicked"));
-            }
-
-            results
-        })
-    }
-
     pub fn new<P: AsRef<std::path::Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
         use std::sync::Arc;
 
@@ -100,19 +62,22 @@ impl ArxArchive {
         }
 
         let lookup_worker_count = cpu_workers.min(paths.len()).max(1);
-        let found_entries = Self::parallel_indexed(paths.len(), lookup_worker_count, |index| {
-            let entry = self
-                .archive
-                .get_entry::<FullBuilder>(arx::Path::new(paths[index].as_ref()));
+        let found_entries =
+            crate::util::parallel_indexed(paths.len(), lookup_worker_count, |index| {
+                let entry = self
+                    .archive
+                    .get_entry::<FullBuilder>(arx::Path::new(paths[index].as_ref()));
 
-            match entry {
-                Ok(arx::Entry::File(content_address)) => Some((index, content_address.content())),
-                _ => None,
-            }
-        })
-        .into_iter()
-        .filter_map(|(_, entry)| entry)
-        .collect::<Vec<_>>();
+                match entry {
+                    Ok(arx::Entry::File(content_address)) => {
+                        Some((index, content_address.content()))
+                    }
+                    _ => None,
+                }
+            })
+            .into_iter()
+            .filter_map(|(_, entry)| entry)
+            .collect::<Vec<_>>();
 
         if found_entries.is_empty() {
             return paths
@@ -128,7 +93,7 @@ impl ArxArchive {
             .collect::<Vec<_>>();
 
         for (_, (path_index, result)) in
-            Self::parallel_indexed(found_entries.len(), read_worker_count, |index| {
+            crate::util::parallel_indexed(found_entries.len(), read_worker_count, |index| {
                 let (path_index, content_address) = found_entries[index];
                 let bytes_res = self.archive.get_bytes(content_address);
                 let result =

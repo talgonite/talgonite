@@ -6,6 +6,7 @@ pub use types::*;
 
 use etagere::Allocation;
 use formats::epf::{AnimationDirection, EpfAnimation, EpfAnimationType};
+use formats::util::parallel_indexed;
 use glam::{Vec2, Vec3};
 use rustc_hash::{FxHashMap, FxHashSet};
 use tracing::error;
@@ -53,47 +54,6 @@ pub struct PlayerBatch {
 struct DecodedPlayerSprite {
     epf_image: Vec<EpfAnimation>,
     animations: FxHashMap<(EpfAnimationType, AnimationDirection), AnimationData>,
-}
-
-fn parallel_indexed<T, F>(job_count: usize, worker_count: usize, task: F) -> Vec<(usize, T)>
-where
-    T: Send,
-    F: Fn(usize) -> T + Sync,
-{
-    let task = &task;
-
-    std::thread::scope(|scope| {
-        let next_index = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let mut jobs = Vec::with_capacity(worker_count);
-
-        for _ in 0..worker_count {
-            let next_index = next_index.clone();
-            jobs.push(scope.spawn(move || {
-                let mut local_results = Vec::new();
-
-                loop {
-                    let index = next_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    if index >= job_count {
-                        break;
-                    }
-
-                    local_results.push((index, task(index)));
-                }
-
-                local_results
-            }));
-        }
-
-        let mut results = Vec::with_capacity(job_count);
-        for job in jobs {
-            results.extend(
-                job.join()
-                    .expect("parallel player sprite worker thread panicked"),
-            );
-        }
-
-        results
-    })
 }
 
 impl PlayerAssetStore {

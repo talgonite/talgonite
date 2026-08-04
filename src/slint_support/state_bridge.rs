@@ -1,7 +1,7 @@
 use crate::rich_text::RichText;
 use crate::{
     resources::{PlayerPortraitState, ZoomState},
-    slint_support::assets::SlintAssetLoader,
+    slint_support::assets::{IconKind, SlintAssetLoader},
 };
 use bevy::prelude::*;
 use game_types::SlotPanelType;
@@ -49,6 +49,19 @@ fn macro_display_name(action_id: &str) -> String {
         "Macro".to_string()
     } else {
         titled
+    }
+}
+
+/// Map a hotbar action to the icon sheet + sprite id it needs, so hotbar icons
+/// resolve through the same batched loader as the panel models.
+fn hotbar_icon_request(action_id: &ActionId) -> Option<(IconKind, u16)> {
+    let sprite = action_id.sprite();
+    match action_id.panel_type() {
+        SlotPanelType::Item => Some((IconKind::Item, sprite)),
+        SlotPanelType::Skill => Some((IconKind::Skill, sprite)),
+        SlotPanelType::Spell => Some((IconKind::Spell, sprite)),
+        SlotPanelType::Macro => Some((IconKind::Skill, 104)),
+        _ => None,
     }
 }
 
@@ -329,6 +342,13 @@ pub fn apply_core_to_slint(
 
     let mut hotbar_dirty = false;
     if inventory.is_changed() {
+        let inventory_icon_requests: Vec<(IconKind, u16)> = inventory
+            .0
+            .iter()
+            .map(|item| (IconKind::Item, item.sprite))
+            .collect();
+        let inventory_icons = asset_loader.icons(&game_files, &inventory_icon_requests);
+
         let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
 
         if game_state.get_inventory().row_count() != 60 {
@@ -344,14 +364,11 @@ pub fn apply_core_to_slint(
                 ..Default::default()
             })
             .collect();
-        for item in &inventory.0 {
-            let icon = asset_loader
-                .load_item_icon(&game_files, item.sprite)
-                .unwrap_or_default();
+        for (item, icon) in inventory.0.iter().zip(inventory_icons) {
             slint_items[(item.slot - 1) as usize] = crate::InventoryItem {
                 slot: item.slot as i32,
                 name: slint::SharedString::from(item.name.as_str()),
-                icon,
+                icon: icon.clone().unwrap_or_default(),
                 quantity: item.count as i32,
             };
         }
@@ -367,6 +384,19 @@ pub fn apply_core_to_slint(
     }
 
     if ability.is_changed() {
+        let skill_icon_requests: Vec<(IconKind, u16)> = ability
+            .skills
+            .iter()
+            .map(|skill| (IconKind::Skill, skill.sprite))
+            .collect();
+        let skill_icons = asset_loader.icons(&game_files, &skill_icon_requests);
+        let spell_icon_requests: Vec<(IconKind, u16)> = ability
+            .spells
+            .iter()
+            .map(|spell| (IconKind::Spell, spell.sprite))
+            .collect();
+        let spell_icons = asset_loader.icons(&game_files, &spell_icon_requests);
+
         let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
 
         if game_state.get_skills().row_count() != 60 {
@@ -376,14 +406,11 @@ pub fn apply_core_to_slint(
         }
         let skills_state = game_state.get_skills();
         let mut slint_skills = vec![crate::Skill::default(); 60];
-        for s in &ability.skills {
-            let icon = asset_loader
-                .load_skill_icon(&game_files, s.sprite)
-                .unwrap_or_default();
+        for (s, icon) in ability.skills.iter().zip(skill_icons) {
             let cd = skill_cooldowns.cooldowns.get(&s.slot);
             let skill = crate::Skill {
                 name: slint::SharedString::from(s.display_name().as_str()),
-                icon,
+                icon: icon.clone().unwrap_or_default(),
                 slot: s.slot as i32,
                 cooldown: match cd {
                     Some(cd) => crate::Cooldown {
@@ -417,13 +444,10 @@ pub fn apply_core_to_slint(
         }
         let spells_state = game_state.get_spells();
         let mut slint_spells = vec![crate::Spell::default(); 60];
-        for s in &ability.spells {
-            let icon = asset_loader
-                .load_spell_icon(&game_files, s.sprite)
-                .unwrap_or_default();
+        for (s, icon) in ability.spells.iter().zip(spell_icons) {
             let spell = crate::Spell {
                 name: slint::SharedString::from(s.display_name().as_str()),
-                icon,
+                icon: icon.clone().unwrap_or_default(),
                 slot: s.slot as i32,
                 prompt: slint::SharedString::from(s.prompt.as_str()),
             };
@@ -666,39 +690,46 @@ pub fn apply_core_to_slint(
                     )
                     .unwrap_or_default();
 
+                // Collect shop entry icons up front so the whole menu resolves
+                // through the batched loader (one parallel read/decode pass).
+                let menu_slot_requests: Vec<Option<(IconKind, u16)>> = entries
+                    .iter()
+                    .map(|entry| {
+                        if entry.sprite > 0
+                            && *entry_type != crate::webui::ipc::MenuEntryType::TextOptions
+                        {
+                            match entry_type {
+                                crate::webui::ipc::MenuEntryType::Items => {
+                                    Some((IconKind::Item, entry.sprite))
+                                }
+                                crate::webui::ipc::MenuEntryType::Spells => {
+                                    Some((IconKind::Spell, entry.sprite))
+                                }
+                                crate::webui::ipc::MenuEntryType::Skills => {
+                                    Some((IconKind::Skill, entry.sprite))
+                                }
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                let requests: Vec<(IconKind, u16)> =
+                    menu_slot_requests.iter().flatten().copied().collect();
+                let menu_icons = asset_loader.icons(&game_files, &requests);
+                let mut menu_icons = menu_icons.into_iter();
+                let slot_icons: Vec<Option<slint::Image>> = menu_slot_requests
+                    .iter()
+                    .map(|request| request.and_then(|_| menu_icons.next().flatten()))
+                    .collect();
+
                 let mut slint_entries = Vec::with_capacity(entries.len());
-                for entry in entries {
-                    let mut icon = slint::Image::default();
-                    let has_icon = entry.sprite > 0
-                        && *entry_type != crate::webui::ipc::MenuEntryType::TextOptions;
-
-                    if has_icon {
-                        let result = match entry_type {
-                            crate::webui::ipc::MenuEntryType::Items => {
-                                asset_loader.load_item_icon(&game_files, entry.sprite)
-                            }
-                            crate::webui::ipc::MenuEntryType::Spells => {
-                                asset_loader.load_spell_icon(&game_files, entry.sprite)
-                            }
-                            crate::webui::ipc::MenuEntryType::Skills => {
-                                asset_loader.load_skill_icon(&game_files, entry.sprite)
-                            }
-                            _ => Ok(slint::Image::default()),
-                        };
-                        icon = result.unwrap_or_else(|e| {
-                            tracing::warn!(
-                                "Failed to load menu icon sprite {}: {}",
-                                entry.sprite,
-                                e
-                            );
-                            slint::Image::default()
-                        });
-                    }
-
+                for (entry, icon) in entries.iter().zip(&slot_icons) {
                     slint_entries.push(crate::MenuEntry {
                         text: slint::SharedString::from(entry.text.as_str()),
                         id: entry.id as i32,
-                        icon,
+                        icon: icon.clone().unwrap_or_default(),
                         cost: entry.cost,
                     });
                 }
@@ -952,6 +983,27 @@ pub fn apply_core_to_slint(
         }
 
         let hotbar_state = game_state.get_hotbar();
+        let hotbar_slot_requests: Vec<Option<(IconKind, u16)>> = hotbar
+            .config
+            .bars
+            .iter()
+            .flat_map(|bar| bar.iter())
+            .map(|slot| {
+                if slot.action_id.is_empty() {
+                    None
+                } else {
+                    hotbar_icon_request(&ActionId::from_str(&slot.action_id))
+                }
+            })
+            .collect();
+        let requests: Vec<(IconKind, u16)> =
+            hotbar_slot_requests.iter().flatten().copied().collect();
+        let hotbar_icons = asset_loader.icons(&game_files, &requests);
+        let mut hotbar_icons = hotbar_icons.into_iter();
+        let slot_icons: Vec<Option<slint::Image>> = hotbar_slot_requests
+            .iter()
+            .map(|request| request.and_then(|_| hotbar_icons.next().flatten()))
+            .collect();
         let mut entry_idx = 0;
 
         for bar in &hotbar.config.bars {
@@ -962,7 +1014,6 @@ pub fn apply_core_to_slint(
                     let action_id = ActionId::from_str(&slot.action_id);
                     let mut quantity = 0;
                     let mut enabled = false;
-                    let mut sprite = action_id.sprite();
                     let mut cooldown = None;
 
                     let mut name = slint::SharedString::default();
@@ -978,14 +1029,12 @@ pub fn apply_core_to_slint(
                             enabled = quantity > 0;
                             if let Some(item) = inventory.0.iter().find(|item| item.id == action_id)
                             {
-                                sprite = item.sprite;
                                 name = slint::SharedString::from(item.name.as_str());
                             }
                             cooldown = hotbar.cooldowns.get(&slot.action_id).cloned();
                         }
                         SlotPanelType::Skill => {
                             if let Some(skill) = ability.skills.iter().find(|s| s.id == action_id) {
-                                sprite = skill.sprite;
                                 name = slint::SharedString::from(skill.display_name().as_str());
                                 enabled = true;
                                 cooldown = skill_cooldowns
@@ -997,7 +1046,6 @@ pub fn apply_core_to_slint(
                         }
                         SlotPanelType::Spell => {
                             if let Some(spell) = ability.spells.iter().find(|s| s.id == action_id) {
-                                sprite = spell.sprite;
                                 name = slint::SharedString::from(spell.display_name().as_str());
                                 enabled = true;
                                 cooldown = hotbar.cooldowns.get(&slot.action_id).cloned();
@@ -1011,14 +1059,7 @@ pub fn apply_core_to_slint(
                         _ => {}
                     }
 
-                    let icon = match action_id.panel_type() {
-                        SlotPanelType::Item => asset_loader.load_item_icon(&game_files, sprite),
-                        SlotPanelType::Skill => asset_loader.load_skill_icon(&game_files, sprite),
-                        SlotPanelType::Spell => asset_loader.load_spell_icon(&game_files, sprite),
-                        SlotPanelType::Macro => asset_loader.load_skill_icon(&game_files, 104),
-                        _ => Ok(slint::Image::default()),
-                    }
-                    .unwrap_or_default();
+                    let icon = slot_icons[entry_idx].clone().unwrap_or_default();
 
                     crate::HotbarEntry {
                         name,

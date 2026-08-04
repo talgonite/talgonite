@@ -3,6 +3,7 @@
 use bevy::prelude::*;
 use packets::server::EquipmentSlot;
 
+use crate::slint_support::assets::{IconKind, SlintAssetLoader};
 use crate::slint_support::state_bridge::{u8_to_social_status, SlintAssetLoaderRes, SlintWindow};
 use crate::{EquipmentSlotData, GameState, LegendMarkData, ProfileData};
 
@@ -30,28 +31,137 @@ pub fn legend_mark_color(color_str: &str) -> slint::Color {
     }
 }
 
-/// Build equipment slot data from item info.
-pub fn build_equipment_slot(
-    asset_loader: &crate::slint_support::assets::SlintAssetLoader,
-    gf: &crate::game_files::GameFiles,
+/// Raw sprite + label info needed to render one equipment slot, kept separate
+/// from the icon so a whole panel can be batched through the icon loader.
+struct ProfileSlotSpec {
     sprite: u16,
-    name: Option<&str>,
+    name: Option<String>,
     current_durability: u32,
     max_durability: u32,
-) -> EquipmentSlotData {
-    let durability_percent = if max_durability > 0 {
-        current_durability as f32 / max_durability as f32
-    } else {
-        1.0
-    };
-    EquipmentSlotData {
-        name: slint::SharedString::from(name.unwrap_or_default()),
-        icon: asset_loader.load_item_icon(gf, sprite).unwrap_or_default(),
-        has_item: true,
-        durability_percent,
-        current_durability: current_durability as i32,
-        max_durability: max_durability as i32,
-    }
+}
+
+const PROFILE_EQUIPMENT_ORDER: [EquipmentSlot; 18] = [
+    EquipmentSlot::Weapon,
+    EquipmentSlot::Armor,
+    EquipmentSlot::Shield,
+    EquipmentSlot::Helmet,
+    EquipmentSlot::Earrings,
+    EquipmentSlot::Necklace,
+    EquipmentSlot::LeftRing,
+    EquipmentSlot::RightRing,
+    EquipmentSlot::LeftGaunt,
+    EquipmentSlot::RightGaunt,
+    EquipmentSlot::Belt,
+    EquipmentSlot::Greaves,
+    EquipmentSlot::Boots,
+    EquipmentSlot::Accessory1,
+    EquipmentSlot::Accessory2,
+    EquipmentSlot::Overcoat,
+    EquipmentSlot::OverHelm,
+    EquipmentSlot::Accessory3,
+];
+
+fn collect_profile_slot_specs(
+    is_other_player: bool,
+    profile_equipment: &std::collections::HashMap<EquipmentSlot, packets::types::ItemInfo>,
+    equipment: &std::collections::HashMap<EquipmentSlot, packets::server::Equipment>,
+) -> [Option<ProfileSlotSpec>; 18] {
+    std::array::from_fn(|index| {
+        let slot = PROFILE_EQUIPMENT_ORDER[index];
+        if is_other_player {
+            profile_equipment.get(&slot).map(|item| ProfileSlotSpec {
+                sprite: item.sprite,
+                name: None,
+                current_durability: 0,
+                max_durability: 0,
+            })
+        } else {
+            equipment.get(&slot).map(|item| ProfileSlotSpec {
+                sprite: item.sprite,
+                name: Some(item.name.clone()),
+                current_durability: item.current_durability,
+                max_durability: item.max_durability,
+            })
+        }
+    })
+}
+
+/// Load all 18 equipment icons in one batched, parallel pass and build the
+/// Slint slot data.
+fn build_equipment_slots(
+    asset_loader: &SlintAssetLoader,
+    game_files: &crate::game_files::GameFiles,
+    specs: &[Option<ProfileSlotSpec>; 18],
+) -> [EquipmentSlotData; 18] {
+    let requests: Vec<(IconKind, u16)> = specs
+        .iter()
+        .flatten()
+        .map(|spec| (IconKind::Item, spec.sprite))
+        .collect();
+    let mut icons = asset_loader.icons(game_files, &requests).into_iter();
+
+    std::array::from_fn(|index| {
+        let Some(spec) = specs[index].as_ref() else {
+            return EquipmentSlotData::default();
+        };
+        let durability_percent = if spec.max_durability > 0 {
+            spec.current_durability as f32 / spec.max_durability as f32
+        } else {
+            1.0
+        };
+        EquipmentSlotData {
+            name: slint::SharedString::from(spec.name.as_deref().unwrap_or_default()),
+            icon: icons.next().flatten().unwrap_or_default(),
+            has_item: true,
+            durability_percent,
+            current_durability: spec.current_durability as i32,
+            max_durability: spec.max_durability as i32,
+        }
+    })
+}
+
+/// Copy the 18 slots onto the profile fields, in panel display order.
+fn assign_equipment(profile: &mut ProfileData, slots: [EquipmentSlotData; 18]) {
+    let [
+        eq_weapon,
+        eq_armor,
+        eq_shield,
+        eq_helmet,
+        eq_earrings,
+        eq_necklace,
+        eq_left_ring,
+        eq_right_ring,
+        eq_left_gauntlet,
+        eq_right_gauntlet,
+        eq_belt,
+        eq_greaves,
+        eq_boots,
+        eq_accessory1,
+        eq_accessory2,
+        eq_overcoat,
+        eq_over_helmet,
+        eq_over_armor,
+    ] = slots;
+
+    profile.eq_weapon = eq_weapon;
+    profile.eq_armor = eq_armor;
+    profile.eq_shield = eq_shield;
+    profile.eq_helmet = eq_helmet;
+    profile.eq_earrings = eq_earrings;
+    profile.eq_necklace = eq_necklace;
+    profile.eq_left_ring = eq_left_ring;
+    profile.eq_right_ring = eq_right_ring;
+    profile.eq_left_gauntlet = eq_left_gauntlet;
+    profile.eq_right_gauntlet = eq_right_gauntlet;
+    profile.eq_belt = eq_belt;
+    profile.eq_greaves = eq_greaves;
+    profile.eq_boots = eq_boots;
+    profile.eq_accessory1 = eq_accessory1;
+    profile.eq_accessory2 = eq_accessory2;
+    profile.eq_overcoat = eq_overcoat;
+    profile.eq_over_helmet = eq_over_helmet;
+    // Accessory3 -> eq_over_armor (best guess for now)
+    profile.eq_over_armor = eq_over_armor;
 }
 
 /// System that syncs PlayerProfileState to Slint whenever it changes
@@ -110,43 +220,10 @@ pub fn sync_profile_to_slint(
 
         // Sync equipment as well if changed
         let is_other_player = !profile_state.name.is_empty();
-
-        let make_slot = |slot_type: EquipmentSlot| {
-            if is_other_player {
-                if let Some(item) = profile_state.equipment.get(&slot_type) {
-                    return build_equipment_slot(asset_loader, &game_files, item.sprite, None, 0, 0);
-                }
-            } else if let Some(item) = eq_state.0.get(&slot_type) {
-                return build_equipment_slot(
-                    asset_loader,
-                    &game_files,
-                    item.sprite,
-                    Some(&item.name),
-                    item.current_durability,
-                    item.max_durability,
-                );
-            }
-            EquipmentSlotData::default()
-        };
-
-        profile.eq_weapon = make_slot(EquipmentSlot::Weapon);
-        profile.eq_armor = make_slot(EquipmentSlot::Armor);
-        profile.eq_shield = make_slot(EquipmentSlot::Shield);
-        profile.eq_helmet = make_slot(EquipmentSlot::Helmet);
-        profile.eq_earrings = make_slot(EquipmentSlot::Earrings);
-        profile.eq_necklace = make_slot(EquipmentSlot::Necklace);
-        profile.eq_left_ring = make_slot(EquipmentSlot::LeftRing);
-        profile.eq_right_ring = make_slot(EquipmentSlot::RightRing);
-        profile.eq_left_gauntlet = make_slot(EquipmentSlot::LeftGaunt);
-        profile.eq_right_gauntlet = make_slot(EquipmentSlot::RightGaunt);
-        profile.eq_belt = make_slot(EquipmentSlot::Belt);
-        profile.eq_greaves = make_slot(EquipmentSlot::Greaves);
-        profile.eq_boots = make_slot(EquipmentSlot::Boots);
-        profile.eq_accessory1 = make_slot(EquipmentSlot::Accessory1);
-        profile.eq_accessory2 = make_slot(EquipmentSlot::Accessory2);
-        profile.eq_overcoat = make_slot(EquipmentSlot::Overcoat);
-        profile.eq_over_helmet = make_slot(EquipmentSlot::OverHelm);
-        profile.eq_over_armor = make_slot(EquipmentSlot::Accessory3);
+        let specs =
+            collect_profile_slot_specs(is_other_player, &profile_state.equipment, &eq_state.0);
+        let slots = build_equipment_slots(asset_loader, &game_files, &specs);
+        assign_equipment(&mut profile, slots);
 
         game_state.set_profile(profile);
     }
@@ -243,50 +320,10 @@ pub fn handle_show_self_profile(
 
         // Populate equipment if available
         let is_other_player = !profile_state.name.is_empty();
-
-        let make_slot = |slot_type: EquipmentSlot| {
-            // Try to get from profile_state first (set for other players' profiles)
-            if is_other_player {
-                if let Some(item) = profile_state.equipment.get(&slot_type) {
-                    return build_equipment_slot(asset_loader, &game_files, item.sprite, None, 0, 0);
-                }
-                return EquipmentSlotData::default();
-            }
-
-            // Fall back to local player's equipment state (only for self profile)
-            if let Some(item) = eq_state.0.get(&slot_type) {
-                return build_equipment_slot(
-                    asset_loader,
-                    &game_files,
-                    item.sprite,
-                    Some(&item.name),
-                    item.current_durability,
-                    item.max_durability,
-                );
-            }
-
-            EquipmentSlotData::default()
-        };
-
-        profile.eq_weapon = make_slot(EquipmentSlot::Weapon);
-        profile.eq_armor = make_slot(EquipmentSlot::Armor);
-        profile.eq_shield = make_slot(EquipmentSlot::Shield);
-        profile.eq_helmet = make_slot(EquipmentSlot::Helmet);
-        profile.eq_earrings = make_slot(EquipmentSlot::Earrings);
-        profile.eq_necklace = make_slot(EquipmentSlot::Necklace);
-        profile.eq_left_ring = make_slot(EquipmentSlot::LeftRing);
-        profile.eq_right_ring = make_slot(EquipmentSlot::RightRing);
-        profile.eq_left_gauntlet = make_slot(EquipmentSlot::LeftGaunt);
-        profile.eq_right_gauntlet = make_slot(EquipmentSlot::RightGaunt);
-        profile.eq_belt = make_slot(EquipmentSlot::Belt);
-        profile.eq_greaves = make_slot(EquipmentSlot::Greaves);
-        profile.eq_boots = make_slot(EquipmentSlot::Boots);
-        profile.eq_accessory1 = make_slot(EquipmentSlot::Accessory1);
-        profile.eq_accessory2 = make_slot(EquipmentSlot::Accessory2);
-        profile.eq_overcoat = make_slot(EquipmentSlot::Overcoat);
-        profile.eq_over_helmet = make_slot(EquipmentSlot::OverHelm);
-        // Accessory3 -> eq_over_armor (best guess for now)
-        profile.eq_over_armor = make_slot(EquipmentSlot::Accessory3);
+        let specs =
+            collect_profile_slot_specs(is_other_player, &profile_state.equipment, &eq_state.0);
+        let slots = build_equipment_slots(asset_loader, &game_files, &specs);
+        assign_equipment(&mut profile, slots);
 
         game_state.set_profile(profile);
         popup_manager.open(crate::slint_support::popups::PopupId::Profile);
