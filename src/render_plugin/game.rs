@@ -413,6 +413,16 @@ fn draw_frame(
         if let Some(em) = effect_manager {
             em.render(&mut render_pass, &camera.camera.camera_bind_group);
         }
+
+        // Transparent walls (sotp.dat bit 0x80) composite with screen blending after
+        // the opaque scene so windows/fences blend with everything behind them.
+        // Depth testing keeps correct occlusion with the rest of the world.
+        if let Some(m) = map_renderer {
+            if m.has_screen_blend_walls() {
+                render_pass.set_pipeline(&render_hardware.scene.screen_blend_pipeline);
+                m.render_screen_blend(&mut render_pass);
+            }
+        }
     }
 
     if let (Some(pb), Some(translucent_player_pass_state)) =

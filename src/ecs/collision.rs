@@ -19,7 +19,10 @@ impl WallCollisionTable {
             return false;
         }
         let index = (wall_id - 1) as usize;
-        self.data.get(index).map_or(false, |&byte| byte == 0x0F)
+        // TileFlags.Wall == 0x0F in sotp.dat. Test the flag bit rather than exact
+        // equality so wall+transparent tiles (0x8F) still block movement, matching
+        // the reference client's `(sotp & TileFlags.Wall) != 0`.
+        self.data.get(index).map_or(false, |&byte| byte & 0x0F != 0)
     }
 }
 
@@ -159,4 +162,26 @@ pub fn can_walk_to(
         }
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WallCollisionTable;
+
+    #[test]
+    fn blocking_matches_tile_flags_semantics() {
+        // Real sotp.dat bytes: 0x00 = none, 0x0F = Wall, 0x80 = Transparent,
+        // 0x8F = Wall | Transparent.
+        let table = WallCollisionTable::from_sotp_bytes(vec![0x00, 0x0F, 0x80, 0x8F]);
+
+        // tile id = index + 1
+        assert!(!table.is_blocking(1)); // 0x00
+        assert!(table.is_blocking(2)); // 0x0F
+        assert!(!table.is_blocking(3)); // 0x80 (transparent-only is not a wall)
+        assert!(table.is_blocking(4)); // 0x8F (wall + transparent still blocks)
+
+        // id 0 and ids past the table are never blocking
+        assert!(!table.is_blocking(0));
+        assert!(!table.is_blocking(5));
+    }
 }

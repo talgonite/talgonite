@@ -90,6 +90,15 @@ fn load_animated_palette_table(
     }
 }
 
+/// True when the foreground tile (wall) id should render with screen blending.
+/// sotp.dat stores one byte per tile id - 1; bit 0x80 is TileFlags.Transparent,
+/// which the reference client composites with blend mode 0x6D.
+fn is_screen_blend_wall(sotp_data: &[u8], wall_id: u16) -> bool {
+    sotp_data
+        .get((wall_id as usize).saturating_sub(1))
+        .is_some_and(|&byte| byte & 0x80 != 0)
+}
+
 pub struct PreparedMap {
     pub tile_texture_data: Vec<u8>,
     pub palette_texture_data: Vec<u8>,
@@ -98,6 +107,7 @@ pub struct PreparedMap {
     pub wall_palette_pixels: Vec<u8>,
     pub wall_map_buf: Vec<u8>,
     pub wall_heights: HashMap<u16, u16>,
+    pub screen_blend_wall_ids: Vec<u16>,
     pub animations: Vec<WorldAnimationInstanceData>,
     pub wall_toggle_animations: HashMap<(u8, u8), AnimationInstanceData>,
     pub wall_toggle_tracker: HashMap<(u16, usize), ((u8, u8), Vec<Instance>)>,
@@ -112,6 +122,7 @@ pub struct MapRenderer {
     animations: Vec<WorldAnimationInstanceData>,
     wall_toggle_animations: HashMap<(u8, u8), AnimationInstanceData>,
     instance_batches: Vec<InstanceBatch>,
+    screen_blend_batch_indices: Vec<usize>,
     wall_animated_palettes: Option<AnimatedPaletteTexture>,
     floor_animated_palettes: Option<AnimatedPaletteTexture>,
 }
@@ -122,6 +133,7 @@ impl MapRenderer {
             instance_batches: Vec::new(),
             animations: Vec::new(),
             wall_toggle_animations: HashMap::new(),
+            screen_blend_batch_indices: Vec::new(),
             wall_animated_palettes: None,
             floor_animated_palettes: None,
         }
@@ -131,6 +143,7 @@ impl MapRenderer {
         instance_batches: Vec<InstanceBatch>,
         animations: Vec<WorldAnimationInstanceData>,
         wall_toggle_animations: HashMap<(u8, u8), AnimationInstanceData>,
+        screen_blend_batch_indices: Vec<usize>,
         wall_animated_palettes: Option<AnimatedPaletteTexture>,
         floor_animated_palettes: Option<AnimatedPaletteTexture>,
     ) -> Self {
@@ -138,14 +151,33 @@ impl MapRenderer {
             instance_batches,
             animations,
             wall_toggle_animations,
+            screen_blend_batch_indices,
             wall_animated_palettes,
             floor_animated_palettes,
         }
     }
 
     pub fn render<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
-        for batch in &self.instance_batches {
+        for (batch_index, batch) in self.instance_batches.iter().enumerate() {
+            if self.screen_blend_batch_indices.contains(&batch_index) {
+                continue;
+            }
             batch.draw(render_pass);
+        }
+    }
+
+    /// Whether any wall batches need the screen-blend pipeline.
+    pub fn has_screen_blend_walls(&self) -> bool {
+        !self.screen_blend_batch_indices.is_empty()
+    }
+
+    /// Draws only the walls whose sotp.dat byte has the Transparent flag (0x80).
+    /// These must be drawn with the screen-blend pipeline after the opaque scene.
+    pub fn render_screen_blend<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
+        for &batch_index in &self.screen_blend_batch_indices {
+            if let Some(batch) = self.instance_batches.get(batch_index) {
+                batch.draw(render_pass);
+            }
         }
     }
 
@@ -293,6 +325,20 @@ impl MapRenderer {
         let floor_animated_palette_table =
             load_animated_palette_table(archive, "seo/mpt.anipal.tbl.bin");
 
+        // sotp.dat: one byte per foreground tile id - 1. Bit 0x0F is TileFlags.Wall
+        // (collision) and bit 0x80 is TileFlags.Transparent, which the reference
+        // client renders with screen blending (blend mode 0x6D).
+        let sotp_data = match archive.get_file("ia/sotp.dat") {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    "sotp.dat missing; transparent-wall screen blending disabled"
+                );
+                Vec::new()
+            }
+        };
+
         let build_tile_instance = |floor: &FloorTile, x, y| -> Instance {
             let tile_id = floor.tile_id() as u32;
             let palette_offset = tile_palette_table.get(&floor.palette_index()).unwrap_or(&0);
@@ -376,6 +422,12 @@ impl MapRenderer {
                 map_reader.into_inner(),
             )
         };
+
+        let screen_blend_wall_ids: Vec<u16> = required_wall_ids
+            .iter()
+            .copied()
+            .filter(|&wall_id| is_screen_blend_wall(&sotp_data, wall_id))
+            .collect();
 
         let used_wall_palette_rows: HashSet<u16> = required_wall_ids
             .iter()
@@ -667,6 +719,7 @@ impl MapRenderer {
             wall_palette_pixels,
             wall_map_buf,
             wall_heights,
+            screen_blend_wall_ids,
             animations,
             wall_toggle_animations: HashMap::new(),
             wall_toggle_tracker,
@@ -751,22 +804,29 @@ impl MapRenderer {
         );
 
         // find each different height allocated and create a batch for it
-        // group the allocations by height so that they can allocate more tightly on the atlas
-        let mut height_map: HashMap<i32, Vec<(etagere::Allocation, u16, Vec<Instance>)>> =
+        // group the allocations by height so that they can allocate more tightly on the atlas.
+        // Transparent (screen-blend) walls get their own batches so they can be drawn last
+        // with the screen-blend pipeline.
+        let mut height_map: HashMap<(i32, bool), Vec<(etagere::Allocation, u16, Vec<Instance>)>> =
             HashMap::new();
 
         for (wall_id, (a, instances)) in map.allocated {
+            let screen_blend = map.screen_blend_wall_ids.contains(&wall_id);
             height_map
-                .entry(a.rectangle.max.y - a.rectangle.min.y)
+                .entry((a.rectangle.max.y - a.rectangle.min.y, screen_blend))
                 .or_insert_with(Vec::new)
                 .push((a, wall_id, instances));
         }
 
         let door_pairs = crate::scene::map::door_data::get_door_tile_toggle_pairs();
-        for (height, instances_at_height) in height_map {
+        let mut screen_blend_batch_indices: Vec<usize> = Vec::new();
+        for ((height, screen_blend), instances_at_height) in height_map {
             let vertices = make_quad(28, height as u32).to_vec();
 
             let batch_index = instance_batches.len();
+            if screen_blend {
+                screen_blend_batch_indices.push(batch_index);
+            }
             let mut instances: Vec<Instance> = Vec::new();
 
             for (_, wall_id, curr_instances) in instances_at_height {
@@ -825,8 +885,32 @@ impl MapRenderer {
             instance_batches,
             map.animations,
             map.wall_toggle_animations,
+            screen_blend_batch_indices,
             Some(wall_animated_palettes),
             Some(floor_animated_palettes),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_screen_blend_wall;
+
+    #[test]
+    fn screen_blend_flag_matches_tile_flags_semantics() {
+        // Real sotp.dat byte values: 0x00 = none, 0x0F = Wall, 0x80 = Transparent,
+        // 0x8F = Wall | Transparent.
+        let sotp = [0x00u8, 0x0F, 0x80, 0x8F];
+
+        // sotp index = tile id - 1
+        assert!(!is_screen_blend_wall(&sotp, 1)); // 0x00
+        assert!(!is_screen_blend_wall(&sotp, 2)); // 0x0F (opaque wall)
+        assert!(is_screen_blend_wall(&sotp, 3)); // 0x80 (fence/window)
+        assert!(is_screen_blend_wall(&sotp, 4)); // 0x8F (wall + transparent)
+
+        // id 0, ids past the table, and missing tables are never screen-blended
+        assert!(!is_screen_blend_wall(&sotp, 0));
+        assert!(!is_screen_blend_wall(&sotp, 5));
+        assert!(!is_screen_blend_wall(&[], 3));
     }
 }

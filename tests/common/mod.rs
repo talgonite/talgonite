@@ -365,6 +365,18 @@ impl TestScene {
             if let Some(player_batch_state) = world.get_resource::<PlayerBatchState>() {
                 player_batch_state.batch.render(&mut render_pass);
             }
+
+            // Transparent walls composite last with screen blending, same as draw_frame().
+            if let Some(map_renderer_state) =
+                world.get_resource::<talgonite_lib::MapRendererState>()
+            {
+                if map_renderer_state.map_renderer.has_screen_blend_walls() {
+                    render_pass.set_pipeline(&renderer_state.scene.screen_blend_pipeline);
+                    map_renderer_state
+                        .map_renderer
+                        .render_screen_blend(&mut render_pass);
+                }
+            }
         }
 
         let bytes_per_pixel = 4;

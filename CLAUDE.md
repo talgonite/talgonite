@@ -17,6 +17,19 @@ cargo insta review             # Review snapshot test changes
 
 Requires mold linker on Linux. WGPU validation disabled via `.cargo/config.toml`.
 
+## Inspecting Game Data
+
+The installed game archive lives at `~/.local/share/Talgonite/data.arx`. Use the `arx` CLI
+(from the `jubako` toolchain, already on PATH) instead of writing probe code:
+
+```bash
+arx list ~/.local/share/Talgonite/data.arx            # list entries
+arx dump ~/.local/share/Talgonite/data.arx ia/sotp.dat # print an entry (or save to a file)
+```
+
+Paths use the same layout the game code reads (`ia/...`, `seo/...`), e.g. `ia/sotp.dat`,
+`ia/stcani.tbl`, `seo/mpt.tbl.bin`.
+
 ## Architecture
 
 ### The Three Layers

@@ -153,6 +153,7 @@ impl CameraState {
 
 pub struct Scene {
     pub pipeline: wgpu::RenderPipeline,
+    pub screen_blend_pipeline: wgpu::RenderPipeline,
     pub translucent_player_pipeline: wgpu::RenderPipeline,
     pub translucent_player_composite_pipeline: wgpu::RenderPipeline,
     pub translucent_player_composite_bind_group_layout: wgpu::BindGroupLayout,
@@ -288,6 +289,58 @@ impl Scene {
             multiview_mask: None,
         });
 
+        // Screen blend (blend mode 0x6D): out = src + dst * (1 - src) per color
+        // channel, with alpha out = src.a + dst.a * (1 - src.a). Each color channel
+        // acts as its own alpha — black pixels are fully transparent, white opaque.
+        // Used for foreground tiles whose sotp.dat byte has TileFlags.Transparent
+        // (0x80), e.g. windows and fences.
+        let screen_blend_pipeline =
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                cache: None,
+                label: Some("Screen Blend Pipeline"),
+                layout: Some(&render_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[Vertex::desc(), InstanceRaw::desc()],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: texture_format,
+                        blend: Some(wgpu::BlendState {
+                            color: wgpu::BlendComponent {
+                                src_factor: wgpu::BlendFactor::One,
+                                dst_factor: wgpu::BlendFactor::OneMinusSrc,
+                                operation: wgpu::BlendOperation::Add,
+                            },
+                            alpha: wgpu::BlendComponent {
+                                src_factor: wgpu::BlendFactor::One,
+                                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                                operation: wgpu::BlendOperation::Add,
+                            },
+                        }),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: texture::Texture::DEPTH_FORMAT,
+                    depth_write_enabled: Some(true),
+                    depth_compare: Some(wgpu::CompareFunction::Greater),
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+            });
+
         let translucent_player_pipeline =
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 cache: None,
@@ -356,6 +409,7 @@ impl Scene {
 
         Self {
             pipeline: render_pipeline,
+            screen_blend_pipeline,
             translucent_player_pipeline,
             translucent_player_composite_pipeline,
             translucent_player_composite_bind_group_layout,
