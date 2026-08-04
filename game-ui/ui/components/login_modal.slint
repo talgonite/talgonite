@@ -14,6 +14,7 @@ export component LoginModal inherits Rectangle {
     in property <bool> show: false;
     in property <bool> can-close: true;
     callback attempt-login(server-id: int, username: string, password: string, remember: bool);
+    callback create-character();
     callback open-server-modal();
     callback close();
     width: 100%;
@@ -36,7 +37,7 @@ export component LoginModal inherits Rectangle {
             alignment: center;
             Rectangle {
                 width: min(360px, parent.width - 40px);
-                height: 340px;
+                height: 430px;
                 background: Theme.surface-modal;
                 border-radius: Theme.radius-large;
                 border-width: 1px;
@@ -143,6 +144,42 @@ export component LoginModal inherits Rectangle {
                         }
                     }
 
+                    HorizontalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: create-char-text.preferred-width + 32px;
+                            height: 36px;
+                            background: create-char-touch.has-hover ? #FFFFFF08 : transparent;
+                            border-radius: Theme.radius-medium;
+                            create-char-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                enabled: !LoginState.is-submitting;
+                                clicked => {
+                                    root.create-character();
+                                }
+                            }
+
+                            HorizontalLayout {
+                                alignment: center;
+                                spacing: 8px;
+                                Text {
+                                    text: "+";
+                                    font-size: 18px;
+                                    font-weight: 500;
+                                    color: create-char-touch.has-hover ? Theme.accent : Theme.foreground-subtle;
+                                    vertical-alignment: center;
+                                }
+
+                                create-char-text := Text {
+                                    text: "Create Character";
+                                    font-size: 14px;
+                                    color: create-char-touch.has-hover ? Theme.accent : Theme.foreground-subtle;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+
                     Rectangle {
                         vertical-stretch: 1;
                     }
@@ -175,6 +212,10 @@ export component LoginModal inherits Rectangle {
                                 root.open-server-modal();
                             }
                         }
+                    }
+
+                    Rectangle {
+                        height: 8px;
                     }
                 }
             }

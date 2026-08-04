@@ -218,6 +218,10 @@ export component LoginScene inherits Rectangle {
             LoginState.is-submitting = true;
             LoginBridge.attempt-login(server-id, username, password, remember);
         }
+        create-character => {
+            LoginState.show-login-modal = false;
+            LoginState.show-character-creation = true;
+        }
         open-server-modal => {
             server-modal.show = true;
         }
