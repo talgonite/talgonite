@@ -231,12 +231,20 @@ impl MinimapRenderer {
     pub fn rebuild_tiles(
         &mut self,
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         tiles: impl IntoIterator<Item = MinimapTile>,
     ) {
         let instances = tiles
             .into_iter()
-            .flat_map(|tile| self.tile_instances(tile))
+            .filter_map(|tile| self.tile_instance(tile))
             .collect::<Vec<_>>();
+
+        if let Some(batch) = &mut self.tile_batch {
+            if batch.buffer_capacity >= instances.len() {
+                batch.replace_all(queue, instances);
+                return;
+            }
+        }
 
         self.tile_batch = Some(InstanceBatch::new(
             device,
@@ -248,15 +256,6 @@ impl MinimapRenderer {
 
     pub fn clear_tiles(&mut self) {
         self.tile_batch = None;
-    }
-
-    pub fn clear_markers(&self) {
-        self.markers.clear();
-    }
-
-    pub fn clear(&mut self) {
-        self.clear_tiles();
-        self.clear_markers();
     }
 
     pub fn add_marker(
@@ -298,13 +297,11 @@ impl MinimapRenderer {
         self.markers.draw(render_pass);
     }
 
-    fn tile_instances(&self, tile: MinimapTile) -> Vec<Instance> {
+    fn tile_instance(&self, tile: MinimapTile) -> Option<Instance> {
         let tile_size = self.layout.tile_size;
-        let Some(slice) = self.atlas_slices[tile.atlas_index as usize] else {
-            return Vec::new();
-        };
+        let slice = self.atlas_slices[tile.atlas_index as usize]?;
 
-        vec![Instance {
+        Some(Instance {
             position: (tile.position - tile_size * 0.5).extend(0.9999),
             tex_min: slice.tex_min,
             tex_max: slice.tex_max,
@@ -314,7 +311,7 @@ impl MinimapRenderer {
             ),
             tint: Vec3::ONE,
             ..Default::default()
-        }]
+        })
     }
 
     fn marker_instance(&self, marker: MinimapMarker) -> Instance {

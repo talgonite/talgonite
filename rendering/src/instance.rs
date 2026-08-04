@@ -280,6 +280,25 @@ impl InstanceBatch {
         }
     }
 
+    /// Replaces every instance with a single upload, reusing the existing GPU
+    /// buffer. The caller must ensure the new instance count fits within
+    /// `buffer_capacity`; otherwise the batch should be recreated instead.
+    pub fn replace_all(&mut self, queue: &wgpu::Queue, instances: Vec<Instance>) {
+        debug_assert!(instances.len() <= self.buffer_capacity);
+
+        let raw_instances = instances
+            .iter()
+            .map(Instance::to_raw)
+            .collect::<Vec<InstanceRaw>>();
+        queue.write_buffer(
+            &self.instance_buffer,
+            0,
+            bytemuck::cast_slice(&raw_instances),
+        );
+
+        self.instances = instances;
+    }
+
     pub fn add_instance(&mut self, queue: &wgpu::Queue, instance: Instance) -> Option<usize> {
         let index = self.instances.len();
 

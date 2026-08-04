@@ -1074,7 +1074,7 @@ pub fn sync_minimap_tiles_to_renderer(
 
     minimap_state
         .renderer
-        .rebuild_tiles(&renderer.device, tiles);
+        .rebuild_tiles(&renderer.device, &renderer.queue, tiles);
 }
 
 pub fn sync_minimap_markers_to_renderer(
