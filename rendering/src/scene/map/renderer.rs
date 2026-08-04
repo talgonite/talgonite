@@ -16,6 +16,7 @@ use crate::{
         TILEMAP_TILE_WIDTH, TILEMAP_TILES_PER_PAGE_ROWS, TILEMAP_TILES_PER_ROW, WALL_ATLAS_HEIGHT,
         WALL_ATLAS_WIDTH, WorldAnimation, WorldAnimationInstanceData, Z_FLOOR, Z_WALLS,
         map::{
+            animated_palette::AnimatedPaletteTexture,
             floor::FloorTile,
             map_tile::MapTile,
             wall::{Wall, WallSide},
@@ -24,6 +25,7 @@ use crate::{
     },
     texture,
 };
+use formats::palette::AnimatedPaletteRange;
 
 #[cfg(not(target_arch = "wasm32"))]
 use formats::game_files::ArxArchive;
@@ -34,6 +36,10 @@ use formats::game_files::WebArchive;
 type Archive = ArxArchive;
 #[cfg(target_arch = "wasm32")]
 type Archive = WebArchive;
+
+/// Palette textures store one 256-color palette per row, matching the
+/// `palette_offset / 256.0` normalization used by the map shader.
+const PALETTE_TEXTURE_WIDTH: u32 = 256;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn get_files_or_panic<S>(archive: &Archive, paths: &[S]) -> Vec<Vec<u8>>
@@ -51,15 +57,52 @@ where
         .collect()
 }
 
+fn load_animated_palette_table(
+    archive: &Archive,
+    path: &str,
+) -> Vec<(u16, Vec<AnimatedPaletteRange>)> {
+    match archive.get_file(path) {
+        Ok(bytes) => {
+            let decoded =
+                oxicode::decode_from_slice::<formats::palette::AnimatedPaletteTable>(&bytes);
+
+            match decoded {
+                Ok((table, _)) => table.entries,
+                Err(error) => {
+                    tracing::warn!(
+                        path,
+                        %error,
+                        "Failed to decode map animated palette table"
+                    );
+                    Vec::new()
+                }
+            }
+        }
+        Err(error) => {
+            tracing::warn!(
+                path,
+                %error,
+                "Animated palette table missing; map palette animations disabled \
+                 (re-run the installer to regenerate game data)"
+            );
+            Vec::new()
+        }
+    }
+}
+
 pub struct PreparedMap {
     pub tile_texture_data: Vec<u8>,
     pub palette_texture_data: Vec<u8>,
+    pub palette_pixels: Vec<u8>,
     pub wall_palette_data: Vec<u8>,
+    pub wall_palette_pixels: Vec<u8>,
     pub wall_map_buf: Vec<u8>,
     pub wall_heights: HashMap<u16, u16>,
     pub animations: Vec<WorldAnimationInstanceData>,
     pub wall_toggle_animations: HashMap<(u8, u8), AnimationInstanceData>,
     pub wall_toggle_tracker: HashMap<(u16, usize), ((u8, u8), Vec<Instance>)>,
+    pub floor_animated_palettes: Vec<(u16, Vec<AnimatedPaletteRange>)>,
+    pub wall_animated_palettes: Vec<(u16, Vec<AnimatedPaletteRange>)>,
     wall_animations: Vec<WorldAnimationInstanceData>,
     tile_instances: Vec<Instance>,
     allocated: HashMap<u16, (Allocation, Vec<Instance>)>,
@@ -69,6 +112,8 @@ pub struct MapRenderer {
     animations: Vec<WorldAnimationInstanceData>,
     wall_toggle_animations: HashMap<(u8, u8), AnimationInstanceData>,
     instance_batches: Vec<InstanceBatch>,
+    wall_animated_palettes: Option<AnimatedPaletteTexture>,
+    floor_animated_palettes: Option<AnimatedPaletteTexture>,
 }
 
 impl MapRenderer {
@@ -77,6 +122,8 @@ impl MapRenderer {
             instance_batches: Vec::new(),
             animations: Vec::new(),
             wall_toggle_animations: HashMap::new(),
+            wall_animated_palettes: None,
+            floor_animated_palettes: None,
         }
     }
 
@@ -84,11 +131,15 @@ impl MapRenderer {
         instance_batches: Vec<InstanceBatch>,
         animations: Vec<WorldAnimationInstanceData>,
         wall_toggle_animations: HashMap<(u8, u8), AnimationInstanceData>,
+        wall_animated_palettes: Option<AnimatedPaletteTexture>,
+        floor_animated_palettes: Option<AnimatedPaletteTexture>,
     ) -> Self {
         Self {
             instance_batches,
             animations,
             wall_toggle_animations,
+            wall_animated_palettes,
+            floor_animated_palettes,
         }
     }
 
@@ -146,6 +197,14 @@ impl MapRenderer {
 
     pub fn update_animations(&mut self, queue: &wgpu::Queue) {
         let now = std::time::Instant::now();
+
+        if let Some(animated_palettes) = &mut self.wall_animated_palettes {
+            animated_palettes.update(queue, now);
+        }
+
+        if let Some(animated_palettes) = &mut self.floor_animated_palettes {
+            animated_palettes.update(queue, now);
+        }
 
         for anim in &mut self.animations {
             if !anim.should_update(now) {
@@ -226,6 +285,13 @@ impl MapRenderer {
         let (wall_palette_table, _): (rangemap::RangeMap<u16, u16>, usize) =
             oxicode::serde::decode_from_slice(&wall_table_data, oxicode::config::standard())
                 .unwrap();
+
+        let wall_animated_palette_table = load_animated_palette_table(
+            archive,
+            &format!("ia/st{}.anipal.tbl.bin", if is_snow { "s" } else { "c" }),
+        );
+        let floor_animated_palette_table =
+            load_animated_palette_table(archive, "seo/mpt.anipal.tbl.bin");
 
         let build_tile_instance = |floor: &FloorTile, x, y| -> Instance {
             let tile_id = floor.tile_id() as u32;
@@ -311,11 +377,21 @@ impl MapRenderer {
             )
         };
 
+        let used_wall_palette_rows: HashSet<u16> = required_wall_ids
+            .iter()
+            .map(|id| *wall_palette_table.get(&(id + 1)).unwrap_or(&0))
+            .collect();
+        let wall_animated_palettes: Vec<(u16, Vec<AnimatedPaletteRange>)> =
+            wall_animated_palette_table
+                .into_iter()
+                .filter(|(row, _)| used_wall_palette_rows.contains(row))
+                .collect();
+
         let door_pairs = crate::scene::map::door_data::get_door_tile_toggle_pairs();
         let mut wall_toggle_tracker: HashMap<(u16, usize), ((u8, u8), Vec<Instance>)> =
             HashMap::new();
 
-        let (mut animations, map_data) = {
+        let (mut animations, map_data, floor_animated_palettes) = {
             let floor_anim_data = archive.get_file_or_panic("seo/gndani.tbl");
 
             let all_floor_animations =
@@ -327,7 +403,7 @@ impl MapRenderer {
                 * (map_height as usize)))
                 .map(|_| MapTile::read_from_reader(&mut map_reader))
                 .filter(|tile| tile.floor.show())
-                .map(|tile| (tile.floor.tile_id(), tile.floor))
+                .map(|tile| (tile.floor.id, tile.floor))
                 .collect();
 
             let tile_animations: Vec<WorldAnimationInstanceData> = all_floor_animations
@@ -347,7 +423,21 @@ impl MapRenderer {
                 })
                 .collect();
 
-            (tile_animations, map_reader.into_inner())
+            let used_floor_palette_rows: HashSet<u16> = floors
+                .keys()
+                .map(|id| *tile_palette_table.get(&(id + 1)).unwrap_or(&0))
+                .collect();
+            let floor_animated_palettes: Vec<(u16, Vec<AnimatedPaletteRange>)> =
+                floor_animated_palette_table
+                    .into_iter()
+                    .filter(|(row, _)| used_floor_palette_rows.contains(row))
+                    .collect();
+
+            (
+                tile_animations,
+                map_reader.into_inner(),
+                floor_animated_palettes,
+            )
         };
 
         // Determine required floor page indices from map tiles and animations
@@ -502,7 +592,7 @@ impl MapRenderer {
 
                     if let Some(anim) = animations
                         .iter_mut()
-                        .find(|anim| anim.contains_id(floor.tile_id()))
+                        .find(|anim| anim.contains_id(floor.id))
                     {
                         anim.data.instances.push(InstanceReference {
                             batch_index: 0, // Tile animations are always in the first batch
@@ -564,16 +654,24 @@ impl MapRenderer {
 
         let palette_texture_data = archive.get_file_or_panic("seo/mpt.ktx2");
         let wall_palette_data = archive.get_file_or_panic("ia/stc.ktx2");
+        let (_, _, palette_pixels) = texture::Texture::load_ktx2(&palette_texture_data)
+            .expect("Failed to decode floor palette texture");
+        let (_, _, wall_palette_pixels) = texture::Texture::load_ktx2(&wall_palette_data)
+            .expect("Failed to decode wall palette texture");
 
         PreparedMap {
             tile_texture_data,
             palette_texture_data,
+            palette_pixels,
             wall_palette_data,
+            wall_palette_pixels,
             wall_map_buf,
             wall_heights,
             animations,
             wall_toggle_animations: HashMap::new(),
             wall_toggle_tracker,
+            floor_animated_palettes,
+            wall_animated_palettes,
             wall_animations,
             tile_instances,
             allocated,
@@ -601,10 +699,18 @@ impl MapRenderer {
         )
         .unwrap();
 
+        let floor_animated_palettes = AnimatedPaletteTexture::new(
+            palette_texture,
+            map.palette_pixels,
+            PALETTE_TEXTURE_WIDTH,
+            map.floor_animated_palettes,
+            std::time::Instant::now(),
+        );
+
         let tile_bind_group = TextureBind::to_bind_group(
             device,
             &diffuse_texture,
-            &palette_texture,
+            &floor_animated_palettes.texture,
             &texture::Texture::empty_view(device, "tile_empty"),
         );
 
@@ -635,6 +741,14 @@ impl MapRenderer {
             &map.wall_palette_data,
         )
         .unwrap();
+
+        let wall_animated_palettes = AnimatedPaletteTexture::new(
+            palette_texture,
+            map.wall_palette_pixels,
+            PALETTE_TEXTURE_WIDTH,
+            map.wall_animated_palettes,
+            std::time::Instant::now(),
+        );
 
         // find each different height allocated and create a batch for it
         // group the allocations by height so that they can allocate more tightly on the atlas
@@ -693,7 +807,7 @@ impl MapRenderer {
             let wall_bind_group = TextureBind::to_bind_group(
                 device,
                 &diffuse_texture,
-                &palette_texture,
+                &wall_animated_palettes.texture,
                 &texture::Texture::empty_view(device, "wall_empty"),
             );
 
@@ -707,6 +821,12 @@ impl MapRenderer {
 
         map.animations.extend(map.wall_animations);
 
-        MapRenderer::new(instance_batches, map.animations, map.wall_toggle_animations)
+        MapRenderer::new(
+            instance_batches,
+            map.animations,
+            map.wall_toggle_animations,
+            Some(wall_animated_palettes),
+            Some(floor_animated_palettes),
+        )
     }
 }

@@ -22,7 +22,7 @@ use crate::da741_profile::Da741Profile;
 use crate::sink::{ArxAssetSink, AssetSink};
 use crate::source::InstallSource;
 
-const VERSION_BUF: &[u8] = b"741_4";
+const VERSION_BUF: &[u8] = b"741_5";
 
 pub trait InstallProgress: Send + Sync {
     fn report(&self, percent: f32, message: String);

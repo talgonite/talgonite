@@ -152,7 +152,7 @@ ktx2 = "0.5"
 libarx = { version = "0.4", features = ["zstd"] }
 md5 = "0.8"
 num_enum = "0.7"
-oxicode = { version = "0.2", features = ["simd", "serde"] }
+oxicode = { version = "0.2", features = ["simd", "serde", "derive"] }
 rand = { version = "0.10", features = ["log", "std"] }
 rangemap = { version = "1.7", features = ["serde1"] }
 serde = { version = "1.0", features = ["derive"] }

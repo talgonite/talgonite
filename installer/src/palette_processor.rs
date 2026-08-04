@@ -1,4 +1,5 @@
 use formats::ktx2;
+use formats::palette::{AnimatedPaletteRange, AnimatedPaletteTable};
 use rangemap::RangeMap;
 use std::io::Read;
 use std::ops::Range;
@@ -89,12 +90,16 @@ impl PaletteProcessor {
         for palette_name in palette_targets(&dat_name) {
             tracing::info!("Processing palette: {}", palette_name);
 
+            let is_animated_palette_file =
+                |file_name: &str| is_animated_palette_table_file(palette_name, file_name);
+
             {
                 let buf: Vec<u8> = files_to_process
                     .iter()
                     .filter(|(file_name, _)| {
                         file_name.starts_with(palette_name)
                             && file_name.ends_with(".tbl")
+                            && !is_animated_palette_file(file_name)
                             && !file_name.contains("ani.tbl")
                             && !file_name.contains("attr.tbl")
                             && !file_name.contains("effect.tbl")
@@ -133,6 +138,36 @@ impl PaletteProcessor {
                         ));
                     }
                 }
+            }
+
+            // Per-palette animated palette tables (stc0006.tbl, mpt0018.tbl, ...),
+            // emitted separately so the per-tile palette table above stays clean.
+            let mut animated_entries: Vec<(u16, Vec<AnimatedPaletteRange>)> = files_to_process
+                .iter()
+                .filter(|(file_name, _)| is_animated_palette_file(file_name))
+                .filter_map(|(file_name, buf)| {
+                    let palette_number = palette_number_from_file_name(palette_name, file_name)?;
+                    let ranges = parse_animated_palette_file(buf);
+
+                    if ranges.is_empty() {
+                        None
+                    } else {
+                        Some((palette_number, ranges))
+                    }
+                })
+                .collect();
+
+            if !animated_entries.is_empty() {
+                animated_entries.sort_by_key(|(palette_number, _)| *palette_number);
+
+                let table = AnimatedPaletteTable {
+                    entries: animated_entries,
+                };
+                let tbl = oxicode::encode_to_vec(&table)?;
+                records.push(AssetRecord::bytes(
+                    dat_path.join(format!("{}.anipal.tbl.bin", palette_name)),
+                    tbl,
+                ));
             }
 
             let mut buf: Vec<u8> = files_to_process
@@ -183,6 +218,60 @@ impl PaletteProcessor {
     }
 }
 
+/// Returns true when the file is a per-palette animated palette table, e.g.
+/// `stc0006.tbl` (as opposed to the main `stcpal.tbl` palette table).
+fn is_animated_palette_table_file(palette_name: &str, file_name: &str) -> bool {
+    let Some(rest) = file_name.strip_prefix(palette_name) else {
+        return false;
+    };
+    let Some(stem) = rest.strip_suffix(".tbl") else {
+        return false;
+    };
+
+    !stem.is_empty() && stem.chars().all(|c| c.is_ascii_digit())
+}
+
+/// Extracts the palette number encoded in an animated palette file name such as
+/// `stc0006.tbl` -> 6.
+fn palette_number_from_file_name(palette_name: &str, file_name: &str) -> Option<u16> {
+    let rest = file_name.strip_prefix(palette_name)?;
+    let stem = rest.strip_suffix(".tbl")?;
+    stem.parse::<u16>().ok()
+}
+
+fn parse_animated_palette_file(buf: &[u8]) -> Vec<AnimatedPaletteRange> {
+    let text = String::from_utf8_lossy(buf);
+    let mut ranges = Vec::new();
+
+    for line in text.lines() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+
+        if parts.len() != 3 {
+            continue;
+        }
+
+        let (Ok(start_index), Ok(end_index), Ok(period)) = (
+            parts[0].parse::<u8>(),
+            parts[1].parse::<u8>(),
+            parts[2].parse::<u16>(),
+        ) else {
+            continue;
+        };
+
+        if end_index < start_index {
+            continue;
+        }
+
+        ranges.push(AnimatedPaletteRange {
+            start_index,
+            end_index,
+            period,
+        });
+    }
+
+    ranges
+}
+
 fn parse_palette_line(line: &str) -> (Range<u16>, u16) {
     let mut parts = line
         .trim_end_matches(" -1")
@@ -219,11 +308,68 @@ fn palette_targets(dat_name: &str) -> &'static [&'static str] {
 #[cfg(test)]
 mod tests {
     use super::palette_targets;
+    use super::{is_animated_palette_table_file, parse_animated_palette_file};
+    use formats::palette::AnimatedPaletteRange;
 
     #[test]
     fn palette_targets_match_known_dat_groups() {
         assert_eq!(palette_targets("ia"), &["stc", "sts"]);
         assert_eq!(palette_targets("Legend"), &["item"]);
         assert!(palette_targets("unknown").is_empty());
+    }
+
+    #[test]
+    fn animated_palette_files_are_identified_by_numeric_suffix() {
+        assert!(is_animated_palette_table_file("stc", "stc0006.tbl"));
+        assert!(is_animated_palette_table_file("mpt", "mpt0018.tbl"));
+        assert!(!is_animated_palette_table_file("stc", "stcpal.tbl"));
+        assert!(!is_animated_palette_table_file("stc", "stcani.tbl"));
+        assert!(!is_animated_palette_table_file("stc", "stc.tbl"));
+    }
+
+    #[test]
+    fn animated_palette_file_lines_parse_to_ranges() {
+        let ranges = parse_animated_palette_file(b"236 241 2\r\n214 219 3\n220 225 3\n");
+
+        assert_eq!(
+            ranges,
+            vec![
+                AnimatedPaletteRange {
+                    start_index: 236,
+                    end_index: 241,
+                    period: 2,
+                },
+                AnimatedPaletteRange {
+                    start_index: 214,
+                    end_index: 219,
+                    period: 3,
+                },
+                AnimatedPaletteRange {
+                    start_index: 220,
+                    end_index: 225,
+                    period: 3,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn animated_palette_table_round_trips_through_oxicode() {
+        let table = formats::palette::AnimatedPaletteTable {
+            entries: vec![(
+                6,
+                vec![AnimatedPaletteRange {
+                    start_index: 236,
+                    end_index: 241,
+                    period: 2,
+                }],
+            )],
+        };
+
+        let encoded = oxicode::encode_to_vec(&table).unwrap();
+        let (decoded, _): (formats::palette::AnimatedPaletteTable, usize) =
+            oxicode::decode_from_slice(&encoded).unwrap();
+
+        assert_eq!(decoded, table);
     }
 }
