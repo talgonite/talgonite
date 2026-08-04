@@ -42,7 +42,7 @@ type Archive = WebArchive;
 const PALETTE_TEXTURE_WIDTH: u32 = 256;
 
 #[cfg(not(target_arch = "wasm32"))]
-fn get_files_or_panic<S>(archive: &Archive, paths: &[S]) -> Vec<Vec<u8>>
+fn get_files_lenient<S>(archive: &Archive, paths: &[S]) -> Vec<Option<Vec<u8>>>
 where
     S: AsRef<str> + Sync,
 {
@@ -51,8 +51,11 @@ where
         .into_iter()
         .zip(paths.iter())
         .map(|(result, path)| match result {
-            Ok(bytes) => bytes,
-            Err(error) => panic!("Failed to get file '{}': {}", path.as_ref(), error),
+            Ok(bytes) => Some(bytes),
+            Err(error) => {
+                tracing::warn!("Failed to get file '{}': {}", path.as_ref(), error);
+                None
+            }
         })
         .collect()
 }
@@ -309,14 +312,32 @@ impl MapRenderer {
         let mpt_data = archive.get_file_or_panic("seo/mpt.tbl.bin");
 
         let (tile_palette_table, _): (rangemap::RangeMap<u16, u16>, usize) =
-            oxicode::serde::decode_from_slice(&mpt_data, oxicode::config::standard()).unwrap();
+            match oxicode::serde::decode_from_slice(&mpt_data, oxicode::config::standard()) {
+                Ok(decoded) => decoded,
+                Err(error) => {
+                    tracing::warn!(
+                        %error,
+                        "Failed to decode floor palette table (seo/mpt.tbl.bin); using an empty palette table"
+                    );
+                    (rangemap::RangeMap::new(), 0)
+                }
+            };
 
         let wall_table_name = format!("ia/st{}.tbl.bin", if is_snow { "s" } else { "c" });
         let wall_table_data = archive.get_file_or_panic(&wall_table_name);
 
         let (wall_palette_table, _): (rangemap::RangeMap<u16, u16>, usize) =
-            oxicode::serde::decode_from_slice(&wall_table_data, oxicode::config::standard())
-                .unwrap();
+            match oxicode::serde::decode_from_slice(&wall_table_data, oxicode::config::standard()) {
+                Ok(decoded) => decoded,
+                Err(error) => {
+                    tracing::warn!(
+                        %error,
+                        "Failed to decode wall palette table ({}); using an empty palette table",
+                        wall_table_name
+                    );
+                    (rangemap::RangeMap::new(), 0)
+                }
+            };
 
         let wall_animated_palette_table = load_animated_palette_table(
             archive,
@@ -364,12 +385,24 @@ impl MapRenderer {
             }
         };
 
+        let tile_count = (map_width as usize) * (map_height as usize);
+        let expected_map_bytes = tile_count * MapTile::BYTES_PER_TILE;
+        if map_data.len() < expected_map_bytes {
+            tracing::warn!(
+                map_data.len = map_data.len(),
+                expected_bytes = expected_map_bytes,
+                "Map data is shorter than expected; rendering the tiles that are present"
+            );
+        }
+
         let (required_wall_ids, active_wall_animations, map_data) = {
             let mut map_reader = std::io::Cursor::new(map_data);
             let mut required_wall_ids: Vec<u16> = Vec::new();
 
-            for _ in 0..((map_width as usize) * (map_height as usize)) {
-                let tile = MapTile::read_from_reader(&mut map_reader);
+            for _ in 0..tile_count {
+                let Some(tile) = MapTile::read_from_reader(&mut map_reader) else {
+                    break;
+                };
 
                 let walls = [tile.wall_left, tile.wall_right];
 
@@ -401,7 +434,10 @@ impl MapRenderer {
 
             for door_id in DOOR_DATA.iter() {
                 if required_wall_ids.contains(door_id) {
-                    let partner_id = door_lookup.get(door_id).unwrap();
+                    let Some(partner_id) = door_lookup.get(door_id) else {
+                        tracing::warn!(door_id, "Door tile has no toggle partner in door data");
+                        continue;
+                    };
                     if !required_wall_ids.contains(partner_id) {
                         required_wall_ids.push(*partner_id);
                     }
@@ -423,22 +459,6 @@ impl MapRenderer {
             )
         };
 
-        let screen_blend_wall_ids: Vec<u16> = required_wall_ids
-            .iter()
-            .copied()
-            .filter(|&wall_id| is_screen_blend_wall(&sotp_data, wall_id))
-            .collect();
-
-        let used_wall_palette_rows: HashSet<u16> = required_wall_ids
-            .iter()
-            .map(|id| *wall_palette_table.get(&(id + 1)).unwrap_or(&0))
-            .collect();
-        let wall_animated_palettes: Vec<(u16, Vec<AnimatedPaletteRange>)> =
-            wall_animated_palette_table
-                .into_iter()
-                .filter(|(row, _)| used_wall_palette_rows.contains(row))
-                .collect();
-
         let door_pairs = crate::scene::map::door_data::get_door_tile_toggle_pairs();
         let mut wall_toggle_tracker: HashMap<(u16, usize), ((u8, u8), Vec<Instance>)> =
             HashMap::new();
@@ -451,12 +471,15 @@ impl MapRenderer {
 
             let mut map_reader = std::io::Cursor::new(map_data);
 
-            let floors: HashMap<u16, FloorTile> = (0..((map_width as usize)
-                * (map_height as usize)))
-                .map(|_| MapTile::read_from_reader(&mut map_reader))
-                .filter(|tile| tile.floor.show())
-                .map(|tile| (tile.floor.id, tile.floor))
-                .collect();
+            let mut floors: HashMap<u16, FloorTile> = HashMap::new();
+            for _ in 0..tile_count {
+                let Some(tile) = MapTile::read_from_reader(&mut map_reader) else {
+                    break;
+                };
+                if tile.floor.show() {
+                    floors.insert(tile.floor.id, tile.floor);
+                }
+            }
 
             let tile_animations: Vec<WorldAnimationInstanceData> = all_floor_animations
                 .into_iter()
@@ -465,9 +488,10 @@ impl MapRenderer {
                     let frames: Vec<Instance> = anim
                         .ids
                         .iter()
-                        .map(|id| {
-                            let tile = floors.get(id).unwrap();
-                            build_tile_instance(tile, 0, 0) // These positions will be converted into offsets in the animation
+                        .filter_map(|id| {
+                            let tile = floors.get(id)?;
+                            // These positions will be converted into offsets in the animation
+                            Some(build_tile_instance(tile, 0, 0))
                         })
                         .collect();
 
@@ -496,8 +520,10 @@ impl MapRenderer {
         let mut map_reader_for_pages = std::io::Cursor::new(&map_data);
         let mut needed_pages: HashSet<usize> = HashSet::new();
         let tiles_per_page: usize = (TILEMAP_TILES_PER_ROW * TILEMAP_TILES_PER_PAGE_ROWS) as usize;
-        for _ in 0..((map_width as usize) * (map_height as usize)) {
-            let tile = MapTile::read_from_reader(&mut map_reader_for_pages);
+        for _ in 0..tile_count {
+            let Some(tile) = MapTile::read_from_reader(&mut map_reader_for_pages) else {
+                break;
+            };
             if tile.floor.show() {
                 let tile_id = tile.floor.tile_id() as usize;
                 needed_pages.insert(tile_id / tiles_per_page);
@@ -522,26 +548,58 @@ impl MapRenderer {
 
         let mut allocated: HashMap<u16, (etagere::Allocation, Vec<Instance>)> = HashMap::new();
         let mut wall_heights: HashMap<u16, u16> = HashMap::new();
+        let mut loaded_wall_ids: HashSet<u16> = HashSet::new();
 
         {
             let wall_paths: Vec<String> = required_wall_ids
                 .iter()
                 .map(|wall| format!("ia/stc{:05}.ktx2", wall))
                 .collect();
-            let wall_bytes = get_files_or_panic(archive, &wall_paths);
+            let wall_file_results = get_files_lenient(archive, &wall_paths);
 
-            for (wall, bytes) in required_wall_ids.into_iter().zip(wall_bytes) {
-                let reader = ktx2::Reader::new(bytes).unwrap();
+            for (wall, bytes) in required_wall_ids.into_iter().zip(wall_file_results) {
+                let Some(bytes) = bytes else {
+                    continue;
+                };
+
+                let reader = match ktx2::Reader::new(bytes) {
+                    Ok(reader) => reader,
+                    Err(error) => {
+                        tracing::warn!(
+                            wall,
+                            %error,
+                            "Failed to parse wall texture; wall will not be rendered"
+                        );
+                        continue;
+                    }
+                };
                 let info = reader.header();
+
+                let Some(buf) = reader.levels().next() else {
+                    tracing::warn!(
+                        wall,
+                        "Wall texture has no mip levels; wall will not be rendered"
+                    );
+                    continue;
+                };
+                if buf.data.len() % 28 != 0 || buf.data.len() / 28 != info.pixel_height as usize {
+                    tracing::warn!(
+                        wall,
+                        data_len = buf.data.len(),
+                        pixel_height = info.pixel_height,
+                        "Wall texture has unexpected dimensions; wall will not be rendered"
+                    );
+                    continue;
+                }
+
                 wall_heights.insert(wall, info.pixel_height as u16);
                 let rounded_height = (info.pixel_height as u32 + 63) & !63;
-                let a = atlas
-                    .allocate(etagere::size2(28, rounded_height as i32))
-                    .unwrap();
+                let Some(a) = atlas.allocate(etagere::size2(28, rounded_height as i32)) else {
+                    tracing::warn!(wall, "Wall atlas is full; wall will not be rendered");
+                    continue;
+                };
+                loaded_wall_ids.insert(wall);
                 allocated.insert(wall, (a, Vec::new()));
-
-                let buf = reader.levels().nth(0).unwrap();
-                assert!(buf.data.len() % 28 == 0);
 
                 let mut offset =
                     a.rectangle.min.y as usize * WALL_ATLAS_WIDTH + a.rectangle.min.x as usize;
@@ -555,6 +613,23 @@ impl MapRenderer {
                 }
             }
         }
+
+        let screen_blend_wall_ids: Vec<u16> = loaded_wall_ids
+            .iter()
+            .copied()
+            .filter(|&wall_id| is_screen_blend_wall(&sotp_data, wall_id))
+            .collect();
+
+        let used_wall_palette_rows: HashSet<u16> = loaded_wall_ids
+            .iter()
+            .map(|id| *wall_palette_table.get(&(id + 1)).unwrap_or(&0))
+            .collect();
+        let wall_animated_palettes: Vec<(u16, Vec<AnimatedPaletteRange>)> =
+            wall_animated_palette_table
+                .into_iter()
+                .filter(|(row, _)| used_wall_palette_rows.contains(row))
+                .collect();
+
         let build_wall_instance = |wall: Wall, x: f32, y: f32, a: &Allocation| -> Instance {
             let height = a.rectangle.max.y - a.rectangle.min.y;
 
@@ -582,13 +657,16 @@ impl MapRenderer {
             }
         };
 
-        for y in 0..map_height {
+        'map_tiles: for y in 0..map_height {
             for x in 0..map_width {
-                let MapTile {
+                let Some(MapTile {
                     floor,
                     wall_left,
                     wall_right,
-                } = MapTile::read_from_reader(&mut map_reader);
+                }) = MapTile::read_from_reader(&mut map_reader)
+                else {
+                    break 'map_tiles;
+                };
 
                 for wall in [wall_left, wall_right] {
                     if !wall.show() {
@@ -606,7 +684,9 @@ impl MapRenderer {
                         wall.id
                     };
 
-                    let (a, instances) = allocated.get_mut(&wall_id).unwrap();
+                    let Some((a, instances)) = allocated.get_mut(&wall_id) else {
+                        continue;
+                    };
                     let instance_idx = instances.len();
                     instances.push(build_wall_instance(wall, x as f32, y as f32, a));
 
@@ -623,8 +703,20 @@ impl MapRenderer {
                             side: wall.side,
                         };
 
-                        let (a_open, _) = allocated.get(&pair.open_tile).unwrap();
-                        let (a_closed, _) = allocated.get(&pair.closed_tile).unwrap();
+                        let Some((a_open, _)) = allocated.get(&pair.open_tile) else {
+                            tracing::warn!(
+                                open_tile = pair.open_tile,
+                                "Door toggle texture missing; door will not animate"
+                            );
+                            continue;
+                        };
+                        let Some((a_closed, _)) = allocated.get(&pair.closed_tile) else {
+                            tracing::warn!(
+                                closed_tile = pair.closed_tile,
+                                "Door toggle texture missing; door will not animate"
+                            );
+                            continue;
+                        };
 
                         let open_instance =
                             build_wall_instance(open_wall, x as f32, y as f32, a_open);
@@ -657,21 +749,29 @@ impl MapRenderer {
 
         let wall_animations: Vec<WorldAnimationInstanceData> = active_wall_animations
             .into_iter()
-            .map(|anim| {
+            .filter_map(|anim| {
                 let frames: Vec<Instance> = anim
                     .ids
                     .iter()
-                    .map(|wall_id| {
+                    .filter_map(|wall_id| {
                         let wall = Wall {
                             id: *wall_id,
                             side: WallSide::Left,
                         };
-                        let (a, _) = allocated.get_mut(&wall.id).unwrap();
-                        build_wall_instance(wall, 0., 0., a)
+                        let (a, _) = allocated.get(&wall.id)?;
+                        Some(build_wall_instance(wall, 0., 0., a))
                     })
                     .collect();
 
-                WorldAnimationInstanceData::new(anim, frames)
+                if frames.is_empty() {
+                    tracing::warn!(
+                        ids = ?anim.ids,
+                        "Skipping wall animation with no loadable frames"
+                    );
+                    return None;
+                }
+
+                Some(WorldAnimationInstanceData::new(anim, frames))
             })
             .collect();
 
@@ -684,16 +784,43 @@ impl MapRenderer {
             .iter()
             .map(|page_index| format!("seo/tilea_{:03}.ktx2", page_index))
             .collect();
-        let tile_page_bytes = get_files_or_panic(archive, &tile_page_paths);
+        let tile_page_results = get_files_lenient(archive, &tile_page_paths);
 
-        for (page_index, page_bytes) in needed_pages_vec.into_iter().zip(tile_page_bytes) {
-            let (w, h, data) = texture::Texture::load_ktx2(&page_bytes).unwrap();
-            debug_assert_eq!(w, TILEMAP_PAGE_WIDTH);
+        for (page_index, page_bytes) in needed_pages_vec.into_iter().zip(tile_page_results) {
+            let Some(page_bytes) = page_bytes else {
+                continue;
+            };
+            let (w, h, data) = match texture::Texture::load_ktx2(&page_bytes) {
+                Ok(decoded) => decoded,
+                Err(error) => {
+                    tracing::warn!(
+                        page_index,
+                        %error,
+                        "Failed to decode tile page; its tiles will render black"
+                    );
+                    continue;
+                }
+            };
+            if w != TILEMAP_PAGE_WIDTH {
+                tracing::warn!(
+                    page_index,
+                    w,
+                    expected = TILEMAP_PAGE_WIDTH,
+                    "Tile page has unexpected width; its tiles will render black"
+                );
+                continue;
+            }
             let copy_height = h as usize;
             let dst_stride = TILEMAP_PAGE_WIDTH as usize;
             let src_stride = w as usize;
             let dst_y = page_index * (TILEMAP_PAGE_HEIGHT as usize);
-            if dst_y + copy_height > TILEMAP_HEIGHT as usize {
+            if dst_y + copy_height > TILEMAP_HEIGHT as usize
+                || data.len() < src_stride * copy_height
+            {
+                tracing::warn!(
+                    page_index,
+                    "Tile page is truncated or larger than the tile atlas; its tiles will render black"
+                );
                 continue;
             }
             for row in 0..copy_height {

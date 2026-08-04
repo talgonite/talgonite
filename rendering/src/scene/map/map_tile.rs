@@ -13,12 +13,16 @@ pub struct MapTile {
 }
 
 impl MapTile {
-    pub fn read_from_reader<R: Read>(reader: &mut R) -> Self {
-        let floor = reader.read_u16::<LE>().unwrap();
-        let wall_left = reader.read_u16::<LE>().unwrap();
-        let wall_right = reader.read_u16::<LE>().unwrap();
+    /// Size of one tile in the raw map format (floor + two walls, each a u16).
+    pub const BYTES_PER_TILE: usize = 6;
 
-        MapTile {
+    /// Reads one tile, returning `None` when the map data is truncated.
+    pub fn read_from_reader<R: Read>(reader: &mut R) -> Option<Self> {
+        let floor = reader.read_u16::<LE>().ok()?;
+        let wall_left = reader.read_u16::<LE>().ok()?;
+        let wall_right = reader.read_u16::<LE>().ok()?;
+
+        Some(MapTile {
             floor: FloorTile { id: floor },
             wall_left: Wall {
                 id: wall_left,
@@ -28,6 +32,6 @@ impl MapTile {
                 id: wall_right,
                 side: WallSide::Right,
             },
-        }
+        })
     }
 }

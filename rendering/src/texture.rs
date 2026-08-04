@@ -12,9 +12,12 @@ impl Texture {
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
     pub fn load_ktx2<'a>(bytes: &'a [u8]) -> Result<(u32, u32, Vec<u8>)> {
-        let reader = ktx2::Reader::new(bytes).unwrap();
+        let reader = ktx2::Reader::new(bytes).context("Failed to parse KTX2 texture")?;
         let info = reader.header();
-        let buf = reader.levels().next().unwrap();
+        let buf = reader
+            .levels()
+            .next()
+            .ok_or_else(|| anyhow!("KTX2 texture has no mip levels"))?;
         Ok((info.pixel_width, info.pixel_height, buf.data.to_vec()))
     }
 
@@ -24,9 +27,12 @@ impl Texture {
         label: &str,
         bytes: &[u8],
     ) -> Result<Self> {
-        let reader = ktx2::Reader::new(bytes).unwrap();
+        let reader = ktx2::Reader::new(bytes).context("Failed to parse KTX2 texture")?;
         let info = reader.header();
-        let buf = reader.levels().next().unwrap();
+        let buf = reader
+            .levels()
+            .next()
+            .ok_or_else(|| anyhow!("KTX2 texture has no mip levels"))?;
 
         Self::from_data(
             &device,
@@ -45,9 +51,12 @@ impl Texture {
         label: &str,
         bytes: &[u8],
     ) -> Result<Self> {
-        let reader = ktx2::Reader::new(bytes).unwrap();
+        let reader = ktx2::Reader::new(bytes).context("Failed to parse KTX2 texture")?;
         let info = reader.header();
-        let buf = reader.levels().next().unwrap();
+        let buf = reader
+            .levels()
+            .next()
+            .ok_or_else(|| anyhow!("KTX2 texture has no mip levels"))?;
 
         Self::from_data(
             &device,

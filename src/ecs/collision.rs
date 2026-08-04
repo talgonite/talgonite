@@ -56,34 +56,37 @@ impl MapCollisionData {
         let mut strips = vec![Vec::new(); num_strips];
         let strip_offset = (height as i32) - 1;
 
-        for y in 0..height {
-            for x in 0..width {
-                let tile = MapTile::read_from_reader(&mut cursor);
-                walls.push((tile.wall_left.id, tile.wall_right.id));
+        let tile_count = (width as usize) * (height as usize);
+        for index in 0..tile_count {
+            let Some(tile) = MapTile::read_from_reader(&mut cursor) else {
+                break;
+            };
+            let x = (index % width as usize) as u8;
+            let y = (index / width as usize) as u8;
+            walls.push((tile.wall_left.id, tile.wall_right.id));
 
-                let d = (x as i32) - (y as i32);
+            let d = (x as i32) - (y as i32);
 
-                let mut push_wall = |id: u16, is_right: bool| {
-                    if (id % 10000) > 2 {
-                        if let Some(&h) = wall_heights.get(&id) {
-                            if h > 0 {
-                                let s_idx = d + (if is_right { 0 } else { -1 }) + strip_offset;
-                                if s_idx >= 0 && (s_idx as usize) < num_strips {
-                                    strips[s_idx as usize].push(WallInteraction {
-                                        x,
-                                        y,
-                                        is_right,
-                                        height: h,
-                                    });
-                                }
+            let mut push_wall = |id: u16, is_right: bool| {
+                if (id % 10000) > 2 {
+                    if let Some(&h) = wall_heights.get(&id) {
+                        if h > 0 {
+                            let s_idx = d + (if is_right { 0 } else { -1 }) + strip_offset;
+                            if s_idx >= 0 && (s_idx as usize) < num_strips {
+                                strips[s_idx as usize].push(WallInteraction {
+                                    x,
+                                    y,
+                                    is_right,
+                                    height: h,
+                                });
                             }
                         }
                     }
-                };
+                }
+            };
 
-                push_wall(tile.wall_left.id, false);
-                push_wall(tile.wall_right.id, true);
-            }
+            push_wall(tile.wall_left.id, false);
+            push_wall(tile.wall_right.id, true);
         }
 
         Self {
