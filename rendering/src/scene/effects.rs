@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 
-use etagere::Allocation;
 use formats::efa::EfaFile;
 use formats::epf::EpfImage;
 use formats::game_files::SquashfsArchive;
 use glam::Vec2;
+use tracing::error;
 
 use crate::instance::InstanceFlag;
-use crate::scene::texture_atlas::TextureAtlas;
+use crate::scene::texture_atlas::{
+    FrameRow, FrameUpload, TextureAtlas, merge_uploads, shelf_layout,
+};
 use crate::scene::utils::calculate_tile_z;
 use crate::scene::{TILE_HEIGHT, Z_EFFECTS, get_isometric_coordinate};
 use crate::{Instance, InstanceRaw, SharedInstanceBatch, Vertex, make_quad, texture};
@@ -21,7 +23,8 @@ pub struct EffectFrameSequence {
 }
 
 struct LoadedEffect {
-    allocations: Vec<Option<Allocation>>,
+    allocations: Vec<etagere::Allocation>,
+    frame_rows: Vec<Option<(usize, u32, u32)>>,
     frame_widths: Vec<u16>,
     frame_heights: Vec<u16>,
     frame_offsets: Vec<(i16, i16)>,
@@ -51,6 +54,7 @@ pub struct EffectManager {
 }
 
 impl EffectManager {
+    #[tracing::instrument(level = "info", skip_all)]
     pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -172,7 +176,7 @@ impl EffectManager {
             palette_data,
             palette_indices,
             instances,
-            atlas: TextureAtlas::new(diffuse_texture.texture),
+            atlas: TextureAtlas::new(device, diffuse_texture.texture),
             pipeline,
         }
     }
@@ -283,27 +287,29 @@ impl EffectManager {
         data: &[u8],
         sequence: Option<Vec<usize>>,
     ) -> Option<()> {
-        let (efa, _) = oxicode::decode_from_slice::<EfaFile>(&data).ok()?;
+        let (mut efa, _) = oxicode::decode_from_slice::<EfaFile>(&data).ok()?;
 
-        let mut allocations = Vec::with_capacity(efa.frames.len());
+        let mut frames: Vec<Option<(usize, usize, Vec<u8>)>> = Vec::with_capacity(efa.frames.len());
         let mut frame_widths = Vec::with_capacity(efa.frames.len());
         let mut frame_heights = Vec::with_capacity(efa.frames.len());
         let mut frame_offsets = Vec::with_capacity(efa.frames.len());
 
-        for frame in &efa.frames {
+        for frame in &mut efa.frames {
             let w = frame.width as usize;
             let h = frame.height as usize;
-
-            if w > 0 && h > 0 {
-                let alloc = self.atlas.allocate(queue, w, h, &frame.data);
-                allocations.push(alloc);
-            } else {
-                allocations.push(None);
-            }
             frame_widths.push(frame.width);
             frame_heights.push(frame.height);
             frame_offsets.push((frame.left, frame.top));
+            if w > 0 && h > 0 {
+                frames.push(Some((w, h, std::mem::take(&mut frame.data))));
+            } else {
+                frames.push(None);
+            }
         }
+
+        let (allocations, frame_rows, uploads) = self.stage_effect_frames(frames)?;
+        let uploads = merge_uploads(uploads);
+        self.atlas.upload_batch(queue, &uploads);
 
         let frame_sequence = match sequence {
             Some(seq) if !(seq.len() == 1 && seq[0] == 0) => seq,
@@ -314,6 +320,7 @@ impl EffectManager {
             effect_id,
             LoadedEffect {
                 allocations,
+                frame_rows,
                 frame_widths,
                 frame_heights,
                 frame_offsets,
@@ -337,35 +344,37 @@ impl EffectManager {
         let epf_path = format!("roh/efct{:03}.epf.bin", effect_id);
         let data = archive.get_file(&epf_path).ok()?;
 
-        let (epf, _) = oxicode::decode_from_slice::<EpfImage>(&data).ok()?;
+        let (mut epf, _) = oxicode::decode_from_slice::<EpfImage>(&data).ok()?;
 
         let palette_index = self.palette_indices.get(&effect_id).copied().unwrap_or(0) as u8;
         let palette = self.palette_data.as_ref()?;
 
-        let mut allocations = Vec::with_capacity(epf.frames.len());
+        let mut frames: Vec<Option<(usize, usize, Vec<u8>)>> = Vec::with_capacity(epf.frames.len());
         let mut frame_widths = Vec::with_capacity(epf.frames.len());
         let mut frame_heights = Vec::with_capacity(epf.frames.len());
         let mut frame_offsets = Vec::with_capacity(epf.frames.len());
 
-        for frame in &epf.frames {
+        for frame in &mut epf.frames {
             let w = frame.right.saturating_sub(frame.left);
             let h = frame.bottom.saturating_sub(frame.top);
 
             if w > 0 && h > 0 {
                 let rgba_data = self.apply_palette(&frame.data, palette, palette_index);
-
-                let alloc = self.atlas.allocate(queue, w.into(), h.into(), &rgba_data);
-                allocations.push(alloc);
+                frames.push(Some((w as usize, h as usize, rgba_data)));
                 frame_widths.push(w as u16);
                 frame_heights.push(h as u16);
                 frame_offsets.push((frame.left as i16, frame.top as i16));
             } else {
-                allocations.push(None);
+                frames.push(None);
                 frame_widths.push(0);
                 frame_heights.push(0);
                 frame_offsets.push((0, 0));
             }
         }
+
+        let (allocations, frame_rows, uploads) = self.stage_effect_frames(frames)?;
+        let uploads = merge_uploads(uploads);
+        self.atlas.upload_batch(queue, &uploads);
 
         let frame_sequence = match sequence {
             Some(seq) if !(seq.len() == 1 && seq[0] == 0) => seq,
@@ -376,6 +385,7 @@ impl EffectManager {
             effect_id,
             LoadedEffect {
                 allocations,
+                frame_rows,
                 frame_widths,
                 frame_heights,
                 frame_offsets,
@@ -387,6 +397,64 @@ impl EffectManager {
         );
 
         Some(())
+    }
+
+    /// Shelf-packs an effect's frames into one (or few) atlas slots and stages
+    /// their pixels for a batched upload.
+    fn stage_effect_frames(
+        &mut self,
+        mut frames: Vec<Option<(usize, usize, Vec<u8>)>>,
+    ) -> Option<(Vec<etagere::Allocation>, Vec<Option<(usize, u32, u32)>>, Vec<FrameUpload>)> {
+        let frame_count = frames.len();
+        let non_empty: Vec<(usize, usize, usize)> = frames
+            .iter()
+            .enumerate()
+            .filter_map(|(index, f)| f.as_ref().map(|(w, h, _)| (index, *w, *h)))
+            .collect();
+
+        let mut frame_rows = vec![None; frame_count];
+        if non_empty.is_empty() {
+            return Some((Vec::new(), frame_rows, Vec::new()));
+        }
+
+        let mut target_width = 512usize;
+        let (mut placed, mut slot_width, mut slot_height) = shelf_layout(&non_empty, target_width);
+        while slot_height > ATLAS_HEIGHT && target_width < ATLAS_WIDTH {
+            target_width *= 2;
+            (placed, slot_width, slot_height) = shelf_layout(&non_empty, target_width);
+        }
+
+        let Some(allocation) = self.atlas.allocate_slot(slot_width, slot_height) else {
+            error!(
+                "Effect atlas full - cannot allocate effect ({}x{})",
+                slot_width, slot_height
+            );
+            return None;
+        };
+
+        let mut upload_frames = Vec::with_capacity(non_empty.len());
+        for &(frame_index, x, y) in &placed {
+            frame_rows[frame_index] = Some((0, x as u32, y as u32));
+            let (w, h, data) = frames[frame_index].take().expect("non-empty frame");
+            upload_frames.push(FrameRow {
+                x: x as u32,
+                y: y as u32,
+                width: w,
+                height: h,
+                data,
+            });
+        }
+
+        Some((
+            vec![allocation],
+            frame_rows,
+            vec![FrameUpload {
+                rect: allocation.rectangle,
+                width: slot_width,
+                height: slot_height,
+                frames: upload_frames,
+            }],
+        ))
     }
 
     fn apply_palette(&self, indexed_data: &[u8], palette: &[u8], palette_row: u8) -> Vec<u8> {
@@ -422,14 +490,20 @@ impl EffectManager {
         let world_pos = get_isometric_coordinate(x, y);
         let z = calculate_tile_z(x, y, Z_EFFECTS) + z_offset;
 
-        let alloc = match loaded.allocations.get(frame_index).and_then(|a| a.as_ref()) {
-            Some(alloc) => alloc,
-            None => {
+        let (slot_index, frame_x, frame_y) = match loaded.frame_rows.get(frame_index) {
+            Some(Some(row)) => *row,
+            _ => {
                 return Some(Instance {
                     position: world_pos.extend(z),
                     ..Default::default()
                 });
             }
+        };
+        let Some(alloc) = loaded.allocations.get(slot_index) else {
+            return Some(Instance {
+                position: world_pos.extend(z),
+                ..Default::default()
+            });
         };
 
         let atlas_w = ATLAS_WIDTH as f32;
@@ -457,12 +531,12 @@ impl EffectManager {
         Some(Instance {
             position: (world_pos + effect_offset).extend(z),
             tex_min: Vec2::new(
-                alloc.rectangle.min.x as f32 / atlas_w,
-                alloc.rectangle.min.y as f32 / atlas_h,
+                (alloc.rectangle.min.x as f32 + frame_x as f32) / atlas_w,
+                (alloc.rectangle.min.y as f32 + frame_y as f32) / atlas_h,
             ),
             tex_max: Vec2::new(
-                (alloc.rectangle.min.x as f32 + w) / atlas_w,
-                (alloc.rectangle.min.y as f32 + h) / atlas_h,
+                (alloc.rectangle.min.x as f32 + frame_x as f32 + w) / atlas_w,
+                (alloc.rectangle.min.y as f32 + frame_y as f32 + h) / atlas_h,
             ),
             sprite_size: Vec2::new(w / VERTEX_SIZE as f32, h / VERTEX_SIZE as f32),
             palette_offset: 0.0,

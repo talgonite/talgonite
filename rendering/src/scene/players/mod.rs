@@ -18,7 +18,8 @@ use crate::scene::utils::{atlas_uv, calculate_tile_z, direction_to_orientation};
 use crate::{
     scene::{
         Instance, TILE_WIDTH_HALF, Z_PLAYERS_BASE, get_isometric_coordinate, sprite::SpriteBatch,
-        texture_atlas::TextureAtlas, texture_bind::TextureBind,
+        texture_atlas::{FrameRow, FrameUpload, TextureAtlas, merge_uploads},
+        texture_bind::TextureBind,
     },
     texture,
 };
@@ -28,6 +29,12 @@ type Archive = SquashfsArchive;
 
 const ATLAS_WIDTH: usize = 4096;
 const ATLAS_HEIGHT: usize = 8192;
+/// Player parts are stacked into one contiguous atlas slot; parts taller than
+/// this are chunked into multiple slots so they stay packable in the atlas.
+const PLAYER_SLOT_MAX_HEIGHT: usize = 4096;
+/// Frames are shelf-packed into rows up to this width so slots stay short and
+/// wide enough for the atlas packer to place efficiently.
+const PLAYER_SHELF_TARGET_WIDTH: usize = 512;
 const VERTEX_WIDTH: usize = 512;
 const VERTEX_HEIGHT: usize = 512;
 const PLAYER_Y_OFFSET: f32 = -70.0;
@@ -57,6 +64,7 @@ struct DecodedPlayerSprite {
 }
 
 impl PlayerAssetStore {
+    #[tracing::instrument(level = "info", skip_all)]
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, archive: &Archive) -> Self {
         let diffuse_texture = texture::Texture::from_data(
             device,
@@ -78,7 +86,7 @@ impl PlayerAssetStore {
             &dye_texture.view,
         );
 
-        let atlas = TextureAtlas::new(diffuse_texture.texture);
+        let atlas = TextureAtlas::new(device, diffuse_texture.texture);
 
         Self {
             loaded_sprites: FxHashMap::default(),
@@ -141,8 +149,8 @@ impl PlayerAssetStore {
             return Ok(Instance::default());
         }
 
-        let allocation = loaded_sprite.allocations[anim_data.start_frame_index + frame_index]
-            .as_ref()
+        let (slot_index, frame_x, frame_y) = loaded_sprite.frame_rows
+            [anim_data.start_frame_index + frame_index]
             .ok_or_else(|| {
                 anyhow::anyhow!(
                     "No allocation for sprite: {:?} at frame {}",
@@ -150,6 +158,13 @@ impl PlayerAssetStore {
                     frame_index
                 )
             })?;
+        let allocation = loaded_sprite.allocations.get(slot_index).ok_or_else(|| {
+            anyhow::anyhow!(
+                "No allocation for sprite: {:?} at frame {}",
+                sprite,
+                frame_index
+            )
+        })?;
 
         let mut frame_offset = Vec2::new(frame_detail.left as f32, frame_detail.top as f32);
         let mut piece_offset = sprite.slot.offset();
@@ -173,8 +188,8 @@ impl PlayerAssetStore {
 
         let (tex_min, tex_max) = atlas_uv(
             Vec2::new(
-                allocation.rectangle.min.x as f32,
-                allocation.rectangle.min.y as f32,
+                (allocation.rectangle.min.x + frame_x as i32) as f32,
+                (allocation.rectangle.min.y + frame_y as i32) as f32,
             ),
             frame_w,
             frame_h,
@@ -206,20 +221,43 @@ impl PlayerAssetStore {
         Ok(instance)
     }
 
-    fn unload_sprite(&mut self, key: PlayerSpriteKey) {
+    /// Drops one reference. The sprite stays cached (atlas slot included) so
+    /// it can be reused without re-decoding or re-uploading; it is only
+    /// evicted when the atlas actually needs the space (see `evict_unused`).
+    fn release_sprite(&mut self, key: PlayerSpriteKey) {
         if let Some(sprite) = self.loaded_sprites.get_mut(&key) {
-            sprite.ref_count -= 1;
-            if sprite.ref_count == 0 {
-                for allocation in &sprite.allocations {
-                    if let Some(allocation) = allocation {
-                        self.atlas.atlas.deallocate(allocation.id);
-                    }
-                }
-                self.loaded_sprites.remove(&key);
-            }
+            sprite.ref_count = sprite.ref_count.saturating_sub(1);
         }
     }
 
+    /// Frees every cached sprite with no live references, returning their
+    /// atlas slots to etagere. Called when an allocation fails so a busy map
+    /// can reclaim space from sprites of previous maps/players.
+    fn evict_unused(&mut self) {
+        let mut to_evict = Vec::new();
+        for (key, sprite) in &self.loaded_sprites {
+            if sprite.ref_count == 0 {
+                to_evict.push(*key);
+            }
+        }
+        if to_evict.is_empty() {
+            return;
+        }
+        for key in &to_evict {
+            if let Some(sprite) = self.loaded_sprites.remove(key) {
+                for allocation in &sprite.allocations {
+                    self.atlas.atlas.deallocate(allocation.id);
+                }
+            }
+        }
+        tracing::info!(
+            evicted = to_evict.len(),
+            remaining = self.loaded_sprites.len(),
+            "Evicted unused player sprites to make room in the atlas"
+        );
+    }
+
+    #[tracing::instrument(level = "info", skip_all, fields(sprite_count = sprites.len()))]
     pub fn preload_player_sprites(
         &mut self,
         queue: &wgpu::Queue,
@@ -266,6 +304,12 @@ impl PlayerAssetStore {
             return Ok(());
         }
 
+        let _decode_span = tracing::info_span!(
+            "player_sprites.decode_batch",
+            sprite_count = bytes_by_sprite.len()
+        )
+        .entered();
+
         let decode_workers = std::thread::available_parallelism()
             .map(usize::from)
             .unwrap_or(1)
@@ -301,12 +345,32 @@ impl PlayerAssetStore {
                 .collect::<anyhow::Result<Vec<_>>>()?
         };
 
+        drop(_decode_span);
+        let _finalize_span = tracing::info_span!(
+            "player_sprites.finalize_batch",
+            sprite_count = decoded_sprites.len()
+        )
+        .entered();
+
+        // Stage every sprite (slot allocation + staging data) first, then do
+        // one batched GPU upload for the whole set.
+        let mut uploads: Vec<FrameUpload> = Vec::new();
+        let mut staged: Vec<(PlayerSpriteKey, LoadedSprite)> =
+            Vec::with_capacity(decoded_sprites.len());
         for (key, decoded) in decoded_sprites {
-            let loaded_sprite =
-                Self::finalize_player_sprite(&mut self.atlas, &key, queue, decoded, 0);
+            let (loaded_sprite, sprite_uploads) = self.stage_player_sprite(&key, decoded, 0);
+            uploads.extend(sprite_uploads);
+            staged.push((key, loaded_sprite));
+        }
+
+        let uploads = merge_uploads(uploads);
+        self.atlas.upload_batch(queue, &uploads);
+
+        for (key, loaded_sprite) in staged {
             self.loaded_sprites.insert(key, loaded_sprite);
         }
 
+        drop(_finalize_span);
         Ok(())
     }
 
@@ -323,6 +387,7 @@ impl PlayerAssetStore {
         }
     }
 
+    #[tracing::instrument(level = "info", skip_all, fields(bytes = epf_bytes.len()))]
     fn decode_player_sprite(epf_bytes: &[u8]) -> anyhow::Result<DecodedPlayerSprite> {
         let (epf_image, _) = oxicode::decode_from_slice::<Vec<EpfAnimation>>(epf_bytes)?;
 
@@ -347,45 +412,167 @@ impl PlayerAssetStore {
         })
     }
 
-    fn finalize_player_sprite(
-        atlas: &mut TextureAtlas,
+    #[tracing::instrument(level = "info", skip_all, fields(sprite = ?key))]
+    /// Allocates atlas slots and stages frame data for a sprite, returning the
+    /// loaded sprite plus everything that still needs uploading. The caller
+    /// batches the returned uploads (see `TextureAtlas::upload_batch`).
+    fn stage_player_sprite(
+        &mut self,
         key: &PlayerSpriteKey,
-        queue: &wgpu::Queue,
-        decoded: DecodedPlayerSprite,
+        mut decoded: DecodedPlayerSprite,
         ref_count: usize,
-    ) -> LoadedSprite {
-        let mut allocations: Vec<Option<Allocation>> = Vec::new();
-        allocations.reserve(decoded.epf_image.iter().map(|a| a.image.frames.len()).sum());
+    ) -> (LoadedSprite, Vec<FrameUpload>) {
+        let frame_count: usize = decoded
+            .epf_image
+            .iter()
+            .map(|a| a.image.frames.len())
+            .sum();
 
-        for anim in &decoded.epf_image {
-            for frame in &anim.image.frames {
-                let w = frame.right - frame.left;
-                let h = frame.bottom - frame.top;
-                if w > 0 && h > 0 {
-                    let alloc = atlas.allocate(queue, w as usize, h as usize, &frame.data);
-                    if alloc.is_none() {
-                        error!(
-                            "Player atlas full - cannot allocate sprite {:?} ({}x{})",
-                            key, w, h
-                        );
-                    }
-                    allocations.push(alloc);
-                } else {
-                    allocations.push(None);
+        // Pass 1: lay the part's frames out in shelves (rows) within a single
+        // slot. Tall stacks of narrow frames don't pack into the atlas, so
+        // frames are wrapped at a target row width to keep slots short and
+        // wide. Unusually large parts double the target width until the slot
+        // height is bounded.
+        let mut frame_rows = vec![None; frame_count];
+        let non_empty: Vec<(usize, usize, usize)> = decoded
+            .epf_image
+            .iter()
+            .flat_map(|a| a.image.frames.iter())
+            .enumerate()
+            .filter_map(|(frame_index, frame)| {
+                let w = (frame.right - frame.left) as usize;
+                let h = (frame.bottom - frame.top) as usize;
+                (w > 0 && h > 0).then_some((frame_index, w, h))
+            })
+            .collect();
+
+        let pack_shelves = |non_empty: &[(usize, usize, usize)],
+                            target_width: usize|
+         -> (Vec<(usize, usize, usize)>, usize, usize) {
+            let mut placed = Vec::with_capacity(non_empty.len());
+            let mut slot_width = 0usize;
+            let mut shelf_y = 0usize;
+            let mut shelf_h = 0usize;
+            let mut row_x = 0usize;
+            for &(frame_index, w, h) in non_empty {
+                if row_x > 0 && row_x + w > target_width {
+                    shelf_y += shelf_h;
+                    row_x = 0;
+                    shelf_h = 0;
                 }
+                placed.push((frame_index, row_x, shelf_y));
+                row_x += w;
+                slot_width = slot_width.max(row_x);
+                shelf_h = shelf_h.max(h);
+            }
+            (placed, slot_width, shelf_y + shelf_h)
+        };
+
+        // (frame indices, slot width, slot height) - one slot per part.
+        let mut chunks: Vec<(Vec<usize>, usize, usize)> = Vec::new();
+        if !non_empty.is_empty() {
+            let mut target_width = PLAYER_SHELF_TARGET_WIDTH;
+            let (mut placed, mut slot_width, mut slot_height) =
+                pack_shelves(&non_empty, target_width);
+            while slot_height > PLAYER_SLOT_MAX_HEIGHT && target_width < ATLAS_WIDTH {
+                target_width *= 2;
+                (placed, slot_width, slot_height) = pack_shelves(&non_empty, target_width);
+            }
+            for &(frame_index, x, y) in &placed {
+                frame_rows[frame_index] = Some((0, x as u32, y as u32));
+            }
+            chunks.push((
+                placed.into_iter().map(|(frame_index, _, _)| frame_index).collect(),
+                slot_width,
+                slot_height,
+            ));
+        }
+
+        // Pass 2: allocate one atlas slot per chunk.
+        let mut allocations: Vec<Allocation> = Vec::with_capacity(chunks.len());
+        for &(_, slot_width, slot_height) in &chunks {
+            let mut allocation = self.atlas.allocate_slot(slot_width, slot_height);
+            if allocation.is_none() {
+                // Atlas is full: evict unused cached sprites and retry once.
+                self.evict_unused();
+                allocation = self.atlas.allocate_slot(slot_width, slot_height);
+            }
+            let Some(allocation) = allocation else {
+                error!(
+                    "Player atlas full - cannot allocate sprite {:?} ({}x{})",
+                    key, slot_width, slot_height
+                );
+                // Return any slots allocated by earlier chunks of this part.
+                for slot in &allocations {
+                    self.atlas.atlas.deallocate(slot.id);
+                }
+                return (
+                    LoadedSprite {
+                        epf_image: decoded.epf_image,
+                        allocations: Vec::new(),
+                        frame_rows: vec![None; frame_count],
+                        animations: decoded.animations,
+                        ref_count,
+                    },
+                    Vec::new(),
+                );
+            };
+            allocations.push(allocation);
+        }
+
+        // Pass 3: hand each frame's pixels to upload_batch as tight rows so the
+        // belt's mapped staging memory is the only copy destination. The loaded
+        // sprite keeps only frame geometry (right/left/top/bottom).
+        let mut frames_per_slot: Vec<Vec<FrameRow>> = Vec::with_capacity(chunks.len());
+        for _ in 0..chunks.len() {
+            frames_per_slot.push(Vec::new());
+        }
+        let mut frame_index = 0usize;
+        for anim in &mut decoded.epf_image {
+            for frame in &mut anim.image.frames {
+                let w = (frame.right - frame.left) as usize;
+                let h = (frame.bottom - frame.top) as usize;
+                if w > 0 && h > 0 {
+                    let (slot_index, x, y) = frame_rows[frame_index]
+                        .expect("non-empty frame must have a row assigned");
+                    let data = std::mem::take(&mut frame.data);
+                    frames_per_slot[slot_index].push(FrameRow {
+                        x,
+                        y,
+                        width: w,
+                        height: h,
+                        data,
+                    });
+                }
+                frame_index += 1;
             }
         }
 
-        LoadedSprite {
-            epf_image: decoded.epf_image,
-            allocations,
-            animations: decoded.animations,
-            ref_count,
+        let mut uploads = Vec::with_capacity(chunks.len());
+        for (slot_index, &(_, slot_width, slot_height)) in chunks.iter().enumerate() {
+            uploads.push(FrameUpload {
+                rect: allocations[slot_index].rectangle,
+                width: slot_width,
+                height: slot_height,
+                frames: std::mem::take(&mut frames_per_slot[slot_index]),
+            });
         }
+
+        (
+            LoadedSprite {
+                epf_image: decoded.epf_image,
+                allocations,
+                frame_rows,
+                animations: decoded.animations,
+                ref_count,
+            },
+            uploads,
+        )
     }
 
+    #[tracing::instrument(level = "info", skip_all, fields(sprite = ?key))]
     fn try_load_player_sprite(
-        atlas: &mut TextureAtlas,
+        &mut self,
         key: &PlayerSpriteKey,
         queue: &wgpu::Queue,
         archive: &Archive,
@@ -394,7 +581,9 @@ impl PlayerAssetStore {
         let epf_bytes = archive.get_file(&path)?;
         let decoded = Self::decode_player_sprite(&epf_bytes)?;
 
-        Ok(Self::finalize_player_sprite(atlas, key, queue, decoded, 1))
+        let (loaded_sprite, uploads) = self.stage_player_sprite(key, decoded, 1);
+        self.atlas.upload_batch(queue, &uploads);
+        Ok(loaded_sprite)
     }
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {
@@ -439,7 +628,7 @@ impl PlayerBatch {
     }
 
     pub fn clear_and_unload(&self, store: &mut PlayerAssetStore) {
-        self.batch.clear_and_unload(|key| store.unload_sprite(*key));
+        self.batch.clear_and_unload(|key| store.release_sprite(*key));
     }
 
     pub fn add_player_sprite(
@@ -460,32 +649,27 @@ impl PlayerBatch {
             return Err(anyhow::anyhow!("Sprite marked missing: {:?}", sprite));
         }
 
-        let loaded_sprite = match store.loaded_sprites.entry(sprite) {
-            std::collections::hash_map::Entry::Occupied(entry) => {
-                let s = entry.into_mut();
-                s.ref_count += 1;
-                s
-            }
-            std::collections::hash_map::Entry::Vacant(entry) => {
-                let loaded_sprite = match PlayerAssetStore::try_load_player_sprite(
-                    &mut store.atlas,
-                    &sprite,
-                    queue,
-                    archive,
-                ) {
-                    Ok(loaded_sprite) => loaded_sprite,
-                    Err(error) => {
-                        if let Some(formats::game_files::SquashfsError::FileNotFound(_)) =
-                            error.downcast_ref::<formats::game_files::SquashfsError>()
-                        {
-                            store.missing_sprites.insert(sprite);
-                        }
-                        return Err(error);
+        // Ensure the sprite is loaded (without holding a map borrow across the
+        // load, since loading can evict unused sprites), then take a reference.
+        if !store.loaded_sprites.contains_key(&sprite) {
+            let loaded_sprite = match store.try_load_player_sprite(&sprite, queue, archive) {
+                Ok(loaded_sprite) => loaded_sprite,
+                Err(error) => {
+                    if let Some(formats::game_files::SquashfsError::FileNotFound(_)) =
+                        error.downcast_ref::<formats::game_files::SquashfsError>()
+                    {
+                        store.missing_sprites.insert(sprite);
                     }
-                };
-                entry.insert(loaded_sprite)
-            }
-        };
+                    return Err(error);
+                }
+            };
+            store.loaded_sprites.insert(sprite, loaded_sprite);
+        }
+        let loaded_sprite = store
+            .loaded_sprites
+            .get_mut(&sprite)
+            .expect("sprite loaded above");
+        loaded_sprite.ref_count += 1;
 
         let (anim_dir, flip) = direction_to_orientation(direction);
         let is_towards = anim_dir == AnimationDirection::Towards;
@@ -655,7 +839,7 @@ impl PlayerBatch {
         handle: PlayerSpriteHandle,
     ) {
         self.batch.remove_instance(queue, handle.index.0);
-        store.unload_sprite(handle.key);
+        store.release_sprite(handle.key);
     }
 
     pub fn render<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {

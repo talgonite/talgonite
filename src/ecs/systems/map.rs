@@ -120,6 +120,11 @@ fn handle_map_clear(
     *local_map_renderer = None;
 }
 
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(map_id = map_info.map_id, map_bytes = map_bytes.len())
+)]
 fn handle_map_set_info(
     commands: &mut Commands,
     archive: &Res<GameFiles>,

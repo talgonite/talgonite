@@ -1,7 +1,6 @@
 pub mod types;
 pub use types::*;
 
-use etagere::AtlasAllocator;
 use formats::epf::EpfImage;
 use glam::Vec2;
 use std::collections::HashMap;
@@ -12,6 +11,7 @@ use crate::{
     scene::{
         Instance, Z_ITEMS, get_isometric_coordinate,
         sprite::SpriteBatch,
+        texture_atlas::{FrameRow, FrameUpload, TextureAtlas, merge_uploads},
         texture_bind::TextureBind,
         utils::{atlas_uv, calculate_tile_z},
     },
@@ -23,11 +23,13 @@ pub const ITEM_ATLAS_HEIGHT: usize = 1024;
 pub const ITEMS_PER_EPF_FILE: u32 = 266;
 
 pub struct ItemAssetStore {
-    pub(crate) allocation_atlas: AtlasAllocator,
-    pub(crate) diffuse: texture::Texture,
+    pub(crate) atlas: TextureAtlas,
     pub(crate) loaded_sheets: HashMap<u32, LoadedItemSheet>,
     pub(crate) bind_group: wgpu::BindGroup,
     palette_table: rangemap::RangeMap<u16, u16>,
+    /// Frames staged this frame but not yet uploaded; flushed once per frame
+    /// so a burst of item spawns shares a single staging belt submit.
+    pending_uploads: Vec<FrameUpload>,
 }
 
 pub struct ItemBatch {
@@ -39,6 +41,7 @@ pub const ITEM_Z_RANGE: f32 = Z_ITEMS;
 const ITEM_COUNT_BUCKET_SIZE: u32 = 20;
 
 impl ItemAssetStore {
+    #[tracing::instrument(level = "info", skip_all)]
     pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -75,14 +78,11 @@ impl ItemAssetStore {
         );
 
         Self {
-            allocation_atlas: AtlasAllocator::new(etagere::size2(
-                ITEM_ATLAS_WIDTH as i32,
-                ITEM_ATLAS_HEIGHT as i32,
-            )),
-            diffuse,
+            atlas: TextureAtlas::new(device, diffuse.texture.clone()),
             loaded_sheets: HashMap::new(),
             bind_group,
             palette_table,
+            pending_uploads: Vec::new(),
         }
     }
 
@@ -112,19 +112,47 @@ impl ItemAssetStore {
         Ok(())
     }
 
-    pub(crate) fn unload_sprite(&mut self, sprite_id: u16) {
+    pub(crate) fn release_sheet(&mut self, sprite_id: u16) {
         let sheet_index = ((sprite_id - 1) as u32 / ITEMS_PER_EPF_FILE) + 1;
         if let Some(sheet) = self.loaded_sheets.get_mut(&sheet_index) {
-            sheet.ref_count -= 1;
+            sheet.ref_count = sheet.ref_count.saturating_sub(1);
+        }
+    }
+
+    /// Uploads every frame staged since the last flush as one batched submit.
+    pub fn flush_pending_uploads(&mut self, queue: &wgpu::Queue) {
+        if self.pending_uploads.is_empty() {
+            return;
+        }
+        let uploads = merge_uploads(std::mem::take(&mut self.pending_uploads));
+        self.atlas.upload_batch(queue, &uploads);
+    }
+
+    /// Frees every cached sheet with no live references, returning their atlas
+    /// slots to etagere. Called when an allocation fails.
+    fn evict_unused_sheets(&mut self, queue: &wgpu::Queue) {
+        self.flush_pending_uploads(queue);
+        let mut to_evict = Vec::new();
+        for (index, sheet) in &self.loaded_sheets {
             if sheet.ref_count == 0 {
-                for allocation in &sheet.allocations {
-                    if let Some(allocation) = allocation {
-                        self.allocation_atlas.deallocate(allocation.id);
-                    }
-                }
-                self.loaded_sheets.remove(&sheet_index);
+                to_evict.push(*index);
             }
         }
+        if to_evict.is_empty() {
+            return;
+        }
+        for index in &to_evict {
+            if let Some(sheet) = self.loaded_sheets.remove(index) {
+                for allocation in sheet.allocations.iter().flatten() {
+                    self.atlas.atlas.deallocate(allocation.id);
+                }
+            }
+        }
+        tracing::info!(
+            evicted = to_evict.len(),
+            remaining = self.loaded_sheets.len(),
+            "Evicted unused item sheets to make room in the atlas"
+        );
     }
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {
@@ -147,7 +175,7 @@ impl ItemBatch {
 
     pub fn clear_and_unload(&self, store: &mut ItemAssetStore) {
         self.batch
-            .clear_and_unload(|sprite_id| store.unload_sprite(*sprite_id));
+            .clear_and_unload(|sprite_id| store.release_sheet(*sprite_id));
     }
 
     pub fn add_item(
@@ -162,48 +190,65 @@ impl ItemBatch {
         if store.ensure_sheet(archive, sheet_index).is_err() {
             return None;
         }
-        let sheet = store.loaded_sheets.get_mut(&sheet_index)?;
-        if frame_index >= sheet.epf.frames.len() {
+
+        // Bounds-check the frame index before touching `allocations`.
+        let frame_count = store
+            .loaded_sheets
+            .get(&sheet_index)
+            .map(|sheet| sheet.epf.frames.len());
+        let Some(frame_count) = frame_count else {
+            return None;
+        };
+        if frame_index >= frame_count {
             return None;
         }
-        if sheet.allocations[frame_index].is_none() {
-            let frame = &sheet.epf.frames[frame_index];
-            let w = (frame.right - frame.left) as usize;
-            let h = (frame.bottom - frame.top) as usize;
-            if let Some(allocation) = store
-                .allocation_atlas
-                .allocate(etagere::size2(w as i32, h as i32))
+
+        // Stage the frame's upload if this item's frame hasn't been uploaded
+        // yet. The sheet borrow ends before eviction (which needs the whole
+        // store) can run, and pixel data is only taken once the upload is
+        // guaranteed to happen so a failed allocation can be retried later.
+        if store
+            .loaded_sheets
+            .get(&sheet_index)
+            .is_some_and(|sheet| sheet.allocations[frame_index].is_none())
+        {
+            let w;
+            let h;
             {
-                let texture = &store.diffuse;
-                queue.write_texture(
-                    wgpu::TexelCopyTextureInfo {
-                        texture: &texture.texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d {
-                            x: allocation.rectangle.min.x as u32,
-                            y: allocation.rectangle.min.y as u32,
-                            z: 0,
-                        },
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    &frame.data,
-                    wgpu::TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(w as u32),
-                        rows_per_image: None,
-                    },
-                    wgpu::Extent3d {
-                        width: w as u32,
-                        height: h as u32,
-                        depth_or_array_layers: 1,
-                    },
-                );
-                sheet.allocations[frame_index] = Some(allocation);
-            } else {
-                error!("Item atlas full - cannot allocate sprite {}", item.sprite);
-                return None;
+                let sheet = store.loaded_sheets.get(&sheet_index)?;
+                let frame = &sheet.epf.frames[frame_index];
+                w = (frame.right - frame.left) as usize;
+                h = (frame.bottom - frame.top) as usize;
             }
+
+            let mut allocation = store.atlas.allocate_slot(w, h);
+            if allocation.is_none() {
+                store.evict_unused_sheets(queue);
+                allocation = store.atlas.allocate_slot(w, h);
+            }
+            let Some(allocation) = allocation else {
+                error!("Item atlas full - cannot allocate sprite {}", item.sprite);
+                return None; // frame data stays intact; a later add can retry
+            };
+
+            let sheet = store.loaded_sheets.get_mut(&sheet_index)?;
+            let data = std::mem::take(&mut sheet.epf.frames[frame_index].data);
+            sheet.allocations[frame_index] = Some(allocation);
+            store.pending_uploads.push(FrameUpload {
+                rect: allocation.rectangle,
+                width: w,
+                height: h,
+                frames: vec![FrameRow {
+                    x: 0,
+                    y: 0,
+                    width: w,
+                    height: h,
+                    data,
+                }],
+            });
         }
+
+        let sheet = store.loaded_sheets.get_mut(&sheet_index)?;
         let instance = get_instance_for_frame(&store.palette_table, sheet, &item, frame_index)?;
 
         let idx = self.batch.add_instance(queue, instance)?;
@@ -249,7 +294,7 @@ impl ItemBatch {
         handle: ItemInstanceHandle,
     ) {
         self.batch.remove_instance(queue, handle.index);
-        store.unload_sprite(handle.sprite_id);
+        store.release_sheet(handle.sprite_id);
     }
 }
 

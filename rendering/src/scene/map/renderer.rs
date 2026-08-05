@@ -293,6 +293,11 @@ impl MapRenderer {
         }
     }
 
+    #[tracing::instrument(
+        level = "info",
+        skip_all,
+        fields(tiles = u32::from(map_width) * u32::from(map_height), xray)
+    )]
     pub fn prepare_map(
         archive: &Archive,
         map_data: Vec<u8>,
@@ -850,8 +855,11 @@ impl MapRenderer {
         }
     }
 
+    #[tracing::instrument(level = "info", skip_all)]
     pub fn bind_map(device: &wgpu::Device, queue: &wgpu::Queue, map: PreparedMap) -> Self {
         let mut map = map;
+
+        let _tile_atlas_span = tracing::info_span!("bind_map.tile_atlas").entered();
         let diffuse_texture = texture::Texture::from_data(
             &device,
             &queue,
@@ -862,7 +870,9 @@ impl MapRenderer {
             &map.tile_texture_data,
         )
         .unwrap();
+        drop(_tile_atlas_span);
 
+        let _tile_palette_span = tracing::info_span!("bind_map.tile_palette").entered();
         let palette_texture = texture::Texture::from_ktx2_rgba8(
             &device,
             &queue,
@@ -870,7 +880,9 @@ impl MapRenderer {
             &map.palette_texture_data,
         )
         .unwrap();
+        drop(_tile_palette_span);
 
+        let _floor_palettes_span = tracing::info_span!("bind_map.floor_palettes").entered();
         let floor_animated_palettes = AnimatedPaletteTexture::new(
             palette_texture,
             map.palette_pixels,
@@ -878,7 +890,9 @@ impl MapRenderer {
             map.floor_animated_palettes,
             std::time::Instant::now(),
         );
+        drop(_floor_palettes_span);
 
+        let _tile_batch_span = tracing::info_span!("bind_map.tile_batch").entered();
         let tile_bind_group = TextureBind::to_bind_group(
             device,
             &diffuse_texture,
@@ -894,7 +908,9 @@ impl MapRenderer {
             make_quad(TILE_WIDTH, TILE_HEIGHT).to_vec(),
             tile_bind_group,
         ));
+        drop(_tile_batch_span);
 
+        let _wall_atlas_span = tracing::info_span!("bind_map.wall_atlas").entered();
         let diffuse_texture = texture::Texture::from_data(
             &device,
             &queue,
@@ -905,7 +921,9 @@ impl MapRenderer {
             &map.wall_map_buf,
         )
         .unwrap();
+        drop(_wall_atlas_span);
 
+        let _wall_palette_span = tracing::info_span!("bind_map.wall_palette").entered();
         let palette_texture = texture::Texture::from_ktx2_rgba8(
             &device,
             &queue,
@@ -913,7 +931,9 @@ impl MapRenderer {
             &map.wall_palette_data,
         )
         .unwrap();
+        drop(_wall_palette_span);
 
+        let _wall_palettes_span = tracing::info_span!("bind_map.wall_palettes").entered();
         let wall_animated_palettes = AnimatedPaletteTexture::new(
             palette_texture,
             map.wall_palette_pixels,
@@ -921,11 +941,13 @@ impl MapRenderer {
             map.wall_animated_palettes,
             std::time::Instant::now(),
         );
+        drop(_wall_palettes_span);
 
         // find each different height allocated and create a batch for it
         // group the allocations by height so that they can allocate more tightly on the atlas.
         // Transparent (screen-blend) walls get their own batches so they can be drawn last
         // with the screen-blend pipeline.
+        let _wall_batches_span = tracing::info_span!("bind_map.wall_batches").entered();
         let mut height_map: HashMap<(i32, bool), Vec<(etagere::Allocation, u16, Vec<Instance>)>> =
             HashMap::new();
 
@@ -997,17 +1019,21 @@ impl MapRenderer {
                 wall_bind_group,
             ));
         }
+        drop(_wall_batches_span);
 
+        let _assemble_span = tracing::info_span!("bind_map.assemble").entered();
         map.animations.extend(map.wall_animations);
 
-        MapRenderer::new(
+        let renderer = MapRenderer::new(
             instance_batches,
             map.animations,
             map.wall_toggle_animations,
             screen_blend_batch_indices,
             Some(wall_animated_palettes),
             Some(floor_animated_palettes),
-        )
+        );
+        drop(_assemble_span);
+        renderer
     }
 }
 

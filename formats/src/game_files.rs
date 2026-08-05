@@ -44,6 +44,7 @@ impl SquashfsArchive {
         })
     }
 
+    #[tracing::instrument(level = "info", skip(self), fields(path = %path))]
     pub fn get_file(&self, path: &str) -> Result<Vec<u8>, SquashfsError> {
         use std::io::Read;
 
@@ -62,6 +63,11 @@ impl SquashfsArchive {
         Ok(buf)
     }
 
+    #[tracing::instrument(
+        level = "info",
+        skip(self, paths),
+        fields(file_count = paths.len())
+    )]
     pub fn get_files_parallel<S>(&self, paths: &[S]) -> Vec<Result<Vec<u8>, SquashfsError>>
     where
         S: AsRef<str> + Sync,

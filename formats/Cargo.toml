@@ -16,6 +16,7 @@ vk2dfd = "0.1"
 num_enum.workspace = true
 encoding.workspace = true
 flate2.workspace = true
+tracing.workspace = true
 
 # Dependencies for game_files module
 backhand.workspace = true

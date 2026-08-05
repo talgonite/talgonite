@@ -1,9 +1,12 @@
-use etagere::Allocation;
 use formats::mpf::{MpfAnimation, MpfAnimationType, MpfFile};
 
 pub(crate) struct LoadedSprite {
     pub mpf_file: MpfFile,
-    pub allocations: Vec<Allocation>,
+    /// Atlas slots for this sprite (one after shelf packing; more only if a
+    /// sprite was too tall for one slot).
+    pub allocations: Vec<etagere::Allocation>,
+    /// Per frame: which slot it lives in and its (x, y) offset inside it.
+    pub frame_rows: Vec<Option<(usize, u32, u32)>>,
     pub ref_count: usize,
 }
 

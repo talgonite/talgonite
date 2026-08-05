@@ -44,6 +44,7 @@ pub struct MapCollisionData {
 }
 
 impl MapCollisionData {
+    #[tracing::instrument(level = "info", skip_all, fields(width, height))]
     pub fn from_map_bytes(
         map_bytes: &[u8],
         width: u8,

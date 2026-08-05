@@ -10,7 +10,6 @@ pub use game_ui::slint_types::{
     SpeechBubble, Spell, WorldLabel, WorldListMemberUi, WorldMapNode,
 };
 
-#[cfg(target_os = "android")]
 use tracing_subscriber::prelude::*;
 
 use slint::ComponentHandle;
@@ -105,7 +104,13 @@ impl Plugin for CorePlugin {
 }
 
 pub fn main_with_storage(storage_root: std::path::PathBuf) {
-    init();
+    // Keep the guard alive for the whole process: dropping it is what finishes
+    // writing the Chrome trace file (see init()).
+    let trace_guard = init();
+
+    // A single top-level span covering the whole session, so the trace has a
+    // clear time ruler and load/decode/entity spans nest under it.
+    let _app_span = tracing::info_span!("talgonite.app_run").entered();
 
     let mut app = App::new();
     app.insert_resource(resources::StorageConfig::new(storage_root))
@@ -134,10 +139,15 @@ pub fn main_with_storage(storage_root: std::path::PathBuf) {
     // by ensuring TaskPool threads are joined before the process termination begins.
     drop(slint_app);
 
+    if let Some(guard) = trace_guard.as_ref() {
+        tracing::info!("Flushing Chrome trace to disk");
+        guard.flush();
+    }
+
     result.unwrap();
 }
 
-fn init() {
+fn init() -> Option<tracing_chrome::FlushGuard> {
     #[cfg(target_os = "windows")]
     unsafe {
         use windows_sys::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
@@ -145,31 +155,90 @@ fn init() {
     }
 
     use tracing_subscriber::EnvFilter;
-    #[cfg(target_os = "android")]
-    use tracing_subscriber::layer::SubscriberExt;
 
+    // Debug builds keep the default at INFO (matching the static max level).
+    // Release builds compile out everything below WARN, so default the filter
+    // to WARN as well to avoid EnvFilter's "disabled statically" warning.
+    #[cfg(debug_assertions)]
     let filter = EnvFilter::new("info")
         .add_directive("wgpu_core=warn".parse().unwrap())
         .add_directive("wgpu_hal=warn".parse().unwrap())
         .add_directive("naga=warn".parse().unwrap())
         .add_directive("MESA=off".parse().expect("Failed to parse MESA directive"));
+    #[cfg(not(debug_assertions))]
+    let filter = EnvFilter::new("warn")
+        .add_directive("wgpu_core=warn".parse().unwrap())
+        .add_directive("wgpu_hal=warn".parse().unwrap())
+        .add_directive("naga=warn".parse().unwrap())
+        .add_directive("MESA=off".parse().expect("Failed to parse MESA directive"));
 
-    let subscriber = tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .without_time()
-        .compact()
-        .finish();
+    let fmt_layer = tracing_subscriber::fmt::layer().without_time().compact();
+
+    // Debug builds only: when TALGONITE_TRACE is set, record every tracing
+    // span (Bevy system spans from the `trace` feature, plus the
+    // #[instrument] spans on load, decode, and entity construction) into a
+    // Chrome trace JSON. Open it with https://ui.perfetto.dev or
+    // chrome://tracing to view nested durations.
+    #[cfg(all(not(target_os = "android"), debug_assertions))]
+    let (subscriber, chrome_guard, trace_file) = {
+        let base = tracing_subscriber::registry().with(filter).with(fmt_layer);
+        match std::env::var_os("TALGONITE_TRACE") {
+            Some(path) => {
+                let file = if path.is_empty() || path == "1" {
+                    std::path::PathBuf::from("talgonite-trace.json")
+                } else {
+                    std::path::PathBuf::from(path)
+                };
+                let (chrome_layer, guard) = tracing_chrome::ChromeLayerBuilder::new()
+                    .file(&file)
+                    .include_args(true)
+                    .build();
+                let trace_file = Some(file);
+                (
+                    Box::new(base.with(chrome_layer)) as Box<dyn tracing::Subscriber + Send + Sync>,
+                    Some(guard),
+                    trace_file,
+                )
+            }
+            None => (
+                Box::new(base) as Box<dyn tracing::Subscriber + Send + Sync>,
+                None,
+                None,
+            ),
+        }
+    };
+
+    #[cfg(all(not(target_os = "android"), not(debug_assertions)))]
+    let subscriber: Box<dyn tracing::Subscriber + Send + Sync> =
+        Box::new(tracing_subscriber::registry().with(filter).with(fmt_layer));
 
     // Upgrade logger on android
     #[cfg(target_os = "android")]
     let subscriber = {
         let android_layer = tracing_android::layer("talgonite").unwrap();
-        subscriber.with(android_layer)
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(fmt_layer)
+            .with(android_layer)
     };
 
     tracing::subscriber::set_global_default(subscriber).expect("Unable to set global subscriber");
 
     tracing::info!("Tracing initialized (debug enabled by default)");
+
+    #[cfg(all(not(target_os = "android"), debug_assertions))]
+    {
+        if let Some(path) = trace_file {
+            tracing::info!(
+                trace_file = %path.display(),
+                "Chrome trace recording enabled - exit the app to flush"
+            );
+        }
+        return chrome_guard;
+    }
+
+    #[cfg(any(target_os = "android", not(debug_assertions)))]
+    None
 }
 
 #[cfg(target_os = "android")]

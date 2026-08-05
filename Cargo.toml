@@ -21,6 +21,14 @@ debug = 0
 opt-level = 3
 debug-assertions = false
 
+# `tracing`'s `release_max_level_warn` is keyed off `debug_assertions`, and the
+# wildcard override above disables assertions for dependencies even in dev
+# builds. Re-enable them for `tracing` alone so its static max level stays TRACE
+# in dev (timing spans and info logs work) and only drops to WARN in
+# release/dist, where the timing instrumentation compiles out.
+[profile.dev.package.tracing]
+debug-assertions = true
+
 [profile.release]
 lto = true
 codegen-units = 1
@@ -50,6 +58,7 @@ packets.workspace = true
 crc.workspace = true
 tracing-subscriber.workspace = true
 tracing.workspace = true
+tracing-chrome.workspace = true
 async-channel = "2.3"
 network.workspace = true
 game-types.workspace = true
@@ -127,14 +136,16 @@ crc = { path = "crc" }
 game-types = { path = "game-types" }
 game-input = { path = "game-input" }
 game-ui = { path = "game-ui" }
-tracing = "0.1"
+tracing = { version = "0.1", features = ["release_max_level_warn"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-chrome = "0.7"
 
 # Shared third-party dependencies
 anyhow = "1"
 async-std = "1.13"
 bevy = { version = "0.19.0-rc.2", default-features = false, features = [
     "bevy_state",
+    "trace",
 ] }
 bytemuck = { version = "1.24", features = ["derive"] }
 byteorder = "1.5"

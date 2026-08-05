@@ -34,6 +34,48 @@ unsquashfs-backhand -d /tmp/squashfs-out --path-filter /ia/sotp.dat \
 Paths use the same layout the game code reads (`ia/...`, `seo/...`), e.g. `ia/sotp.dat`,
 `ia/stcani.tbl`, `seo/mpt.tbl.bin`.
 
+## Tracing Performance
+
+Timing is done with `tracing` spans (the standard Rust approach) and viewed as a Chrome trace:
+
+```bash
+TALGONITE_TRACE=1 cargo run          # writes talgonite-trace.json in the cwd
+TALGONITE_TRACE=/tmp/trace.json cargo run
+```
+
+Then open the JSON with https://ui.perfetto.dev or `chrome://tracing` to see nested
+durations as a flame chart. What gets recorded:
+
+- A `talgonite.app_run` span covering the whole session, so the trace always has a
+  time ruler.
+- Every Bevy ECS system, via the `trace` feature on the `bevy` dependency.
+- Explicit `#[tracing::instrument]` spans on the load/decode/entity paths:
+  archive reads (`SquashfsArchive::get_file`, `get_files_parallel`), map prepare/bind
+  (`MapRenderer::prepare_map`; `bind_map` splits into `bind_map.tile_atlas`,
+  `tile_palette`, `floor_palettes`, `tile_batch`, `wall_atlas`, `wall_palette`,
+  `wall_palettes`, `wall_batches`, `assemble`), player sprite preload/decode
+  (`preload_player_sprites` with `player_sprites.decode_batch` /
+  `player_sprites.finalize_batch`, per-sprite `decode_player_sprite` /
+  `stage_player_sprite`, batched GPU uploads as `texture_atlas.upload_batch`
+  with per-slot `texture_atlas.allocate_slot`),
+  collision parse (`MapCollisionData::from_map_bytes`),
+  asset-store init (`PlayerAssetStore`/`CreatureAssetStore`/`ItemAssetStore`/
+  `EffectManager::new`), and entity construction (`handle_map_set_info`,
+  `spawn_display_entities`, `spawn_display_player`).
+
+Capture only exists in debug/dev builds. When it's active you'll see
+`Chrome trace recording enabled - exit the app to flush ... trace_file=...` at startup,
+and `Flushing Chrome trace to disk` on exit. If you don't see the startup line, you're
+running a release/dist binary (compiled out by design) or `TALGONITE_TRACE` isn't set.
+The file is written to the process working directory, so check where you launched the
+binary from. To extend coverage, add `#[tracing::instrument(level = "info", skip_all, ...)]`
+to the function you care about and it will appear in the same trace.
+
+Release/dist builds compile the instrumentation out entirely: `tracing` is built with
+`release_max_level_warn`, so info-level spans and events (all timing spans plus `info!`
+logs) expand to nothing, and the chrome layer is `debug_assertions`-gated, so it doesn't
+exist in release binaries. `warn!`/`error!` logs are still compiled in release.
+
 ## Architecture
 
 ### The Three Layers

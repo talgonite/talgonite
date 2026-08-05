@@ -398,6 +398,7 @@ pub fn sync_character_creator_preview(
 
     render_sprites_to_portrait_target(&renderer, &game_files, &mut player_store, target, &sprites);
     portrait_state.version = target.version;
+    portrait_state.dirty = false;
 }
 
 /// Collects all sprite keys and colors for a player entity.
@@ -478,6 +479,9 @@ pub fn sync_items_to_renderer(
             commands.entity(entity).insert(ItemInstance { handle });
         }
     }
+
+    // Flush any item frames staged during this frame as one batched upload.
+    store.store.flush_pending_uploads(&renderer.queue);
 }
 
 /// Updates item positions and sprites on the GPU when they change.
@@ -851,6 +855,7 @@ pub fn sync_player_portrait(
                 &mut portrait_state.target,
                 &sprites,
             );
+            portrait_state.dirty = false;
         }
     }
 }

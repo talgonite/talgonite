@@ -156,6 +156,7 @@ pub fn spawn_entities_system(
     }
 }
 
+#[tracing::instrument(level = "info", skip_all, fields(entity_count = entities.len()))]
 fn spawn_display_entities(
     commands: &mut Commands,
     entities: &[packets::server::EntityInfo],
@@ -243,6 +244,7 @@ fn spawn_display_entities(
     }
 }
 
+#[tracing::instrument(level = "info", skip_all, fields(player_id = player.id))]
 fn spawn_display_player(
     commands: &mut Commands,
     player: &packets::server::display_player::DisplayPlayer,

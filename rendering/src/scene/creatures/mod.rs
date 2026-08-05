@@ -14,7 +14,8 @@ use crate::{
 use crate::{
     scene::{
         Instance, Z_CREATURES, get_isometric_coordinate, sprite::SpriteBatch,
-        texture_atlas::TextureAtlas, texture_bind::TextureBind,
+        texture_atlas::{FrameRow, FrameUpload, TextureAtlas, merge_uploads, shelf_layout},
+        texture_bind::TextureBind,
     },
     texture,
 };
@@ -25,6 +26,9 @@ type Archive = SquashfsArchive;
 
 const ATLAS_WIDTH: usize = 2048;
 const ATLAS_HEIGHT: usize = 4096;
+/// Frames are shelf-packed into rows up to this width so slots stay short and
+/// wide enough for the atlas packer to place efficiently.
+const SHELF_TARGET_WIDTH: usize = 512;
 const VERTEX_WIDTH: usize = 512;
 const VERTEX_HEIGHT: usize = 512;
 
@@ -39,6 +43,7 @@ pub struct CreatureBatch {
 }
 
 impl CreatureAssetStore {
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn new(device: &wgpu::Device, queue: &wgpu::Queue, archive: &Archive) -> Self {
         let diffuse_texture = texture::Texture::from_data(
             device,
@@ -64,7 +69,7 @@ impl CreatureAssetStore {
             &texture::Texture::empty_view(device, "creature_empty"),
         );
 
-        let atlas = TextureAtlas::new(diffuse_texture.texture);
+        let atlas = TextureAtlas::new(device, diffuse_texture.texture);
 
         Self {
             loaded_sprites: FxHashMap::default(),
@@ -73,16 +78,104 @@ impl CreatureAssetStore {
         }
     }
 
-    pub(crate) fn unload_sprite(&mut self, sprite_id: u16) {
+    /// Drops one reference. The sprite stays cached so it can be reused
+    /// without re-decoding or re-uploading; it is only evicted when the atlas
+    /// needs the space (see `evict_unused`).
+    pub(crate) fn release_sprite(&mut self, sprite_id: u16) {
         if let Some(sprite) = self.loaded_sprites.get_mut(&sprite_id) {
-            sprite.ref_count -= 1;
+            sprite.ref_count = sprite.ref_count.saturating_sub(1);
+        }
+    }
+
+    /// Frees every cached sprite with no live references, returning their
+    /// atlas slots to etagere. Called when an allocation fails.
+    pub(crate) fn evict_unused(&mut self) {
+        let mut to_evict = Vec::new();
+        for (id, sprite) in &self.loaded_sprites {
             if sprite.ref_count == 0 {
+                to_evict.push(*id);
+            }
+        }
+        if to_evict.is_empty() {
+            return;
+        }
+        for id in &to_evict {
+            if let Some(sprite) = self.loaded_sprites.remove(id) {
                 for allocation in &sprite.allocations {
                     self.atlas.atlas.deallocate(allocation.id);
                 }
-                self.loaded_sprites.remove(&sprite_id);
             }
         }
+        tracing::info!(
+            evicted = to_evict.len(),
+            remaining = self.loaded_sprites.len(),
+            "Evicted unused creature sprites to make room in the atlas"
+        );
+    }
+
+    /// Shelf-packs the sprite's frames into one (or few) atlas slots, staging
+    /// their pixels for a batched upload. Evicts unused sprites if the atlas
+    /// is full, then retries once.
+    fn stage_sprite(
+        &mut self,
+        mpf_file: &mut MpfFile,
+    ) -> Option<(Vec<etagere::Allocation>, Vec<Option<(usize, u32, u32)>>, Vec<FrameUpload>)> {
+        let frame_count = mpf_file.frames.len();
+        let non_empty: Vec<(usize, usize, usize)> = mpf_file
+            .frames
+            .iter()
+            .enumerate()
+            .filter_map(|(index, frame)| {
+                let w = (frame.right - frame.left) as usize;
+                let h = (frame.bottom - frame.top) as usize;
+                (w > 0 && h > 0).then_some((index, w, h))
+            })
+            .collect();
+
+        let mut frame_rows = vec![None; frame_count];
+        if non_empty.is_empty() {
+            return Some((Vec::new(), frame_rows, Vec::new()));
+        }
+
+        let mut target_width = SHELF_TARGET_WIDTH;
+        let (mut placed, mut slot_width, mut slot_height) = shelf_layout(&non_empty, target_width);
+        while slot_height > ATLAS_HEIGHT && target_width < ATLAS_WIDTH {
+            target_width *= 2;
+            (placed, slot_width, slot_height) = shelf_layout(&non_empty, target_width);
+        }
+
+        let mut allocation = self.atlas.allocate_slot(slot_width, slot_height);
+        if allocation.is_none() {
+            self.evict_unused();
+            allocation = self.atlas.allocate_slot(slot_width, slot_height);
+        }
+        let allocation = allocation?;
+
+        let mut frames: Vec<FrameRow> = Vec::with_capacity(non_empty.len());
+        for &(frame_index, x, y) in &placed {
+            frame_rows[frame_index] = Some((0, x as u32, y as u32));
+            let frame = &mut mpf_file.frames[frame_index];
+            let w = (frame.right - frame.left) as usize;
+            let h = (frame.bottom - frame.top) as usize;
+            frames.push(FrameRow {
+                x: x as u32,
+                y: y as u32,
+                width: w,
+                height: h,
+                data: std::mem::take(&mut frame.data),
+            });
+        }
+
+        Some((
+            vec![allocation],
+            frame_rows,
+            vec![FrameUpload {
+                rect: allocation.rectangle,
+                width: slot_width,
+                height: slot_height,
+                frames,
+            }],
+        ))
     }
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {
@@ -104,7 +197,7 @@ impl CreatureBatch {
 
     pub fn clear_and_unload(&self, store: &mut CreatureAssetStore) {
         self.batch
-            .clear_and_unload(|sprite_id| store.unload_sprite(*sprite_id));
+            .clear_and_unload(|sprite_id| store.release_sprite(*sprite_id));
     }
 
     pub fn add_creature(
@@ -117,38 +210,35 @@ impl CreatureBatch {
         x: f32,
         y: f32,
     ) -> anyhow::Result<AddCreatureResult> {
-        let loaded_sprite = match store.loaded_sprites.entry(sprite_id) {
-            std::collections::hash_map::Entry::Occupied(entry) => {
-                let s = entry.into_mut();
-                s.ref_count += 1;
-                s
-            }
-            std::collections::hash_map::Entry::Vacant(entry) => {
-                let mpf_bytes = archive
-                    .get_file(&format!("hades/mns{:03}.mpf.bin", sprite_id))
-                    .map_err(|e| {
-                        anyhow::anyhow!("Failed to load MPF for sprite {}: {}", sprite_id, e)
-                    })?;
+        let loaded_sprite = if let Some(s) = store.loaded_sprites.get_mut(&sprite_id) {
+            s.ref_count += 1;
+            s
+        } else {
+            let mpf_bytes = archive
+                .get_file(&format!("hades/mns{:03}.mpf.bin", sprite_id))
+                .map_err(|e| {
+                    anyhow::anyhow!("Failed to load MPF for sprite {}: {}", sprite_id, e)
+                })?;
 
-                let (mpf_file, _) = oxicode::decode_from_slice::<MpfFile>(&mpf_bytes)?;
-
-                let mut allocations: Vec<etagere::Allocation> =
-                    Vec::with_capacity(mpf_file.frames.len());
-                for frame in &mpf_file.frames {
-                    let w = frame.right - frame.left;
-                    let h = frame.bottom - frame.top;
-                    let alloc = store
-                        .atlas
-                        .allocate(queue, w as usize, h as usize, &frame.data)
-                        .ok_or_else(|| anyhow::anyhow!("Atlas full for creature {}", sprite_id))?;
-                    allocations.push(alloc);
-                }
-                entry.insert(LoadedSprite {
+            let (mut mpf_file, _) = oxicode::decode_from_slice::<MpfFile>(&mpf_bytes)?;
+            let (allocations, frame_rows, uploads) = store
+                .stage_sprite(&mut mpf_file)
+                .ok_or_else(|| anyhow::anyhow!("Atlas full for creature {}", sprite_id))?;
+            let uploads = merge_uploads(uploads);
+            store.atlas.upload_batch(queue, &uploads);
+            store.loaded_sprites.insert(
+                sprite_id,
+                LoadedSprite {
                     mpf_file,
                     allocations,
+                    frame_rows,
                     ref_count: 1,
-                })
-            }
+                },
+            );
+            store
+                .loaded_sprites
+                .get_mut(&sprite_id)
+                .expect("creature sprite inserted above")
         };
 
         let (anim_dir, flip) = direction_to_orientation(direction);
@@ -191,7 +281,7 @@ impl CreatureBatch {
         handle: CreateInstanceHandle,
     ) {
         self.batch.remove_instance(queue, handle.index);
-        store.unload_sprite(handle.sprite_id);
+        store.release_sprite(handle.sprite_id);
     }
 
     pub fn update_creature(
@@ -232,9 +322,18 @@ fn get_instance_for_frame(
     position: Vec2,
     flip: bool,
 ) -> anyhow::Result<Instance> {
-    let first_frame = loaded_sprite.allocations.get(frame_index).ok_or_else(|| {
+    let (slot_index, frame_x, frame_y) = loaded_sprite.frame_rows.get(frame_index)
+        .and_then(|row| *row)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Frame index out of bounds for sprite {} ({})",
+                loaded_sprite.mpf_file.palette_number,
+                frame_index
+            )
+        })?;
+    let allocation = loaded_sprite.allocations.get(slot_index).ok_or_else(|| {
         anyhow::anyhow!(
-            "Frame index out of bounds for sprite {} ({})",
+            "No allocation for sprite {} frame {}",
             loaded_sprite.mpf_file.palette_number,
             frame_index
         )
@@ -253,8 +352,8 @@ fn get_instance_for_frame(
 
     let (tex_min, tex_max) = atlas_uv(
         Vec2::new(
-            first_frame.rectangle.min.x as f32,
-            first_frame.rectangle.min.y as f32,
+            (allocation.rectangle.min.x + frame_x as i32) as f32,
+            (allocation.rectangle.min.y + frame_y as i32) as f32,
         ),
         frame_w as f32,
         frame_h as f32,
