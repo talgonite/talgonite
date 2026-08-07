@@ -1,7 +1,8 @@
 pub mod types;
 pub use types::*;
 
-use formats::mpf::{MpfAnimation, MpfAnimationType, MpfFile};
+use formats::mpf::{MpfAnimation, MpfAnimationType};
+use formats::sheets::CreatureSheet;
 use glam::{Vec2, Vec3};
 use rustc_hash::FxHashMap;
 use wgpu;
@@ -13,8 +14,9 @@ use crate::{
 };
 use crate::{
     scene::{
-        Instance, Z_CREATURES, get_isometric_coordinate, sprite::SpriteBatch,
-        texture_atlas::{FrameRow, FrameUpload, TextureAtlas, merge_uploads, shelf_layout},
+        Instance, Z_CREATURES, get_isometric_coordinate,
+        sprite::SpriteBatch,
+        texture_atlas::{FrameRow, FrameUpload, TextureAtlas, merge_uploads},
         texture_bind::TextureBind,
     },
     texture,
@@ -26,9 +28,6 @@ type Archive = SquashfsArchive;
 
 const ATLAS_WIDTH: usize = 2048;
 const ATLAS_HEIGHT: usize = 4096;
-/// Frames are shelf-packed into rows up to this width so slots stay short and
-/// wide enough for the atlas packer to place efficiently.
-const SHELF_TARGET_WIDTH: usize = 512;
 const VERTEX_WIDTH: usize = 512;
 const VERTEX_HEIGHT: usize = 512;
 
@@ -113,69 +112,71 @@ impl CreatureAssetStore {
         );
     }
 
-    /// Shelf-packs the sprite's frames into one (or few) atlas slots, staging
-    /// their pixels for a batched upload. Evicts unused sprites if the atlas
-    /// is full, then retries once.
-    fn stage_sprite(
+    /// Allocates one atlas slot per sheet chunk and stages each chunk image
+    /// for a batched upload. Evicts unused sprites if the atlas is full, then
+    /// retries once per chunk.
+    fn stage_sheet(
         &mut self,
-        mpf_file: &mut MpfFile,
-    ) -> Option<(Vec<etagere::Allocation>, Vec<Option<(usize, u32, u32)>>, Vec<FrameUpload>)> {
-        let frame_count = mpf_file.frames.len();
-        let non_empty: Vec<(usize, usize, usize)> = mpf_file
-            .frames
-            .iter()
-            .enumerate()
-            .filter_map(|(index, frame)| {
-                let w = (frame.right - frame.left) as usize;
-                let h = (frame.bottom - frame.top) as usize;
-                (w > 0 && h > 0).then_some((index, w, h))
-            })
-            .collect();
-
-        let mut frame_rows = vec![None; frame_count];
-        if non_empty.is_empty() {
-            return Some((Vec::new(), frame_rows, Vec::new()));
+        meta: &CreatureSheet,
+        images: Vec<Vec<u8>>,
+    ) -> Option<(Vec<etagere::Allocation>, Vec<FrameUpload>)> {
+        let mut allocations: Vec<etagere::Allocation> = Vec::with_capacity(meta.chunks.len());
+        for chunk in &meta.chunks {
+            let mut allocation = self
+                .atlas
+                .allocate_slot(chunk.width as usize, chunk.height as usize);
+            if allocation.is_none() {
+                self.evict_unused();
+                allocation = self
+                    .atlas
+                    .allocate_slot(chunk.width as usize, chunk.height as usize);
+            }
+            let Some(allocation) = allocation else {
+                for slot in &allocations {
+                    self.atlas.atlas.deallocate(slot.id);
+                }
+                return None;
+            };
+            allocations.push(allocation);
         }
 
-        let mut target_width = SHELF_TARGET_WIDTH;
-        let (mut placed, mut slot_width, mut slot_height) = shelf_layout(&non_empty, target_width);
-        while slot_height > ATLAS_HEIGHT && target_width < ATLAS_WIDTH {
-            target_width *= 2;
-            (placed, slot_width, slot_height) = shelf_layout(&non_empty, target_width);
-        }
-
-        let mut allocation = self.atlas.allocate_slot(slot_width, slot_height);
-        if allocation.is_none() {
-            self.evict_unused();
-            allocation = self.atlas.allocate_slot(slot_width, slot_height);
-        }
-        let allocation = allocation?;
-
-        let mut frames: Vec<FrameRow> = Vec::with_capacity(non_empty.len());
-        for &(frame_index, x, y) in &placed {
-            frame_rows[frame_index] = Some((0, x as u32, y as u32));
-            let frame = &mut mpf_file.frames[frame_index];
-            let w = (frame.right - frame.left) as usize;
-            let h = (frame.bottom - frame.top) as usize;
-            frames.push(FrameRow {
-                x: x as u32,
-                y: y as u32,
-                width: w,
-                height: h,
-                data: std::mem::take(&mut frame.data),
+        let mut uploads = Vec::with_capacity(images.len());
+        for (chunk_index, image) in images.into_iter().enumerate() {
+            let chunk = meta.chunks[chunk_index];
+            uploads.push(FrameUpload {
+                rect: allocations[chunk_index].rectangle,
+                width: chunk.width as usize,
+                height: chunk.height as usize,
+                frames: vec![FrameRow {
+                    x: 0,
+                    y: 0,
+                    width: chunk.width as usize,
+                    height: chunk.height as usize,
+                    data: image,
+                }],
             });
         }
 
-        Some((
-            vec![allocation],
-            frame_rows,
-            vec![FrameUpload {
-                rect: allocation.rectangle,
-                width: slot_width,
-                height: slot_height,
-                frames,
-            }],
-        ))
+        Some((allocations, uploads))
+    }
+
+    /// Reads the pre-packed sheet images for a creature (one per chunk).
+    fn load_sheet_images(
+        archive: &Archive,
+        base: &str,
+        chunk_count: usize,
+    ) -> anyhow::Result<Vec<Vec<u8>>> {
+        let paths: Vec<String> = (0..chunk_count)
+            .map(|chunk| format!("{base}.sheet{chunk}.ktx2"))
+            .collect();
+        let results = archive.get_files_parallel(&paths);
+        let mut images = Vec::with_capacity(chunk_count);
+        for result in results {
+            let bytes = result?;
+            let (_, _, pixels) = texture::Texture::load_ktx2(&bytes)?;
+            images.push(pixels);
+        }
+        Ok(images)
     }
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {
@@ -214,24 +215,24 @@ impl CreatureBatch {
             s.ref_count += 1;
             s
         } else {
-            let mpf_bytes = archive
-                .get_file(&format!("hades/mns{:03}.mpf.bin", sprite_id))
+            let base = format!("hades/mns{:03}", sprite_id);
+            let meta_bytes = archive
+                .get_file(&format!("{base}.sheet.bin"))
                 .map_err(|e| {
-                    anyhow::anyhow!("Failed to load MPF for sprite {}: {}", sprite_id, e)
+                    anyhow::anyhow!("Failed to load sheet for creature {}: {}", sprite_id, e)
                 })?;
-
-            let (mut mpf_file, _) = oxicode::decode_from_slice::<MpfFile>(&mpf_bytes)?;
-            let (allocations, frame_rows, uploads) = store
-                .stage_sprite(&mut mpf_file)
+            let (meta, _) = oxicode::decode_from_slice::<CreatureSheet>(&meta_bytes)?;
+            let images = CreatureAssetStore::load_sheet_images(archive, &base, meta.chunks.len())?;
+            let (allocations, uploads) = store
+                .stage_sheet(&meta, images)
                 .ok_or_else(|| anyhow::anyhow!("Atlas full for creature {}", sprite_id))?;
             let uploads = merge_uploads(uploads);
             store.atlas.upload_batch(queue, &uploads);
             store.loaded_sprites.insert(
                 sprite_id,
                 LoadedSprite {
-                    mpf_file,
+                    meta,
                     allocations,
-                    frame_rows,
                     ref_count: 1,
                 },
             );
@@ -244,7 +245,7 @@ impl CreatureBatch {
         let (anim_dir, flip) = direction_to_orientation(direction);
 
         let anim = loaded_sprite
-            .mpf_file
+            .meta
             .animations
             .iter()
             .find(|a| a.animation_type == MpfAnimationType::Standing)
@@ -270,7 +271,7 @@ impl CreatureBatch {
 
         Ok(AddCreatureResult {
             handle,
-            animations: loaded_sprite.mpf_file.animations.clone(),
+            animations: loaded_sprite.meta.animations.clone(),
         })
     }
 
@@ -322,38 +323,39 @@ fn get_instance_for_frame(
     position: Vec2,
     flip: bool,
 ) -> anyhow::Result<Instance> {
-    let (slot_index, frame_x, frame_y) = loaded_sprite.frame_rows.get(frame_index)
-        .and_then(|row| *row)
+    let Some(frame) = loaded_sprite
+        .meta
+        .frames
+        .get(frame_index)
+        .copied()
+        .flatten()
+    else {
+        return Ok(Instance::default());
+    };
+    let allocation = loaded_sprite
+        .allocations
+        .get(frame.chunk as usize)
         .ok_or_else(|| {
             anyhow::anyhow!(
-                "Frame index out of bounds for sprite {} ({})",
-                loaded_sprite.mpf_file.palette_number,
+                "No allocation for sprite {} frame {}",
+                loaded_sprite.meta.palette_number,
                 frame_index
             )
         })?;
-    let allocation = loaded_sprite.allocations.get(slot_index).ok_or_else(|| {
-        anyhow::anyhow!(
-            "No allocation for sprite {} frame {}",
-            loaded_sprite.mpf_file.palette_number,
-            frame_index
-        )
-    })?;
 
-    let frame_detail = &loaded_sprite.mpf_file.frames[frame_index];
-
-    let frame_w = frame_detail.right - frame_detail.left;
-    let frame_h = frame_detail.bottom - frame_detail.top;
+    let frame_w = frame.width as i32;
+    let frame_h = frame.height as i32;
 
     let offset_x = if flip {
-        (frame_detail.right - frame_detail.center_x) as f32
+        (frame.right - frame.center_x) as f32
     } else {
-        (frame_detail.center_x - frame_detail.left) as f32
+        (frame.center_x - frame.left) as f32
     };
 
     let (tex_min, tex_max) = atlas_uv(
         Vec2::new(
-            (allocation.rectangle.min.x + frame_x as i32) as f32,
-            (allocation.rectangle.min.y + frame_y as i32) as f32,
+            (allocation.rectangle.min.x + frame.x as i32) as f32,
+            (allocation.rectangle.min.y + frame.y as i32) as f32,
         ),
         frame_w as f32,
         frame_h as f32,
@@ -363,7 +365,7 @@ fn get_instance_for_frame(
 
     Ok(Instance::with_texture_atlas(
         (get_isometric_coordinate(position.x, position.y)
-            - Vec2::new(offset_x, (frame_detail.center_y - frame_detail.top) as f32))
+            - Vec2::new(offset_x, (frame.center_y - frame.top) as f32))
         .extend(calculate_tile_z(position.x, position.y, Z_CREATURES)),
         tex_min,
         tex_max,
@@ -371,7 +373,7 @@ fn get_instance_for_frame(
             frame_w as f32 / VERTEX_WIDTH as f32,
             frame_h as f32 / VERTEX_HEIGHT as f32,
         ),
-        loaded_sprite.mpf_file.palette_number as f32 / 256.0,
+        loaded_sprite.meta.palette_number as f32 / 256.0,
         -1.,
         flip,
         false,

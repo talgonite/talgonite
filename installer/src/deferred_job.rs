@@ -1,9 +1,12 @@
+use formats::efa::EfaFile;
 use formats::epf::EpfImage;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub(crate) enum DeferredAssetJob {
     Palette(PaletteAssetJob),
     Animation(AnimationAssetJob),
+    Effect(EffectAssetJob),
 }
 
 pub(crate) struct PaletteAssetJob {
@@ -15,6 +18,48 @@ pub(crate) struct PaletteAssetJob {
 pub(crate) struct AnimationAssetJob {
     pub(crate) dat_name: String,
     pub(crate) epfs_to_concat: Vec<(String, EpfImage)>,
+}
+
+/// Decoded effect entries for one effect id. Some effects ship as EFA (RGBA),
+/// others as EPF (palette indexed); if both exist, EFA wins.
+#[derive(Default)]
+pub(crate) struct EffectAssetEntries {
+    pub(crate) efa: Option<EfaFile>,
+    pub(crate) epf: Option<EpfImage>,
+}
+
+pub(crate) struct EffectAssetJob {
+    pub(crate) effects: HashMap<u16, EffectAssetEntries>,
+}
+
+pub(crate) struct EffectAssetJobBuilder {
+    effects: HashMap<u16, EffectAssetEntries>,
+}
+
+impl EffectAssetJobBuilder {
+    pub(crate) fn new() -> Self {
+        Self {
+            effects: HashMap::new(),
+        }
+    }
+
+    pub(crate) fn push_efa(&mut self, effect_id: u16, efa: EfaFile) {
+        self.effects.entry(effect_id).or_default().efa = Some(efa);
+    }
+
+    pub(crate) fn push_epf(&mut self, effect_id: u16, epf: EpfImage) {
+        self.effects.entry(effect_id).or_default().epf = Some(epf);
+    }
+
+    pub(crate) fn finish(self) -> Option<DeferredAssetJob> {
+        if self.effects.is_empty() {
+            None
+        } else {
+            Some(DeferredAssetJob::Effect(EffectAssetJob {
+                effects: self.effects,
+            }))
+        }
+    }
 }
 
 pub(crate) struct PaletteAssetJobBuilder {

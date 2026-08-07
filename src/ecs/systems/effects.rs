@@ -1,8 +1,11 @@
 //! Effect systems (spell effects, animations, etc.)
 
 use super::super::components::*;
-use crate::{EffectManagerState, RendererState, events::EntityEvent, game_files::GameFiles};
+use crate::{
+    Camera, EffectManagerState, RendererState, events::EntityEvent, game_files::GameFiles,
+};
 use bevy::prelude::*;
+use rendering::scene::get_isometric_coordinate;
 
 /// Attaches Effect components to entities based on server animation events.
 pub fn entity_effect_system(
@@ -26,6 +29,12 @@ pub fn entity_effect_system(
                 for (entity, entity_id) in targets.iter_mut() {
                     if entity_id.id == target_id {
                         if let Some(target_animation) = target_animation {
+                            tracing::info!(
+                                game_id = entity_id.id,
+                                role = "target",
+                                effect_id = target_animation,
+                                "Attaching effect"
+                            );
                             commands.entity(entity).insert(Effect {
                                 effect_id: target_animation,
                                 z_offset: 0.0001,
@@ -34,6 +43,12 @@ pub fn entity_effect_system(
                     }
                     if entity_id.id == source_id {
                         if let Some(source_animation) = source_animation {
+                            tracing::info!(
+                                game_id = entity_id.id,
+                                role = "source",
+                                effect_id = source_animation,
+                                "Attaching effect"
+                            );
                             commands.entity(entity).insert(Effect {
                                 effect_id: source_animation,
                                 z_offset: 0.0001,
@@ -52,10 +67,34 @@ pub fn spawn_effects_system(
     mut commands: Commands,
     renderer: Res<RendererState>,
     game_files: Res<GameFiles>,
+    camera: Res<Camera>,
     mut effects_state: ResMut<EffectManagerState>,
-    added_effects: Query<(Entity, &Position, &Effect), Added<Effect>>,
+    changed_effects: Query<
+        (Entity, &Position, &Effect, Option<&EffectInstance>),
+        Or<(Added<Effect>, Changed<Effect>)>,
+    >,
 ) {
-    for (entity, position, effect) in added_effects.iter() {
+    for (entity, position, effect, existing_instance) in changed_effects.iter() {
+        let needs_respawn = match existing_instance {
+            Some(instance) => instance.handle.effect_id != effect.effect_id,
+            None => true,
+        };
+        if !needs_respawn {
+            continue;
+        }
+        tracing::info!(
+            ?entity,
+            effect_id = effect.effect_id,
+            x = position.x,
+            y = position.y,
+            z_offset = effect.z_offset,
+            iso_x = get_isometric_coordinate(position.x, position.y).x,
+            iso_y = get_isometric_coordinate(position.x, position.y).y,
+            camera_iso_x = camera.camera.position().x,
+            camera_iso_y = camera.camera.position().y,
+            zoom = camera.camera.zoom(),
+            "Displaying effect"
+        );
         if let Some(handle) = effects_state.effect_manager.spawn_effect(
             &renderer.queue,
             &game_files.inner().archive(),
@@ -64,6 +103,9 @@ pub fn spawn_effects_system(
             position.y,
             effect.z_offset,
         ) {
+            if existing_instance.is_some() {
+                commands.entity(entity).remove::<EffectInstance>();
+            }
             commands.entity(entity).insert(EffectInstance {
                 current_frame: 0,
                 timer: Timer::from_seconds(

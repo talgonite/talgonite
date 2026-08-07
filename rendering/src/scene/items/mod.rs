@@ -1,7 +1,7 @@
 pub mod types;
 pub use types::*;
 
-use formats::epf::EpfImage;
+use formats::sheets::ItemSheet;
 use glam::Vec2;
 use std::collections::HashMap;
 use tracing::error;
@@ -88,6 +88,7 @@ impl ItemAssetStore {
 
     pub(crate) fn ensure_sheet(
         &mut self,
+        queue: &wgpu::Queue,
         archive: &formats::game_files::SquashfsArchive,
         sheet_index: u32,
     ) -> anyhow::Result<()> {
@@ -95,16 +96,63 @@ impl ItemAssetStore {
             sheet.ref_count += 1;
             return Ok(());
         }
-        let path = format!("Legend/item{:03}.epf.bin", sheet_index);
-        let bytes = archive.get_file(&path)?;
-        let (epf, _) = oxicode::decode_from_slice::<EpfImage>(&bytes)?;
-        let mut allocations: Vec<Option<etagere::Allocation>> =
-            Vec::with_capacity(epf.frames.len());
-        allocations.resize(epf.frames.len(), None);
+        let base = format!("Legend/item{:03}", sheet_index);
+        let meta_bytes = archive.get_file(&format!("{base}.sheet.bin"))?;
+        let (meta, _) = oxicode::decode_from_slice::<ItemSheet>(&meta_bytes)?;
+
+        let image_paths: Vec<String> = (0..meta.chunks.len())
+            .map(|chunk| format!("{base}.sheet{chunk}.ktx2"))
+            .collect();
+        let image_results = archive.get_files_parallel(&image_paths);
+        let mut images = Vec::with_capacity(meta.chunks.len());
+        for result in image_results {
+            let bytes = result?;
+            let (_, _, pixels) = texture::Texture::load_ktx2(&bytes)?;
+            images.push(pixels);
+        }
+
+        // Allocate one atlas slot per chunk; evict unused sheets if full.
+        let mut allocations: Vec<etagere::Allocation> = Vec::with_capacity(meta.chunks.len());
+        for chunk in &meta.chunks {
+            let mut allocation = self
+                .atlas
+                .allocate_slot(chunk.width as usize, chunk.height as usize);
+            if allocation.is_none() {
+                self.evict_unused_sheets(queue);
+                allocation = self
+                    .atlas
+                    .allocate_slot(chunk.width as usize, chunk.height as usize);
+            }
+            let Some(allocation) = allocation else {
+                error!("Item atlas full - cannot allocate sheet {}", sheet_index);
+                for slot in &allocations {
+                    self.atlas.atlas.deallocate(slot.id);
+                }
+                return Ok(()); // a later add can retry
+            };
+            allocations.push(allocation);
+        }
+
+        for (chunk_index, image) in images.into_iter().enumerate() {
+            let chunk = meta.chunks[chunk_index];
+            self.pending_uploads.push(FrameUpload {
+                rect: allocations[chunk_index].rectangle,
+                width: chunk.width as usize,
+                height: chunk.height as usize,
+                frames: vec![FrameRow {
+                    x: 0,
+                    y: 0,
+                    width: chunk.width as usize,
+                    height: chunk.height as usize,
+                    data: image,
+                }],
+            });
+        }
+
         self.loaded_sheets.insert(
             sheet_index,
             LoadedItemSheet {
-                epf,
+                meta,
                 allocations,
                 ref_count: 1,
             },
@@ -143,7 +191,7 @@ impl ItemAssetStore {
         }
         for index in &to_evict {
             if let Some(sheet) = self.loaded_sheets.remove(index) {
-                for allocation in sheet.allocations.iter().flatten() {
+                for allocation in &sheet.allocations {
                     self.atlas.atlas.deallocate(allocation.id);
                 }
             }
@@ -187,68 +235,16 @@ impl ItemBatch {
     ) -> Option<ItemInstanceHandle> {
         let sheet_index = ((item.sprite - 1) as u32 / ITEMS_PER_EPF_FILE) + 1;
         let frame_index = ((item.sprite - 1) as u32 % ITEMS_PER_EPF_FILE) as usize;
-        if store.ensure_sheet(archive, sheet_index).is_err() {
+        if store.ensure_sheet(queue, archive, sheet_index).is_err() {
             return None;
         }
 
         // Bounds-check the frame index before touching `allocations`.
-        let frame_count = store
-            .loaded_sheets
-            .get(&sheet_index)
-            .map(|sheet| sheet.epf.frames.len());
-        let Some(frame_count) = frame_count else {
-            return None;
-        };
-        if frame_index >= frame_count {
-            return None;
-        }
-
-        // Stage the frame's upload if this item's frame hasn't been uploaded
-        // yet. The sheet borrow ends before eviction (which needs the whole
-        // store) can run, and pixel data is only taken once the upload is
-        // guaranteed to happen so a failed allocation can be retried later.
-        if store
-            .loaded_sheets
-            .get(&sheet_index)
-            .is_some_and(|sheet| sheet.allocations[frame_index].is_none())
-        {
-            let w;
-            let h;
-            {
-                let sheet = store.loaded_sheets.get(&sheet_index)?;
-                let frame = &sheet.epf.frames[frame_index];
-                w = (frame.right - frame.left) as usize;
-                h = (frame.bottom - frame.top) as usize;
-            }
-
-            let mut allocation = store.atlas.allocate_slot(w, h);
-            if allocation.is_none() {
-                store.evict_unused_sheets(queue);
-                allocation = store.atlas.allocate_slot(w, h);
-            }
-            let Some(allocation) = allocation else {
-                error!("Item atlas full - cannot allocate sprite {}", item.sprite);
-                return None; // frame data stays intact; a later add can retry
-            };
-
-            let sheet = store.loaded_sheets.get_mut(&sheet_index)?;
-            let data = std::mem::take(&mut sheet.epf.frames[frame_index].data);
-            sheet.allocations[frame_index] = Some(allocation);
-            store.pending_uploads.push(FrameUpload {
-                rect: allocation.rectangle,
-                width: w,
-                height: h,
-                frames: vec![FrameRow {
-                    x: 0,
-                    y: 0,
-                    width: w,
-                    height: h,
-                    data,
-                }],
-            });
-        }
-
         let sheet = store.loaded_sheets.get_mut(&sheet_index)?;
+        if frame_index >= sheet.meta.frames.len() {
+            return None;
+        }
+
         let instance = get_instance_for_frame(&store.palette_table, sheet, &item, frame_index)?;
 
         let idx = self.batch.add_instance(queue, instance)?;
@@ -308,17 +304,17 @@ fn get_instance_for_frame(
     item: &Item,
     frame_index: usize,
 ) -> Option<Instance> {
-    let allocation = sheet.allocations.get(frame_index)?.as_ref()?;
-    let frame = &sheet.epf.frames[frame_index];
-    let frame_w = (frame.right - frame.left) as f32;
-    let frame_h = (frame.bottom - frame.top) as f32;
+    let frame = sheet.meta.frames.get(frame_index)?.as_ref()?;
+    let allocation = sheet.allocations.get(frame.chunk as usize)?;
+    let frame_w = frame.width as f32;
+    let frame_h = frame.height as f32;
 
     let atlas_w = ITEM_ATLAS_WIDTH as f32;
     let atlas_h = ITEM_ATLAS_HEIGHT as f32;
     let world_pos = get_isometric_coordinate(item.x as f32, item.y as f32);
 
-    let epf_w = sheet.epf.width as f32;
-    let epf_h = sheet.epf.height as f32;
+    let epf_w = sheet.meta.width as f32;
+    let epf_h = sheet.meta.height as f32;
 
     let offset_x = -(epf_w / 2.0).floor() + frame.left as f32;
     let offset_y = -(epf_h / 2.0).floor() + frame.top as f32 - 2.0;
@@ -333,8 +329,8 @@ fn get_instance_for_frame(
 
     let (tex_min, tex_max) = atlas_uv(
         Vec2::new(
-            allocation.rectangle.min.x as f32,
-            allocation.rectangle.min.y as f32,
+            (allocation.rectangle.min.x + frame.x as i32) as f32,
+            (allocation.rectangle.min.y + frame.y as i32) as f32,
         ),
         frame_w,
         frame_h,

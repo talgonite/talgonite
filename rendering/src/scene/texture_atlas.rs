@@ -70,32 +70,6 @@ fn mergeable_pair_count(uploads: &[FrameUpload]) -> (usize, usize, usize) {
     (side_by_side, stacked, pitches.len())
 }
 
-/// Shelf-packs `(frame_index, width, height)` entries into rows of at most
-/// `target_width`, returning the placed positions plus the slot dimensions.
-/// Keeps slots short and wide so atlas packers can place them efficiently.
-pub fn shelf_layout(
-    frames: &[(usize, usize, usize)],
-    target_width: usize,
-) -> (Vec<(usize, usize, usize)>, usize, usize) {
-    let mut placed = Vec::with_capacity(frames.len());
-    let mut slot_width = 0usize;
-    let mut shelf_y = 0usize;
-    let mut shelf_h = 0usize;
-    let mut row_x = 0usize;
-    for &(frame_index, w, h) in frames {
-        if row_x > 0 && row_x + w > target_width {
-            shelf_y += shelf_h;
-            row_x = 0;
-            shelf_h = 0;
-        }
-        placed.push((frame_index, row_x, shelf_y));
-        row_x += w;
-        slot_width = slot_width.max(row_x);
-        shelf_h = shelf_h.max(h);
-    }
-    (placed, slot_width, shelf_y + shelf_h)
-}
-
 /// Collapses uploads whose atlas regions exactly tile a rectangle into a
 /// single upload: same row pitch and same vertical span with touching x edges,
 /// or same horizontal span with touching y edges. Frames are repositioned
@@ -146,12 +120,10 @@ pub fn merge_uploads(mut uploads: Vec<FrameUpload>) -> Vec<FrameUpload> {
                     continue;
                 }
                 let r = uploads[j].rect;
-                let same_row = r.min.y == min_y
-                    && r.max.y == max_y
-                    && (r.max.x == min_x || r.min.x == max_x);
-                let same_col = r.min.x == min_x
-                    && r.max.x == max_x
-                    && (r.max.y == min_y || r.min.y == max_y);
+                let same_row =
+                    r.min.y == min_y && r.max.y == max_y && (r.max.x == min_x || r.min.x == max_x);
+                let same_col =
+                    r.min.x == min_x && r.max.x == max_x && (r.max.y == min_y || r.min.y == max_y);
                 if same_row || same_col {
                     used[j] = true;
                     group.push(j);
@@ -255,7 +227,8 @@ impl TextureAtlas {
                     let base = frame.y as usize * aligned_row + frame.x as usize * bpp;
                     for (row, chunk) in frame.data.chunks_exact(frame_row_bytes).enumerate() {
                         let start = base + row * aligned_row;
-                        view.slice(start..start + frame_row_bytes).copy_from_slice(chunk);
+                        view.slice(start..start + frame_row_bytes)
+                            .copy_from_slice(chunk);
                     }
                 }
             }

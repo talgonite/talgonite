@@ -54,10 +54,10 @@ durations as a flame chart. What gets recorded:
   (`MapRenderer::prepare_map`; `bind_map` splits into `bind_map.tile_atlas`,
   `tile_palette`, `floor_palettes`, `tile_batch`, `wall_atlas`, `wall_palette`,
   `wall_palettes`, `wall_batches`, `assemble`), player sprite preload/decode
-  (`preload_player_sprites` with `player_sprites.decode_batch` /
-  `player_sprites.finalize_batch`, per-sprite `decode_player_sprite` /
-  `stage_player_sprite`, batched GPU uploads as `texture_atlas.upload_batch`
-  with per-slot `texture_atlas.allocate_slot`),
+  (`preload_player_sprites` with `player_sprites.finalize_batch`, per-sprite
+  `stage_player_sheet`, batched GPU uploads as `texture_atlas.upload_batch`
+  with per-slot `texture_atlas.allocate_slot`; sheets are pre-packed by the
+  installer - see `installer::sheet_processor`),
   collision parse (`MapCollisionData::from_map_bytes`),
   asset-store init (`PlayerAssetStore`/`CreatureAssetStore`/`ItemAssetStore`/
   `EffectManager::new`), and entity construction (`handle_map_set_info`,

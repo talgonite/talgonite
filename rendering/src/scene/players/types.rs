@@ -1,5 +1,6 @@
 use etagere::Allocation;
-use formats::epf::{AnimationDirection, EpfAnimation, EpfAnimationType};
+use formats::epf::{AnimationDirection, EpfAnimationType};
+use formats::sheets::SheetFrame;
 use glam::Vec2;
 use rustc_hash::FxHashMap;
 
@@ -173,13 +174,12 @@ impl PlayerSpriteKey {
 }
 
 pub(crate) struct LoadedSprite {
-    pub epf_image: Vec<EpfAnimation>,
+    /// Frame geometry and placement inside a sheet chunk, in file order.
+    /// `None` for empty frames, which are never rendered.
+    pub frames: Vec<Option<SheetFrame>>,
     /// Atlas slots for this part. Usually one; more only if the part's stacked
     /// frames were chunked to fit the atlas height.
     pub allocations: Vec<Allocation>,
-    /// Per frame: which slot it lives in and its (x, y) offset (in pixels)
-    /// inside that slot. `None` for empty frames, which are never rendered.
-    pub frame_rows: Vec<Option<(usize, u32, u32)>>,
     pub animations: FxHashMap<(EpfAnimationType, AnimationDirection), AnimationData>,
     pub ref_count: usize,
 }
@@ -187,7 +187,6 @@ pub(crate) struct LoadedSprite {
 pub struct AnimationData {
     pub frame_count: usize,
     pub start_frame_index: usize,
-    pub epf_index: usize,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]

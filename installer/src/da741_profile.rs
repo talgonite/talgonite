@@ -6,9 +6,13 @@ use crate::animation_processor::AnimationProcessor;
 use crate::asset_record::AssetRecord;
 use crate::da741::{PayloadEntry, PayloadKind};
 use crate::dat::{DatEntryMetadata, read_dat_entries};
-use crate::deferred_job::{AnimationAssetJobBuilder, DeferredAssetJob, PaletteAssetJobBuilder};
+use crate::deferred_job::{
+    AnimationAssetJobBuilder, DeferredAssetJob, EffectAssetJob, EffectAssetJobBuilder,
+    PaletteAssetJobBuilder,
+};
 use crate::palette_processor::PaletteProcessor;
 use crate::raw_asset_processor::{RawAssetProcessor, RawDatEntry};
+use crate::sheet_processor;
 use crate::sink::AssetSink;
 use crate::structured_format_processor::{StructuredDatEntry, StructuredFormatProcessor};
 use crate::texture_processor::TextureAssetProcessor;
@@ -96,6 +100,7 @@ impl Da741Profile {
         info!("Extracting dat: {}", dat_name);
         let mut palette_job = PaletteAssetJobBuilder::new(&dat_name, dat_path);
         let mut animation_job = AnimationAssetJobBuilder::new(&dat_name);
+        let mut effect_job = EffectAssetJobBuilder::new();
 
         read_dat_entries(decoder, &mut |file, entry_reader| {
             let DatEntryMetadata {
@@ -113,6 +118,7 @@ impl Da741Profile {
                     entry_reader,
                     &mut palette_job,
                     &mut animation_job,
+                    &mut effect_job,
                 ),
                 DatEntryRoute::Rewrite {
                     dat_name: effective_dat_name,
@@ -130,6 +136,7 @@ impl Da741Profile {
                         entry_reader,
                         &mut palette_job,
                         &mut animation_job,
+                        &mut effect_job,
                     )
                 }
                 DatEntryRoute::Skip => {
@@ -139,9 +146,13 @@ impl Da741Profile {
             }
         })?;
 
-        for deferred_job in [palette_job.finish(), animation_job.finish()]
-            .into_iter()
-            .flatten()
+        for deferred_job in [
+            palette_job.finish(),
+            animation_job.finish(),
+            effect_job.finish(),
+        ]
+        .into_iter()
+        .flatten()
         {
             let records = self.execute_deferred_job(deferred_job)?;
             self.emit_records(sink, records)?;
@@ -160,6 +171,7 @@ impl Da741Profile {
         entry_reader: &mut dyn Read,
         palette_job: &mut PaletteAssetJobBuilder,
         animation_job: &mut AnimationAssetJobBuilder,
+        effect_job: &mut EffectAssetJobBuilder,
     ) -> anyhow::Result<()> {
         if let Some(records) =
             self.texture_processor
@@ -176,6 +188,7 @@ impl Da741Profile {
             entry_reader,
             self.animation_processor
                 .should_group_epf(dat_name, &file_name),
+            effect_job,
         )? {
             StructuredDatEntry::Unhandled => {}
             StructuredDatEntry::Assets(records) => {
@@ -224,7 +237,36 @@ impl Da741Profile {
         match deferred_job {
             DeferredAssetJob::Palette(job) => self.palette_processor.process(job),
             DeferredAssetJob::Animation(job) => self.animation_processor.emit_grouped_epfs(job),
+            DeferredAssetJob::Effect(job) => self.process_effect_job(job),
         }
+    }
+
+    fn process_effect_job(&self, job: EffectAssetJob) -> anyhow::Result<Vec<AssetRecord>> {
+        let mut records = Vec::new();
+        let mut ids: Vec<u16> = job.effects.keys().copied().collect();
+        ids.sort_unstable();
+        for effect_id in ids {
+            let Some((meta, images)) =
+                sheet_processor::build_effect_sheets(&job.effects[&effect_id])
+            else {
+                continue;
+            };
+            let format = if meta.indexed {
+                formats::ktx2::VK_FORMAT_R8_UNORM
+            } else {
+                formats::ktx2::VK_FORMAT_R8G8B8A8_UNORM
+            };
+            let sheet_bytes = oxicode::encode_to_vec(&meta)?;
+            records.extend(sheet_processor::sheet_records(
+                Path::new("roh"),
+                &format!("efct{effect_id:03}"),
+                format,
+                sheet_bytes,
+                meta.chunks,
+                images,
+            )?);
+        }
+        Ok(records)
     }
 
     fn emit_records<S: AssetSink>(

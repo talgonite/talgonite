@@ -1,5 +1,4 @@
-use etagere::Allocation;
-use formats::epf::EpfImage;
+use formats::sheets::ItemSheet;
 
 #[derive(Debug, Clone)]
 pub struct Item {
@@ -19,7 +18,8 @@ pub struct ItemInstanceHandle {
 }
 
 pub(crate) struct LoadedItemSheet {
-    pub epf: EpfImage,
-    pub allocations: Vec<Option<Allocation>>,
+    pub meta: ItemSheet,
+    /// Atlas slots, one per sheet chunk.
+    pub allocations: Vec<etagere::Allocation>,
     pub ref_count: usize,
 }

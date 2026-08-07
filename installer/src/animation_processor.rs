@@ -1,9 +1,11 @@
 use formats::epf::EpfImage;
+use formats::util::parallel_indexed;
 use rendering::scene::players::PlayerPieceType;
 use std::collections::{HashMap, HashSet};
 
 use crate::asset_record::AssetRecord;
 use crate::deferred_job::AnimationAssetJob;
+use crate::sheet_processor;
 
 const KHAN_CLEANUP_COPIES: [KhanCleanupEntry; 5] = [
     KhanCleanupEntry::new(PlayerPieceType::Weapon, "130"),
@@ -74,6 +76,15 @@ impl AnimationProcessor {
             }
         }
 
+        // Collect every sprite's animation set first, applying the cleanup
+        // overrides as we go, then pack the sheets in parallel (in bounded
+        // batches) so install time stays low on multi-core machines.
+        struct PlayerSheetJob {
+            prefix: String,
+            num: String,
+            animations: Vec<formats::epf::EpfAnimation>,
+        }
+        let mut sheet_jobs: Vec<PlayerSheetJob> = Vec::new();
         for (prefix, epfs) in epfs_by_prefix {
             let mut epfs_by_num: HashMap<String, Vec<(String, EpfImage)>> = HashMap::new();
 
@@ -100,8 +111,6 @@ impl AnimationProcessor {
                     })
                     .collect::<Vec<_>>();
 
-                let buf = oxicode::encode_to_vec(&epf_animations)?;
-
                 if prefix.starts_with('m') {
                     for cleanup in KHAN_CLEANUP_COPIES.iter() {
                         let piece_prefix = cleanup.piece_type.prefix(0);
@@ -118,15 +127,59 @@ impl AnimationProcessor {
                     }
                 }
 
-                records.push(AssetRecord::bytes(
-                    format!("khan/{}/{}.epfanim", prefix, num),
-                    buf,
-                ));
+                sheet_jobs.push(PlayerSheetJob {
+                    prefix: prefix.clone(),
+                    num,
+                    animations: epf_animations,
+                });
+            }
+        }
+
+        const BATCH_SIZE: usize = 32;
+        let worker_count = std::thread::available_parallelism()
+            .map(usize::from)
+            .unwrap_or(1)
+            .max(1);
+        for batch in sheet_jobs.chunks(BATCH_SIZE) {
+            let batch_records =
+                parallel_indexed(batch.len(), worker_count.min(batch.len()), |index| {
+                    let job = &batch[index];
+                    build_player_sheet_records(&job.prefix, &job.num, &job.animations)
+                });
+            for (_, result) in batch_records {
+                records.extend(result?);
             }
         }
 
         Ok(records)
     }
+}
+
+/// Packs one player part's animations into sheet images and returns the
+/// metadata record plus one KTX2 record per chunk.
+fn build_player_sheet_records(
+    prefix: &str,
+    num: &str,
+    animations: &[formats::epf::EpfAnimation],
+) -> anyhow::Result<Vec<AssetRecord>> {
+    let (sheet, sheet_images) = sheet_processor::build_player_sheets(animations);
+    let sheet_bytes = oxicode::encode_to_vec(&sheet)?;
+    let base = format!("khan/{}/{}", prefix, num);
+    let mut records = vec![AssetRecord::bytes(format!("{base}.sheet.bin"), sheet_bytes)];
+    for (chunk_index, image) in sheet_images.into_iter().enumerate() {
+        let chunk = sheet.chunks[chunk_index];
+        let ktx = formats::ktx2::encode_ktx2(
+            chunk.width,
+            chunk.height,
+            formats::ktx2::VK_FORMAT_R8_UNORM,
+            &image,
+        )?;
+        records.push(AssetRecord::bytes(
+            format!("{base}.sheet{chunk_index}.ktx2"),
+            ktx,
+        ));
+    }
+    Ok(records)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -148,7 +201,13 @@ impl KhanCleanupEntry {
 
 #[cfg(test)]
 mod tests {
-    use super::AnimationProcessor;
+    use super::{AnimationProcessor, build_player_sheet_records};
+    use crate::asset_record::AssetRecord;
+    use crate::deferred_job::AnimationAssetJob;
+    use formats::epf::{AnimationDirection, EpfAnimation, EpfAnimationType, EpfFrame, EpfImage};
+    use std::collections::HashMap;
+    use std::io::Read;
+    use std::path::Path;
 
     #[test]
     fn should_group_epf_respects_khan_and_ignore_rules() {
@@ -159,5 +218,62 @@ mod tests {
         assert!(!processor.should_group_epf("Legend", "mf03423.epf"));
         assert!(!processor.should_group_epf("other", "ma123a.epf"));
         assert!(!processor.should_group_epf("khanm1", "wh103a.epf"));
+    }
+
+    fn test_epf(id: u8) -> EpfImage {
+        EpfImage {
+            width: 32,
+            height: 32,
+            frames: vec![
+                EpfFrame::new(0, 0, 16, 16, vec![id; 16 * 16]),
+                EpfFrame::new(0, 0, 0, 0, vec![]),
+            ],
+        }
+    }
+
+    #[test]
+    fn emit_grouped_epfs_produces_sheet_records() {
+        let mut processor = AnimationProcessor::new();
+        let job = AnimationAssetJob {
+            dat_name: "khanm1".to_string(),
+            epfs_to_concat: vec![
+                ("ma00101.epf".to_string(), test_epf(1)),
+                ("mb00202.epf".to_string(), test_epf(2)),
+            ],
+        };
+
+        let records = processor.emit_grouped_epfs(job).unwrap();
+        let paths: Vec<String> = records
+            .iter()
+            .map(|record| record.path().to_string_lossy().into_owned())
+            .collect();
+
+        assert!(paths.contains(&"khan/ma/001.sheet.bin".to_string()));
+        assert!(paths.contains(&"khan/ma/001.sheet0.ktx2".to_string()));
+        assert!(paths.contains(&"khan/mb/002.sheet.bin".to_string()));
+        assert!(paths.contains(&"khan/mb/002.sheet0.ktx2".to_string()));
+    }
+
+    #[test]
+    fn player_sheet_records_are_readable_assets() {
+        let animations = vec![EpfAnimation {
+            animation_type: EpfAnimationType::Idle,
+            direction: AnimationDirection::Away,
+            image: test_epf(9),
+        }];
+        let records = build_player_sheet_records("mm", "042", &animations).unwrap();
+        assert_eq!(records.len(), 2);
+
+        let mut paths = HashMap::new();
+        for record in records {
+            let path = record.path().to_path_buf();
+            let mut reader = record.into_reader();
+            let mut bytes = Vec::new();
+            Read::read_to_end(&mut reader, &mut bytes).unwrap();
+            paths.insert(path, bytes);
+        }
+        assert!(paths.contains_key(Path::new("khan/mm/042.sheet.bin")));
+        assert!(paths.contains_key(Path::new("khan/mm/042.sheet0.ktx2")));
+        assert!(paths[Path::new("khan/mm/042.sheet0.ktx2")].len() > 100);
     }
 }

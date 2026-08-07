@@ -48,6 +48,11 @@ pub struct EfaFrame {
     pub height: u16,
     pub left: i16,
     pub top: i16,
+    /// Anchor point in the image that lines up with the effect's draw point.
+    /// `center_x` is usually ImageWidth/2; `center_y` usually ImageHeight (the
+    /// bottom of the image sits on the draw point).
+    pub center_x: i16,
+    pub center_y: i16,
     pub data: Vec<u8>,
 }
 
@@ -73,8 +78,8 @@ impl EfaFile {
             reader.read_i32::<LE>()?; //unknown4
             let byte_count = reader.read_i32::<LE>()?;
             reader.read_i32::<LE>()?; //unknown5
-            reader.read_i16::<LE>()?; //centerX
-            reader.read_i16::<LE>()?; //centerY
+            let center_x = reader.read_i16::<LE>()?;
+            let center_y = reader.read_i16::<LE>()?;
             reader.read_i32::<LE>()?; //unknown6
             let width = reader.read_i16::<LE>()?;
             let height = reader.read_i16::<LE>()?;
@@ -97,6 +102,8 @@ impl EfaFile {
                     height: h as u16,
                     left,
                     top,
+                    center_x,
+                    center_y,
                     data: if byte_count > 0 {
                         vec![]
                     } else {

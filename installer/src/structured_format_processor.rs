@@ -8,6 +8,8 @@ use std::io::{Cursor, Read};
 use std::path::Path;
 
 use crate::asset_record::AssetRecord;
+use crate::deferred_job::EffectAssetJobBuilder;
+use crate::sheet_processor::{self, sheet_records};
 
 pub(crate) enum StructuredDatEntry {
     Unhandled,
@@ -26,6 +28,7 @@ impl StructuredFormatProcessor {
         file_size: usize,
         entry_reader: &mut dyn Read,
         group_epf: bool,
+        effect_job: &mut EffectAssetJobBuilder,
     ) -> anyhow::Result<StructuredDatEntry> {
         if file_name.ends_with(".mpf") {
             let mut file_buffer = vec![0u8; file_size];
@@ -34,11 +37,24 @@ impl StructuredFormatProcessor {
             let mut reader = Cursor::new(file_buffer);
             let mpf = MpfFile::read_from_da(&mut reader).expect("Failed to read MPF file");
             let mpf_bytes = oxicode::encode_to_vec(&mpf)?;
+            let base = file_name.trim_end_matches(".mpf");
+            let (sheet, sheet_images) = sheet_processor::build_creature_sheets(&mpf);
+            let sheet_bytes = oxicode::encode_to_vec(&sheet)?;
 
-            return Ok(StructuredDatEntry::Assets(vec![AssetRecord::bytes(
-                dat_path.join(file_name.replace(".mpf", ".mpf.bin")),
+            let mut records = vec![AssetRecord::bytes(
+                dat_path.join(format!("{base}.mpf.bin")),
                 mpf_bytes,
-            )]));
+            )];
+            records.extend(sheet_records(
+                dat_path,
+                base,
+                formats::ktx2::VK_FORMAT_R8_UNORM,
+                sheet_bytes,
+                sheet.chunks,
+                sheet_images,
+            )?);
+
+            return Ok(StructuredDatEntry::Assets(records));
         }
 
         if file_name.ends_with(".efa") {
@@ -46,13 +62,24 @@ impl StructuredFormatProcessor {
             entry_reader.read_exact(&mut file_buffer)?;
 
             let mut reader = Cursor::new(file_buffer);
+            let is_effect = dat_path
+                .file_name()
+                .map(|name| name.eq_ignore_ascii_case("roh"))
+                .unwrap_or(false)
+                && file_name.starts_with("efct");
             return match EfaFile::read_from_da(&mut reader) {
                 Ok(efa) => {
-                    let efa_bytes = oxicode::encode_to_vec(&efa)?;
-                    Ok(StructuredDatEntry::Assets(vec![AssetRecord::bytes(
-                        dat_path.join(file_name.replace(".efa", ".efa.bin")),
-                        efa_bytes,
-                    )]))
+                    if is_effect {
+                        let effect_id = file_name[4..7].parse::<u16>().unwrap_or(0);
+                        effect_job.push_efa(effect_id, efa);
+                        Ok(StructuredDatEntry::Assets(Vec::new()))
+                    } else {
+                        let efa_bytes = oxicode::encode_to_vec(&efa)?;
+                        Ok(StructuredDatEntry::Assets(vec![AssetRecord::bytes(
+                            dat_path.join(file_name.replace(".efa", ".efa.bin")),
+                            efa_bytes,
+                        )]))
+                    }
                 }
                 Err(error) => {
                     tracing::warn!("Failed to read EFA file {}: {:?}", file_name, error);
@@ -71,6 +98,42 @@ impl StructuredFormatProcessor {
                     file_name: file_name.to_string(),
                     epf,
                 });
+            }
+
+            let is_item_sheet = dat_path
+                .file_name()
+                .map(|name| name.eq_ignore_ascii_case("Legend"))
+                .unwrap_or(false)
+                && file_name.starts_with("item");
+            let is_effect = dat_path
+                .file_name()
+                .map(|name| name.eq_ignore_ascii_case("roh"))
+                .unwrap_or(false)
+                && file_name.starts_with("efct");
+
+            if is_effect {
+                let effect_id = file_name[4..7].parse::<u16>().unwrap_or(0);
+                effect_job.push_epf(effect_id, epf);
+                return Ok(StructuredDatEntry::Assets(Vec::new()));
+            }
+
+            if is_item_sheet {
+                let base = file_name.trim_end_matches(".epf");
+                let (sheet, sheet_images) = sheet_processor::build_item_sheets(&epf);
+                let sheet_bytes = oxicode::encode_to_vec(&sheet)?;
+                let mut records = vec![AssetRecord::bytes(
+                    dat_path.join(format!("{base}.epf.bin")),
+                    oxicode::encode_to_vec(&epf)?,
+                )];
+                records.extend(sheet_records(
+                    dat_path,
+                    base,
+                    formats::ktx2::VK_FORMAT_R8_UNORM,
+                    sheet_bytes,
+                    sheet.chunks,
+                    sheet_images,
+                )?);
+                return Ok(StructuredDatEntry::Assets(records));
             }
 
             let epf_bytes = oxicode::encode_to_vec(&epf)?;
@@ -150,10 +213,18 @@ mod tests {
     #[test]
     fn process_entry_ignores_unstructured_files() {
         let processor = StructuredFormatProcessor;
+        let mut effect_job = crate::deferred_job::EffectAssetJobBuilder::new();
         let mut reader = Cursor::new(Vec::<u8>::new());
 
         let result = processor
-            .process_entry(Path::new("Legend"), "foo.txt", 0, &mut reader, false)
+            .process_entry(
+                Path::new("Legend"),
+                "foo.txt",
+                0,
+                &mut reader,
+                false,
+                &mut effect_job,
+            )
             .unwrap();
 
         assert!(matches!(result, StructuredDatEntry::Unhandled));
