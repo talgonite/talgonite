@@ -228,12 +228,12 @@ pub enum MinimapMarkerKind {
 }
 
 impl MinimapMarkerKind {
-    pub fn tint(self) -> glam::Vec3 {
+    pub fn tint(self) -> Vec3 {
         match self {
-            MinimapMarkerKind::CurrentPlayer => glam::Vec3::new(0.973, 0.894, 0.220), // #f8e438
-            MinimapMarkerKind::OtherPlayer => glam::Vec3::new(0.471, 0.643, 0.941),   // #78a4f0
-            MinimapMarkerKind::NamedCreature => glam::Vec3::new(0.0, 0.988, 0.0),     // #00fc00
-            MinimapMarkerKind::UnnamedCreature => glam::Vec3::new(0.784, 0.0, 0.063), // #c80010
+            MinimapMarkerKind::CurrentPlayer => Vec3::new(0.973, 0.894, 0.220), // #f8e438
+            MinimapMarkerKind::OtherPlayer => Vec3::new(0.471, 0.643, 0.941),   // #78a4f0
+            MinimapMarkerKind::NamedCreature => Vec3::new(0.0, 0.988, 0.0),     // #00fc00
+            MinimapMarkerKind::UnnamedCreature => Vec3::new(0.784, 0.0, 0.063), // #c80010
         }
     }
 }
@@ -508,14 +508,14 @@ impl Default for TargetingHover {
 /// Rendered via immediate mode (cleared every frame), so no cleanup hook is required.
 pub struct HoverName {
     pub name: String,
-    pub color: glam::Vec4,
+    pub color: Vec4,
 }
 
 impl HoverName {
     pub fn new(name: String) -> Self {
         Self {
             name,
-            color: glam::Vec4::new(1.0, 1.0, 1.0, 1.0),
+            color: Vec4::new(1.0, 1.0, 1.0, 1.0),
         }
     }
 }
@@ -525,7 +525,7 @@ impl HoverName {
 pub struct WorldLabel {
     pub text: String,
     pub y_offset: f32,
-    pub color: glam::Vec4,
+    pub color: Vec4,
     pub is_speech: bool,
 }
 
@@ -533,11 +533,11 @@ pub struct WorldLabel {
 #[derive(Component, Clone)]
 pub struct HoverLabel {
     pub text: String,
-    pub color: glam::Vec4,
+    pub color: Vec4,
 }
 
 impl HoverLabel {
-    pub fn new(text: impl Into<String>, color: glam::Vec4) -> Self {
+    pub fn new(text: impl Into<String>, color: Vec4) -> Self {
         Self {
             text: text.into(),
             color,
@@ -579,9 +579,9 @@ impl SpeechBubble {
             text: self.text.clone(),
             y_offset: -45.0,
             color: if self.is_shout {
-                glam::Vec4::new(1.0, 1.0, 0.0, 1.0) // Yellow for shouts
+                Vec4::new(1.0, 1.0, 0.0, 1.0) // Yellow for shouts
             } else {
-                glam::Vec4::new(1.0, 1.0, 1.0, 1.0) // White for normal
+                Vec4::new(1.0, 1.0, 1.0, 1.0) // White for normal
             },
             is_speech: true,
         }
@@ -610,7 +610,7 @@ impl ChantLabel {
         WorldLabel {
             text: self.text.clone(),
             y_offset: -50.0,
-            color: glam::Vec4::new(0.5, 0.7, 1.0, 1.0),
+            color: Vec4::new(0.5, 0.7, 1.0, 1.0),
             is_speech: false,
         }
     }

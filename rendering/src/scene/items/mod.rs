@@ -2,7 +2,7 @@ pub mod types;
 pub use types::*;
 
 use formats::sheets::ItemSheet;
-use glam::Vec2;
+use bevy_math::Vec2;
 use std::collections::HashMap;
 use tracing::error;
 

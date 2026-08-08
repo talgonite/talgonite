@@ -1,7 +1,7 @@
 use etagere::Allocation;
 use formats::epf::{AnimationDirection, EpfAnimationType};
 use formats::sheets::SheetFrame;
-use glam::Vec2;
+use bevy_math::Vec2;
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

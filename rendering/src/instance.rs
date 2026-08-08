@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::vertex::Vertex;
-use glam::{Vec2, Vec3};
+use bevy_math::{Vec2, Vec3};
 use num_enum::IntoPrimitive;
 use wgpu;
 use wgpu::util::DeviceExt;

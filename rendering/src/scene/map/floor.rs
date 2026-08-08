@@ -1,4 +1,4 @@
-use glam::Vec2;
+use bevy_math::Vec2;
 
 use crate::scene::{TILE_HEIGHT_HALF, TILE_WIDTH_HALF, get_isometric_coordinate};
 

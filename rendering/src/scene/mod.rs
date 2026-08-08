@@ -1,6 +1,6 @@
 use crate::texture;
 use crate::{Camera, CameraUniform, Instance, InstanceRaw, Vertex};
-use glam::UVec2;
+use bevy_math::UVec2;
 use wgpu::util::DeviceExt;
 use wgpu::{self};
 
@@ -99,7 +99,7 @@ impl CameraState {
 
     // Directly set a screen-space offset (bypasses isometric conversion) and update the GPU buffer.
     pub fn set_screen_offset(&mut self, queue: &wgpu::Queue, x: f32, y: f32) {
-        self.camera.position = glam::Vec2::new(x, y);
+        self.camera.position = bevy_math::Vec2::new(x, y);
         self.update(queue);
     }
 
@@ -112,7 +112,7 @@ impl CameraState {
         self.camera.zoom
     }
 
-    pub fn position(&self) -> glam::Vec2 {
+    pub fn position(&self) -> bevy_math::Vec2 {
         self.camera.position
     }
 
@@ -452,7 +452,7 @@ impl Scene {
 #[cfg(test)]
 mod tests {
     use crate::scene::map::{floor::FloorTile, wall::WallSide};
-    use glam::Vec2;
+    use bevy_math::Vec2;
 
     #[test]
     fn test_simple_map() {

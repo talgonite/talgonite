@@ -1,7 +1,6 @@
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use formats::game_files::SquashfsArchive;
-use glam::UVec2;
 use packets::server;
 use std::collections::HashMap;
 use std::path::PathBuf;

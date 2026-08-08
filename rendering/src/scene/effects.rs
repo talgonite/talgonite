@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use formats::game_files::SquashfsArchive;
 use formats::sheets::EffectSheet;
-use glam::Vec2;
+use bevy_math::Vec2;
 use tracing::error;
 
 use crate::instance::InstanceFlag;
@@ -568,7 +568,7 @@ impl EffectManager {
             palette_offset: 0.0,
             dye_v_offset: -1.0,
             flags: InstanceFlag::None,
-            tint: glam::Vec3::ZERO,
+            tint: bevy_math::Vec3::ZERO,
         })
     }
 

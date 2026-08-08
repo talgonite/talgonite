@@ -11,7 +11,7 @@ formats.workspace = true
 png = "0.18"
 proc-macro2 = "1"
 quote = "1"
-syn = { version = "2", features = ["parsing"] }
+syn = { version = "3", features = ["parsing"] }
 
 [dev-dependencies]
 ktx2.workspace = true

@@ -1,4 +1,4 @@
-use glam::{Mat4, Vec2, Vec3};
+use bevy_math::{Mat4, Vec2, Vec3};
 
 pub const DEFAULT_FOG_DESATURATION: f32 = 0.7;
 

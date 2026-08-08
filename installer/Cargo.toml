@@ -18,9 +18,9 @@ flate2.workspace = true
 formats.workspace = true
 memchr = "2.7"
 rangemap.workspace = true
-reqwest = { version = "0.12", features = [
+reqwest = { version = "0.13", features = [
     "blocking",
-    "rustls-tls",
+    "rustls",
 ], default-features = false }
 vk2dfd = "0.1.0"
 backhand.workspace = true

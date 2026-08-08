@@ -3,7 +3,7 @@ pub use types::*;
 
 use formats::mpf::{MpfAnimation, MpfAnimationType};
 use formats::sheets::CreatureSheet;
-use glam::{Vec2, Vec3};
+use bevy_math::{Vec2, Vec3};
 use rustc_hash::FxHashMap;
 use wgpu;
 

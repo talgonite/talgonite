@@ -10,7 +10,6 @@ use crate::resources::{
 use crate::{Camera, RendererState, game_files::GameFiles, settings_types::Settings};
 use bevy::prelude::*;
 use formats::epf::EpfAnimationType;
-use glam::{Vec2, Vec3};
 use rendering::{
     instance::InstanceFlag,
     scene::{
@@ -214,7 +213,7 @@ fn populate_player_batch_with_sprites(
             -0.7,
             0,
             rendering::instance::InstanceFlag::None,
-            glam::Vec3::ZERO,
+            Vec3::ZERO,
         );
     }
 }
@@ -1210,7 +1209,7 @@ mod tests {
     use crate::ecs::animation::{Animation, AnimationMode, AnimationTimer, AnimationType};
     use bevy::prelude::{Timer, TimerMode};
     use formats::epf::EpfAnimationType;
-    use glam::Vec2;
+    use bevy::math::Vec2;
     use rendering::scene::players::PlayerPieceType;
 
     fn minimap_lattice_from_blocked_grid(width: usize, blocked: &[u8]) -> Vec<u8> {

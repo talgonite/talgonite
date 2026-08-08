@@ -5,10 +5,10 @@ edition.workspace = true
 
 [dependencies]
 formats.workspace = true
-glam.workspace = true
+bevy_math.workspace = true
 bytemuck.workspace = true
 anyhow.workspace = true
-etagere = "0.2"
+etagere = "0.3"
 rangemap.workspace = true
 oxicode.workspace = true
 byteorder.workspace = true

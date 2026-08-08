@@ -1,5 +1,5 @@
 use crate::scene::{TILE_WIDTH_HALF, get_isometric_coordinate};
-use glam::Vec2;
+use bevy_math::Vec2;
 
 #[derive(Clone, Copy)]
 pub enum WallSide {

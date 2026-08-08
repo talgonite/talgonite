@@ -7,7 +7,7 @@ pub use types::*;
 use etagere::Allocation;
 use formats::epf::{AnimationDirection, EpfAnimationType};
 use formats::sheets::PlayerSheet;
-use glam::{Vec2, Vec3};
+use bevy_math::{Vec2, Vec3};
 use rustc_hash::{FxHashMap, FxHashSet};
 use tracing::error;
 use wgpu;

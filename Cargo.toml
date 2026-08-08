@@ -67,7 +67,6 @@ game-ui.workspace = true
 
 bytemuck.workspace = true
 ktx2.workspace = true
-glam.workspace = true
 anyhow.workspace = true
 byteorder.workspace = true
 wgpu.workspace = true
@@ -83,8 +82,8 @@ kira = { version = "0.12", default-features = false, features = [
 crossbeam-channel.workspace = true
 paste = "1"
 pathfinding = "4.11"
-bevy_tasks = "0.19.0-rc.2"
-bevy_input_focus = "0.19.0-rc.2"
+bevy_tasks = "0.19.0"
+bevy_input_focus = "0.19.0"
 futures-lite.workspace = true
 serde.workspace = true
 serde_json = "1.0"
@@ -143,10 +142,11 @@ tracing-chrome = "0.7"
 # Shared third-party dependencies
 anyhow = "1"
 async-std = "1.13"
-bevy = { version = "0.19.0-rc.2", default-features = false, features = [
+bevy = { version = "0.19.0", default-features = false, features = [
     "bevy_state",
     "trace",
 ] }
+bevy_math = "0.19.0"
 bytemuck = { version = "1.24", features = ["derive"] }
 byteorder = "1.5"
 crossbeam-channel = "0.5"
@@ -154,8 +154,7 @@ encoding = "0.2"
 flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 futures-lite = "2.6"
 gilrs = "0.11"
-glam = "0.32"
-i-slint-core = "=1.17.0"
+i-slint-core = "=1.17.1"
 ktx2 = "0.5"
 backhand = { version = "0.25", default-features = false, features = ["zstd", "parallel"] }
 md5 = "0.8"
@@ -164,7 +163,7 @@ oxicode = { version = "0.2", features = ["simd", "serde", "derive"] }
 rand = { version = "0.10", features = ["log", "std"] }
 rangemap = { version = "1.7", features = ["serde1"] }
 serde = { version = "1.0", features = ["derive"] }
-slint = { version = "1.17.0", default-features = false, features = [
+slint = { version = "1.17.1", default-features = false, features = [
     "backend-default",
     "compat-1-2",
     "unstable-wgpu-29",

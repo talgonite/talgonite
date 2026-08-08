@@ -61,7 +61,7 @@ impl AnimationInstanceData {
     }
 
     pub fn set_frame(&mut self, target_frame: usize) -> Instance {
-        let mut total_offset = glam::Vec3::ZERO;
+        let mut total_offset = bevy_math::Vec3::ZERO;
         let target_frame = target_frame % self.frames.len();
         while self.frame != target_frame {
             self.frame = (self.frame + 1) % self.frames.len();
@@ -136,7 +136,7 @@ fn convert_instance_positions_to_offset(frames: &[Instance]) -> Vec<Instance> {
                 palette_offset: frame.palette_offset,
                 dye_v_offset: -1.,
                 flags: InstanceFlag::None,
-                tint: glam::Vec3::ZERO,
+                tint: bevy_math::Vec3::ZERO,
             }
         })
         .collect()

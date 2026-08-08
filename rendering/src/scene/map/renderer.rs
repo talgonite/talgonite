@@ -5,7 +5,7 @@ use crate::{
     scene::{map::door_data::DOOR_DATA, utils::calculate_tile_z},
 };
 use etagere::Allocation;
-use glam::Vec2;
+use bevy_math::Vec2;
 use std::collections::{HashMap, HashSet};
 use wgpu;
 
@@ -178,9 +178,9 @@ impl MapRenderer {
 
     /// Compute 2D bounds (min, max) of all tile & wall instances in screen space.
     /// Returns None if there are no instances.
-    pub fn bounds(&self) -> Option<(glam::Vec2, glam::Vec2)> {
-        let mut min: Option<glam::Vec2> = None;
-        let mut max: Option<glam::Vec2> = None;
+    pub fn bounds(&self) -> Option<(bevy_math::Vec2, bevy_math::Vec2)> {
+        let mut min: Option<bevy_math::Vec2> = None;
+        let mut max: Option<bevy_math::Vec2> = None;
         for (batch_index, batch) in self.instance_batches.iter().enumerate() {
             // First batch is floor tiles (quads of TILE_WIDTH x TILE_HEIGHT). Others are walls whose
             // quad size differs. We expand bounds by their quad vertex size where possible.
@@ -197,7 +197,7 @@ impl MapRenderer {
             for inst in &batch.instances {
                 let p = inst.position.truncate();
                 let tl = p; // instance positions are already top-left for floors, adjusted for walls.
-                let br = p + glam::Vec2::new(quad_w, quad_h);
+                let br = p + bevy_math::Vec2::new(quad_w, quad_h);
                 min = Some(match min {
                     Some(m) => m.min(tl),
                     None => tl,
@@ -378,7 +378,7 @@ impl MapRenderer {
                 palette_offset: (*palette_offset as f32) / 256.0,
                 dye_v_offset: -1.,
                 flags: InstanceFlag::None,
-                tint: glam::Vec3::ZERO,
+                tint: bevy_math::Vec3::ZERO,
             }
         };
 
@@ -650,7 +650,7 @@ impl MapRenderer {
                 } else {
                     InstanceFlag::None
                 },
-                tint: glam::Vec3::ZERO,
+                tint: bevy_math::Vec3::ZERO,
             }
         };
 

@@ -9,7 +9,6 @@ use crate::{
 };
 use bevy::prelude::*;
 use formats::mpf::MpfAnimationType;
-use glam::Vec2;
 use packets::server::display_player::DisplayArgs;
 use rendering::scene::players::PlayerPieceType;
 use wgpu::naga::FastHashSet;
@@ -236,7 +235,7 @@ fn spawn_display_entities(
                     Hitbox::screen_space(Vec2::new(-0.45, -1.25), Vec2::new(0.45, 0.65)),
                     HoverName {
                         name: name.clone().unwrap_or_default(),
-                        color: glam::Vec4::new(0.7, 0.7, 1.0, 1.0),
+                        color: Vec4::new(0.7, 0.7, 1.0, 1.0),
                     },
                 ));
             }

@@ -1,6 +1,6 @@
 use super::constants::{TILE_HEIGHT_HALF, TILE_WIDTH_HALF};
 use formats::epf::AnimationDirection;
-use glam::Vec2;
+use bevy_math::Vec2;
 
 pub fn get_isometric_coordinate(x: f32, y: f32) -> Vec2 {
     let iso_x = (x * (TILE_WIDTH_HALF as f32)) - (y * TILE_WIDTH_HALF as f32);

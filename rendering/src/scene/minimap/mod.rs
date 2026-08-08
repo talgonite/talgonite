@@ -1,4 +1,4 @@
-use glam::{UVec2, Vec2, Vec3};
+use bevy_math::{UVec2, Vec2, Vec3};
 use wgpu::util::DeviceExt;
 
 use crate::{
@@ -395,7 +395,7 @@ pub fn minimap_tile_atlas_index(dual_mask: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use glam::Vec2;
+    use bevy_math::Vec2;
 
     use super::{
         DUAL_MASK_BOTTOM_LEFT, DUAL_MASK_BOTTOM_RIGHT, DUAL_MASK_TOP_LEFT, DUAL_MASK_TOP_RIGHT,
@@ -405,7 +405,7 @@ mod tests {
 
     #[test]
     fn atlas_slice_regions_include_all_sixteen_cells() {
-        let slices = atlas_slice_regions(glam::UVec2::new(128, 128));
+        let slices = atlas_slice_regions(bevy_math::UVec2::new(128, 128));
 
         assert_eq!(slices.len(), 16);
         assert!(slices[0].is_some());
@@ -432,7 +432,7 @@ mod tests {
 
     #[test]
     fn atlas_slice_regions_use_row_major_cells() {
-        let slice = atlas_slice_regions(glam::UVec2::new(128, 128))[6].unwrap();
+        let slice = atlas_slice_regions(bevy_math::UVec2::new(128, 128))[6].unwrap();
 
         assert_eq!(slice.tex_min, Vec2::new(0.5, 0.25));
         assert_eq!(slice.tex_max, Vec2::new(0.75, 0.5));

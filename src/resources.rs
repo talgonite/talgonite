@@ -158,7 +158,7 @@ impl MinimapRendererState {
             config.layout,
         )?;
         let mut camera = CameraState::new(
-            glam::UVec2::new(width, height),
+            UVec2::new(width, height),
             &renderer_state.device,
             config.zoom,
         );
@@ -282,7 +282,7 @@ impl PortraitRenderTarget {
             &depth_label,
         );
         let mut camera =
-            rendering::scene::CameraState::new(glam::UVec2::new(size, size), &renderer.device, 1.0);
+            rendering::scene::CameraState::new(UVec2::new(size, size), &renderer.device, 1.0);
         camera.set_screen_offset(&renderer.queue, 0.0, camera_offset_y);
 
         Self {
@@ -323,7 +323,7 @@ impl LobbyPortraitRenderer {
             "lobby_portrait_depth",
         );
         let mut camera = rendering::scene::CameraState::new(
-            glam::UVec2::new(portrait_size, portrait_size),
+            UVec2::new(portrait_size, portrait_size),
             &renderer.device,
             1.0,
         );
