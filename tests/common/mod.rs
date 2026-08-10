@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use talgonite_lib::{
-    Camera, PlayerBatchState, RendererState,
+    Camera, RendererState, UnifiedSpriteBatchState,
     app_state::AppState,
     events::{EntityEvent, MapEvent},
 };
@@ -351,18 +351,10 @@ impl TestScene {
                 map_renderer_state.map_renderer.render(&mut render_pass);
             }
 
-            if let Some(item_batch_state) = world.get_resource::<talgonite_lib::ItemBatchState>() {
-                item_batch_state.batch.render(&mut render_pass);
-            }
-
-            if let Some(creature_batch_state) =
-                world.get_resource::<talgonite_lib::CreatureBatchState>()
+            if let Some(sprite_batch_state) =
+                world.get_resource::<UnifiedSpriteBatchState>()
             {
-                creature_batch_state.batch.render(&mut render_pass);
-            }
-
-            if let Some(player_batch_state) = world.get_resource::<PlayerBatchState>() {
-                player_batch_state.batch.render(&mut render_pass);
+                sprite_batch_state.batch.render(&mut render_pass);
             }
 
             // Transparent walls composite last with screen blending, same as draw_frame().

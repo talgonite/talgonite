@@ -1,10 +1,10 @@
 //! Builds pre-packed sprite sheets at install time.
 //!
 //! Each animation asset (player part, creature, item sheet, or effect) has its
-//! frames shelf-packed into one or more sheet images. A small metadata record
-//! next to each image stores the frame coordinates and geometry, so the
-//! runtime can upload the pre-packed pixels straight into its atlas without
-//! decoding the original format or recomputing a layout.
+//! frames shelf-packed into one or more sheet chunks. One file per asset holds
+//! the oxicode metadata (frame coordinates and geometry) followed by the raw
+//! chunk pixels, so the runtime can upload the pre-packed pixels straight into
+//! its atlas without decoding the original format or recomputing a layout.
 
 use formats::efa::EfaFile;
 use formats::epf::{EpfAnimation, EpfImage};
@@ -393,30 +393,38 @@ pub(crate) fn build_effect_sheets(
     }
 }
 
-/// Emits the metadata record plus one KTX2 record per chunk for a packed
-/// sheet: `{base}.sheet.bin` and `{base}.sheet{c}.ktx2`.
+/// Emits the single-file record for a packed sheet: `{base}.sheet.bin`
+/// contains the oxicode metadata followed by the raw pixel data for every
+/// chunk, concatenated in chunk order. Chunk dimensions live in the metadata,
+/// so the pixel data carries no per-file header.
 pub(crate) fn sheet_records(
     dat_path: &Path,
     base: &str,
-    format: u32,
+    bytes_per_pixel: u32,
     sheet_bytes: Vec<u8>,
     chunks: Vec<SheetChunk>,
     images: Vec<Vec<u8>>,
 ) -> anyhow::Result<Vec<AssetRecord>> {
-    let mut records = Vec::with_capacity(images.len() + 1);
-    records.push(AssetRecord::bytes(
-        dat_path.join(format!("{base}.sheet.bin")),
-        sheet_bytes,
-    ));
-    for (chunk_index, image) in images.into_iter().enumerate() {
-        let chunk = chunks[chunk_index];
-        let ktx = formats::ktx2::encode_ktx2(chunk.width, chunk.height, format, &image)?;
-        records.push(AssetRecord::bytes(
-            dat_path.join(format!("{base}.sheet{chunk_index}.ktx2")),
-            ktx,
-        ));
+    anyhow::ensure!(
+        images.len() == chunks.len(),
+        "sheet has {} chunks but {} images",
+        chunks.len(),
+        images.len()
+    );
+    let mut file_bytes = sheet_bytes;
+    for (chunk, image) in chunks.iter().zip(&images) {
+        let expected = chunk.width as usize * chunk.height as usize * bytes_per_pixel as usize;
+        anyhow::ensure!(
+            image.len() == expected,
+            "chunk pixel data size mismatch: expected {expected} bytes, got {}",
+            image.len()
+        );
+        file_bytes.extend_from_slice(image);
     }
-    Ok(records)
+    Ok(vec![AssetRecord::bytes(
+        dat_path.join(format!("{base}.sheet.bin")),
+        file_bytes,
+    )])
 }
 
 struct PackedFrames {

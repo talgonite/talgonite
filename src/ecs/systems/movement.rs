@@ -330,8 +330,8 @@ pub fn player_animation_start_system(
         &super::super::components::PlayerSprite,
         &super::super::components::PlayerSpriteInstance,
     )>,
-    player_batch: Option<Res<crate::PlayerBatchState>>,
-    player_store: Option<Res<crate::PlayerAssetStoreState>>,
+    player_batch: Option<Res<crate::UnifiedSpriteBatchState>>,
+    player_scene: Option<Res<crate::SpriteSceneState>>,
     mut npcs: Query<(Entity, &EntityId, &CreatureInstance)>,
     mut audio_events: MessageWriter<AudioEvent>,
     mut commands: Commands,
@@ -419,7 +419,7 @@ pub fn player_animation_start_system(
 
             if let (Some(pb), Some(ps), Ok(child_entities)) = (
                 player_batch.as_ref(),
-                player_store.as_ref(),
+                player_scene.as_ref(),
                 children.get(entity),
             ) {
                 let mut armor_supports = true;
@@ -428,7 +428,7 @@ pub fn player_animation_start_system(
                     if let Ok((sprite, sprite_instance)) = player_sprites.get(child_entity) {
                         if sprite.slot == PlayerPieceType::Armor {
                             armor_supports = pb.batch.supports_animation(
-                                &ps.store,
+                                &ps.scene.players,
                                 &sprite_instance.handle,
                                 anim_type,
                             );

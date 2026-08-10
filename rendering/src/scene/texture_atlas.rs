@@ -8,7 +8,7 @@ pub struct TextureAtlas {
     belt: wgpu::util::StagingBelt,
 }
 
-pub struct FrameUpload {
+pub struct FrameUpload<'a> {
     /// Destination region in the atlas (may span several adjacent part slots
     /// after merging).
     pub rect: etagere::Rectangle,
@@ -16,15 +16,17 @@ pub struct FrameUpload {
     pub height: usize,
     /// Each frame's pixels as tight rows (`width` bytes each), positioned at
     /// `y` within the part's slot.
-    pub frames: Vec<FrameRow>,
+    pub frames: Vec<FrameRow<'a>>,
 }
 
-pub struct FrameRow {
+pub struct FrameRow<'a> {
     pub x: u32,
     pub y: u32,
     pub width: usize,
     pub height: usize,
-    pub data: Vec<u8>,
+    /// Borrows the source sheet file's pixel blob; the caller keeps that
+    /// buffer alive until the upload submit completes.
+    pub data: &'a [u8],
 }
 
 /// Counts pairs of uploads whose atlas regions could share a single
@@ -33,7 +35,7 @@ pub struct FrameRow {
 /// or stacked (same left/right, touching y edges). Exact adjacency means the
 /// merged rectangle is fully tiled by the two parts, so no third part can sit
 /// between them.
-fn mergeable_pair_count(uploads: &[FrameUpload]) -> (usize, usize, usize) {
+fn mergeable_pair_count(uploads: &[FrameUpload<'_>]) -> (usize, usize, usize) {
     let pitch = |width: usize| (width + 255) & !255;
     let mut side_by_side = 0usize;
     let mut stacked = 0usize;
@@ -74,7 +76,7 @@ fn mergeable_pair_count(uploads: &[FrameUpload]) -> (usize, usize, usize) {
 /// single upload: same row pitch and same vertical span with touching x edges,
 /// or same horizontal span with touching y edges. Frames are repositioned
 /// relative to the merged region so one `copy_buffer_to_texture` covers them.
-pub fn merge_uploads(mut uploads: Vec<FrameUpload>) -> Vec<FrameUpload> {
+pub fn merge_uploads<'a>(mut uploads: Vec<FrameUpload<'a>>) -> Vec<FrameUpload<'a>> {
     if uploads.len() <= 1 {
         return uploads;
     }
@@ -89,7 +91,7 @@ pub fn merge_uploads(mut uploads: Vec<FrameUpload>) -> Vec<FrameUpload> {
     );
 
     let pitch = |width: usize| (width + 255) & !255;
-    let mut merged: Vec<FrameUpload> = Vec::new();
+    let mut merged: Vec<FrameUpload<'a>> = Vec::new();
     let mut used = vec![false; uploads.len()];
 
     for start in 0..uploads.len() {
@@ -197,7 +199,7 @@ impl TextureAtlas {
         actual_bytes = uploads.iter().flat_map(|u| u.frames.iter()).map(|f| f.data.len()).sum::<usize>(),
         padded_bytes = uploads.iter().map(|u| u.width * u.height).sum::<usize>(),
     ))]
-    pub fn upload_batch(&mut self, queue: &wgpu::Queue, uploads: &[FrameUpload]) {
+    pub fn upload_batch<'a>(&mut self, queue: &wgpu::Queue, uploads: &[FrameUpload<'a>]) {
         if uploads.is_empty() {
             return;
         }

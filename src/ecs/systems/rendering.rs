@@ -3,11 +3,13 @@
 use super::super::animation::{Animation, AnimationMode, AnimationType};
 use super::super::components::*;
 use crate::resources::{
-    CharacterCreatorPreviewState, CreatureAssetStoreState, CreatureBatchState, ItemAssetStoreState,
-    ItemBatchState, LobbyPortraitRenderer, LobbyPortraits, MinimapCacheState, MinimapRendererState,
-    PlayerAssetStoreState, PlayerBatchState, PlayerPortraitState, PortraitRenderTarget,
+    CharacterCreatorPreviewState, LobbyPortraitRenderer, LobbyPortraits, MinimapCacheState,
+    MinimapRendererState, PlayerPortraitState, PortraitRenderTarget,
 };
-use crate::{Camera, RendererState, game_files::GameFiles, settings_types::Settings};
+use crate::{
+    Camera, RendererState, SpriteSceneState, UnifiedSpriteBatchState, game_files::GameFiles,
+    settings_types::Settings,
+};
 use bevy::prelude::*;
 use formats::epf::EpfAnimationType;
 use rendering::{
@@ -16,6 +18,7 @@ use rendering::{
         TILE_HEIGHT_HALF, TILE_WIDTH_HALF,
         minimap::{self, MinimapTile},
         players::{Gender, PlayerBatch, PlayerPieceType, PlayerSpriteKey},
+        unified_batch::SpriteScene,
     },
 };
 
@@ -73,18 +76,14 @@ fn collect_dirty_entities(
 fn preload_player_sprite_keys(
     renderer: &RendererState,
     game_files: &GameFiles,
-    player_store: &mut PlayerAssetStoreState,
+    scene: &mut SpriteScene,
     sprite_keys: &[PlayerSpriteKey],
 ) {
     if sprite_keys.is_empty() {
         return;
     }
 
-    let _ = player_store.store.preload_player_sprites(
-        &renderer.queue,
-        &game_files.inner().archive(),
-        sprite_keys,
-    );
+    let _ = scene.preload_players(&renderer.queue, &game_files.inner().archive(), sprite_keys);
 }
 
 fn build_saved_preview_sprites(
@@ -193,18 +192,18 @@ fn build_character_creator_preview_sprites(
 fn populate_player_batch_with_sprites(
     renderer: &RendererState,
     game_files: &GameFiles,
-    player_store: &mut PlayerAssetStoreState,
+    scene: &mut SpriteScene,
     batch: &PlayerBatch,
     sprites: &[(PlayerSpriteKey, u8)],
     direction: u8,
 ) {
     let sprite_keys: Vec<PlayerSpriteKey> = sprites.iter().map(|(key, _)| *key).collect();
-    preload_player_sprite_keys(renderer, game_files, player_store, &sprite_keys);
+    preload_player_sprite_keys(renderer, game_files, scene, &sprite_keys);
 
     for &(key, color) in sprites {
         let _ = batch.add_player_sprite(
             &renderer.queue,
-            &mut player_store.store,
+            scene,
             &game_files.inner().archive(),
             key,
             color,
@@ -316,7 +315,7 @@ pub fn sync_lobby_portraits(
     settings: Res<Settings>,
     mut portrait_state: ResMut<LobbyPortraits>,
     lobby_renderer: ResMut<LobbyPortraitRenderer>,
-    mut player_store: ResMut<PlayerAssetStoreState>,
+    mut sprite_scene: ResMut<SpriteSceneState>,
     _win: Res<crate::slint_support::state_bridge::SlintWindow>,
 ) {
     // Only run if portraits are complete and we have saved credentials
@@ -337,14 +336,12 @@ pub fn sync_lobby_portraits(
                 continue;
             }
 
-            lobby_renderer
-                .batch
-                .clear_and_unload(&mut player_store.store);
+            lobby_renderer.batch.clear_and_unload(&mut sprite_scene.scene);
             let sprites = build_saved_preview_sprites(preview);
             populate_player_batch_with_sprites(
                 &renderer,
                 &game_files,
-                &mut player_store,
+                &mut sprite_scene.scene,
                 &lobby_renderer.batch,
                 &sprites,
                 2,
@@ -372,9 +369,7 @@ pub fn sync_lobby_portraits(
         }
     }
 
-    lobby_renderer
-        .batch
-        .clear_and_unload(&mut player_store.store);
+    lobby_renderer.batch.clear_and_unload(&mut sprite_scene.scene);
     portrait_state.version += 1;
 }
 
@@ -383,7 +378,7 @@ pub fn sync_character_creator_preview(
     renderer: Res<RendererState>,
     game_files: Res<GameFiles>,
     mut portrait_state: ResMut<CharacterCreatorPreviewState>,
-    mut player_store: ResMut<PlayerAssetStoreState>,
+    mut sprite_scene: ResMut<SpriteSceneState>,
     _win: Res<crate::slint_support::state_bridge::SlintWindow>,
 ) {
     if !portrait_state.dirty {
@@ -395,7 +390,13 @@ pub fn sync_character_creator_preview(
         return;
     };
 
-    render_sprites_to_portrait_target(&renderer, &game_files, &mut player_store, target, &sprites);
+    render_sprites_to_portrait_target(
+        &renderer,
+        &game_files,
+        &mut sprite_scene.scene,
+        target,
+        &sprites,
+    );
     portrait_state.version = target.version;
     portrait_state.dirty = false;
 }
@@ -427,15 +428,15 @@ pub fn collect_player_sprites(
 fn render_sprites_to_portrait_target(
     renderer: &RendererState,
     game_files: &GameFiles,
-    player_store: &mut PlayerAssetStoreState,
+    scene: &mut SpriteScene,
     target: &mut PortraitRenderTarget,
     sprites: &[(PlayerSpriteKey, u8)],
 ) {
-    target.batch.clear_and_unload(&mut player_store.store);
+    target.batch.clear_and_unload(scene);
     populate_player_batch_with_sprites(
         renderer,
         game_files,
-        player_store,
+        scene,
         &target.batch,
         sprites,
         1,
@@ -458,12 +459,12 @@ pub fn sync_items_to_renderer(
     mut commands: Commands,
     renderer: Option<Res<RendererState>>,
     game_files: Option<Res<GameFiles>>,
-    items_store: Option<ResMut<ItemAssetStoreState>>,
-    items_batch: Option<ResMut<ItemBatchState>>,
+    sprite_scene: Option<ResMut<SpriteSceneState>>,
+    sprite_batch: Option<Res<UnifiedSpriteBatchState>>,
     added_items: Query<(Entity, &Position, &ItemSprite, &EntityId), Added<ItemSprite>>,
 ) {
-    let (Some(renderer), Some(files), Some(mut store), Some(mut batch)) =
-        (renderer, game_files, items_store, items_batch)
+    let (Some(renderer), Some(files), Some(mut sprite_scene), Some(batch)) =
+        (renderer, game_files, sprite_scene, sprite_batch)
     else {
         return;
     };
@@ -471,7 +472,7 @@ pub fn sync_items_to_renderer(
     for (entity, position, sprite, entity_id) in added_items.iter() {
         if let Some(handle) = batch.batch.add_item(
             &renderer.queue,
-            &mut store.store,
+            &mut sprite_scene.scene,
             &files.inner().archive(),
             build_item(position, sprite, entity_id),
         ) {
@@ -480,23 +481,26 @@ pub fn sync_items_to_renderer(
     }
 
     // Flush any item frames staged during this frame as one batched upload.
-    store.store.flush_pending_uploads(&renderer.queue);
+    let SpriteScene {
+        items, atlas, ..
+    } = &mut sprite_scene.scene;
+    items.flush_pending_uploads(&renderer.queue, atlas);
 }
 
 /// Updates item positions and sprites on the GPU when they change.
 pub fn update_items_to_renderer(
     renderer: Res<RendererState>,
-    items_store: Res<ItemAssetStoreState>,
-    items_batch: Res<ItemBatchState>,
+    sprite_scene: Res<SpriteSceneState>,
+    sprite_batch: Res<UnifiedSpriteBatchState>,
     query: Query<
         (&ItemInstance, &Position, &ItemSprite, &EntityId),
         Or<(Changed<Position>, Changed<ItemSprite>)>,
     >,
 ) {
     for (instance, position, sprite, entity_id) in query.iter() {
-        items_batch.batch.update_item(
+        sprite_batch.batch.update_item(
             &renderer.queue,
-            &items_store.store,
+            &sprite_scene.scene,
             &instance.handle,
             build_item(position, sprite, entity_id),
         );
@@ -519,8 +523,8 @@ pub fn sync_players_to_renderer(
         Option<&TargetingHover>,
     )>,
     settings: Res<Settings>,
-    mut store_state: ResMut<PlayerAssetStoreState>,
-    batch_state: Res<PlayerBatchState>,
+    mut sprite_scene: ResMut<SpriteSceneState>,
+    sprite_batch: Res<UnifiedSpriteBatchState>,
 ) {
     let mut sprites_to_add = Vec::new();
     for (sprite_entity, child_of, sprite) in added_sprites.iter() {
@@ -561,7 +565,7 @@ pub fn sync_players_to_renderer(
         })
         .collect();
 
-    preload_player_sprite_keys(&shared_state, &game_files, &mut store_state, &sprite_keys);
+    preload_player_sprite_keys(&shared_state, &game_files, &mut sprite_scene.scene, &sprite_keys);
 
     for (
         sprite_entity,
@@ -584,9 +588,9 @@ pub fn sync_players_to_renderer(
 
         let tint = resolve_hover_tint(targeting_hover);
         let flags = player_instance_state(render_state, local_player.is_some(), &settings);
-        let result = batch_state.batch.add_player_sprite(
+        let result = sprite_batch.batch.add_player(
             &shared_state.queue,
-            &mut store_state.store,
+            &mut sprite_scene.scene,
             &game_files.inner().archive(),
             PlayerSpriteKey::for_piece(sprite.slot, sprite.id, gender),
             sprite.color,
@@ -617,8 +621,8 @@ pub fn sync_players_to_renderer(
 pub fn update_player_sprites(
     mut commands: Commands,
     shared_state: Res<RendererState>,
-    store_state: Res<PlayerAssetStoreState>,
-    batch_state: Res<PlayerBatchState>,
+    sprite_scene: Res<SpriteSceneState>,
+    sprite_batch: Res<UnifiedSpriteBatchState>,
     settings: Res<Settings>,
     parent_query: Query<(
         Entity,
@@ -697,10 +701,10 @@ pub fn update_player_sprites(
                         })
                         .map(|cached| cached.frame_count)
                         .unwrap_or_else(|| {
-                            batch_state
+                            sprite_batch
                                 .batch
                                 .animation_frame_count(
-                                    &store_state.store,
+                                    &sprite_scene.scene.players,
                                     &sprite_instance.handle,
                                     animation_type,
                                     is_towards,
@@ -720,16 +724,16 @@ pub fn update_player_sprites(
                 }
 
                 if !desired_cache.visible {
-                    let _ = batch_state
+                    let _ = sprite_batch
                         .batch
-                        .hide_player_sprite(&shared_state.queue, &sprite_instance.handle);
+                        .hide_player(&shared_state.queue, &sprite_instance.handle);
                     commands.entity(child_entity).insert(desired_cache);
                     continue;
                 }
 
-                let submitted = batch_state.batch.update_player_sprite_with_animation(
+                let submitted = sprite_batch.batch.update_player_with_animation(
                     &shared_state.queue,
-                    &store_state.store,
+                    &sprite_scene.scene,
                     &sprite_instance.handle,
                     direction,
                     position.x,
@@ -743,9 +747,9 @@ pub fn update_player_sprites(
 
                 if submitted.is_err() {
                     let hidden_cache = hidden_player_sprite_cache();
-                    let _ = batch_state
+                    let _ = sprite_batch
                         .batch
-                        .hide_player_sprite(&shared_state.queue, &sprite_instance.handle);
+                        .hide_player(&shared_state.queue, &sprite_instance.handle);
                     commands.entity(child_entity).insert(hidden_cache);
                 } else {
                     commands.entity(child_entity).insert(desired_cache);
@@ -776,8 +780,8 @@ pub fn creature_movement_sync(
         )>,
     >,
     mut removed_hovers: RemovedComponents<TargetingHover>,
-    creatures_store: Res<CreatureAssetStoreState>,
-    creatures_batch: Res<CreatureBatchState>,
+    sprite_scene: Res<SpriteSceneState>,
+    sprite_batch: Res<UnifiedSpriteBatchState>,
 ) {
     use formats::mpf::MpfAnimationType;
 
@@ -795,9 +799,9 @@ pub fn creature_movement_sync(
 
             if let Some(mpf_anim) = creature.instance.get_animation(actual_anim_type) {
                 let tint = resolve_hover_tint(targeting_hover);
-                creatures_batch.batch.update_creature(
+                sprite_batch.batch.update_creature(
                     &renderer.queue,
-                    &creatures_store.store,
+                    &sprite_scene.scene,
                     &creature.instance.handle,
                     pos.x,
                     pos.y,
@@ -818,7 +822,7 @@ pub fn sync_player_portrait(
     local_player_query: Query<(&Player, &Children, Option<&CreatureSprite>), With<LocalPlayer>>,
     sprite_query: Query<&PlayerSprite>,
     mut portrait_state: ResMut<PlayerPortraitState>,
-    mut player_store: ResMut<PlayerAssetStoreState>,
+    mut sprite_scene: ResMut<SpriteSceneState>,
     changed_query: Query<Entity, (With<LocalPlayer>, Or<(Changed<Children>, Changed<Player>)>)>,
     sprite_changed_query: Query<(), (With<PlayerSprite>, Changed<PlayerSprite>)>,
 ) {
@@ -850,7 +854,7 @@ pub fn sync_player_portrait(
             render_sprites_to_portrait_target(
                 &renderer,
                 &game_files,
-                &mut player_store,
+                &mut sprite_scene.scene,
                 &mut portrait_state.target,
                 &sprites,
             );
@@ -916,7 +920,7 @@ pub fn sync_profile_portrait(
     >,
     sprite_query: Query<&PlayerSprite>,
     mut portrait_state: ResMut<crate::resources::ProfilePortraitState>,
-    mut player_store: ResMut<PlayerAssetStoreState>,
+    mut sprite_scene: ResMut<SpriteSceneState>,
     mut last_entity_id: Local<Option<u32>>,
 ) {
     let mut target_entity = None;
@@ -953,7 +957,7 @@ pub fn sync_profile_portrait(
             render_sprites_to_portrait_target(
                 &renderer,
                 &game_files,
-                &mut player_store,
+                &mut sprite_scene.scene,
                 &mut portrait_state.target,
                 &sprites,
             );

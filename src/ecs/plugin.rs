@@ -44,7 +44,7 @@ impl Plugin for GamePlugin {
                 )
                     .run_if(in_state(crate::app_state::AppState::MainMenu))
                     .run_if(resource_exists::<crate::resources::LobbyPortraitRenderer>)
-                    .run_if(resource_exists::<crate::PlayerAssetStoreState>)
+                    .run_if(resource_exists::<crate::SpriteSceneState>)
                     .run_if(resource_exists::<crate::RendererState>)
                     .run_if(resource_exists::<crate::game_files::GameFiles>),
             )
@@ -95,7 +95,7 @@ impl Plugin for GamePlugin {
                     systems::dedupe_entities_by_id,
                     systems::health_bar_system,
                     systems::queue_creatures_for_loading
-                        .run_if(resource_exists::<crate::CreatureAssetStoreState>),
+                        .run_if(resource_exists::<crate::SpriteSceneState>),
                 )
                     .chain()
                     .run_if(in_state(crate::app_state::AppState::InGame))
@@ -165,8 +165,8 @@ impl Plugin for GamePlugin {
                     systems::sync_player_portrait,
                     systems::sync_profile_portrait,
                 )
-                    .run_if(resource_exists::<crate::CreatureAssetStoreState>)
-                    .run_if(resource_exists::<crate::PlayerBatchState>)
+                    .run_if(resource_exists::<crate::SpriteSceneState>)
+                    .run_if(resource_exists::<crate::UnifiedSpriteBatchState>)
                     .run_if(in_state(crate::app_state::AppState::InGame))
                     .in_set(GameSet::RenderSync),
             )

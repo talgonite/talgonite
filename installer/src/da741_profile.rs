@@ -251,16 +251,12 @@ impl Da741Profile {
             else {
                 continue;
             };
-            let format = if meta.indexed {
-                formats::ktx2::VK_FORMAT_R8_UNORM
-            } else {
-                formats::ktx2::VK_FORMAT_R8G8B8A8_UNORM
-            };
+            let bytes_per_pixel = if meta.indexed { 1 } else { 4 };
             let sheet_bytes = oxicode::encode_to_vec(&meta)?;
             records.extend(sheet_processor::sheet_records(
                 Path::new("roh"),
                 &format!("efct{effect_id:03}"),
-                format,
+                bytes_per_pixel,
                 sheet_bytes,
                 meta.chunks,
                 images,

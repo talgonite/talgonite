@@ -1,6 +1,9 @@
 use bevy::prelude::*;
 use rendering::scene::map::renderer::MapRenderer;
-use rendering::scene::{CameraState, EffectManager, Scene, creatures, items, minimap, players};
+use rendering::scene::{
+    CameraState, EffectManager, Scene, UnifiedSpriteBatch, minimap, players,
+    unified_batch::SpriteScene,
+};
 use wgpu;
 
 use std::ops::{Deref, DerefMut};
@@ -11,6 +14,16 @@ pub struct PlayerAttributes {
     pub max_hp: u32,
     pub current_mp: u32,
     pub max_mp: u32,
+}
+
+#[derive(Resource)]
+pub struct SpriteSceneState {
+    pub scene: SpriteScene,
+}
+
+#[derive(Resource)]
+pub struct UnifiedSpriteBatchState {
+    pub batch: UnifiedSpriteBatch,
 }
 
 #[derive(Resource, Clone, Debug)]
@@ -174,36 +187,6 @@ impl MinimapRendererState {
     }
 }
 
-#[derive(Resource)]
-pub struct CreatureAssetStoreState {
-    pub store: creatures::CreatureAssetStore,
-}
-
-#[derive(Resource)]
-pub struct CreatureBatchState {
-    pub batch: creatures::CreatureBatch,
-}
-
-#[derive(Resource)]
-pub struct PlayerAssetStoreState {
-    pub store: players::PlayerAssetStore,
-}
-
-#[derive(Resource)]
-pub struct PlayerBatchState {
-    pub batch: players::PlayerBatch,
-}
-
-#[derive(Resource)]
-pub struct ItemAssetStoreState {
-    pub store: items::ItemAssetStore,
-}
-
-#[derive(Resource)]
-pub struct ItemBatchState {
-    pub batch: items::ItemBatch,
-}
-
 /// Per-tile spawn order counters for item z-ordering.
 /// Map-scoped: auto-cleared when map changes via Bevy resource removal.
 #[derive(Resource, Default)]
@@ -261,7 +244,7 @@ pub struct ProfilePortraitState {
 impl PortraitRenderTarget {
     pub fn new(
         renderer: &RendererState,
-        store: &players::PlayerAssetStore,
+        scene: &SpriteScene,
         label: &str,
         size: u32,
         camera_offset_y: f32,
@@ -289,7 +272,7 @@ impl PortraitRenderTarget {
             texture: texture.texture,
             view: texture.view,
             depth_texture,
-            batch: players::PlayerBatch::new(&renderer.device, store),
+            batch: players::PlayerBatch::new(&renderer.device, scene),
             camera,
             dirty: true,
             version: 0,
@@ -298,23 +281,32 @@ impl PortraitRenderTarget {
 }
 
 impl PlayerPortraitState {
-    pub fn new(renderer: &RendererState, store: &players::PlayerAssetStore) -> Self {
+    pub fn new(
+        renderer: &RendererState,
+        scene: &SpriteScene,
+    ) -> Self {
         Self {
-            target: PortraitRenderTarget::new(renderer, store, "player_portrait", 64, -42.0),
+            target: PortraitRenderTarget::new(renderer, scene, "player_portrait", 64, -42.0),
         }
     }
 }
 
 impl ProfilePortraitState {
-    pub fn new(renderer: &RendererState, store: &players::PlayerAssetStore) -> Self {
+    pub fn new(
+        renderer: &RendererState,
+        scene: &SpriteScene,
+    ) -> Self {
         Self {
-            target: PortraitRenderTarget::new(renderer, store, "profile_portrait", 128, -32.0),
+            target: PortraitRenderTarget::new(renderer, scene, "profile_portrait", 128, -32.0),
         }
     }
 }
 
 impl LobbyPortraitRenderer {
-    pub fn new(renderer: &RendererState, store: &players::PlayerAssetStore) -> Self {
+    pub fn new(
+        renderer: &RendererState,
+        scene: &SpriteScene,
+    ) -> Self {
         let portrait_size = 64;
         let depth_texture = rendering::texture::Texture::create_depth_texture(
             &renderer.device,
@@ -330,7 +322,7 @@ impl LobbyPortraitRenderer {
         camera.set_screen_offset(&renderer.queue, 0.0, -42.0);
 
         Self {
-            batch: players::PlayerBatch::new(&renderer.device, store),
+            batch: players::PlayerBatch::new(&renderer.device, scene),
             depth_texture,
             camera,
         }
@@ -399,7 +391,7 @@ impl Default for CharacterCreatorPreviewState {
 impl CharacterCreatorPreviewState {
     pub fn with_target(
         renderer: &RendererState,
-        store: &players::PlayerAssetStore,
+        scene: &SpriteScene,
         gender: u8,
         hair_style: u8,
         hair_color: u8,
@@ -409,7 +401,7 @@ impl CharacterCreatorPreviewState {
         Self {
             target: Some(PortraitRenderTarget::new(
                 renderer,
-                store,
+                scene,
                 "character_creator_portrait",
                 64,
                 -42.0,

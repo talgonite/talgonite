@@ -577,8 +577,8 @@ pub fn creature_load_system(
     mut commands: Commands,
     shared_state: Res<RendererState>,
     game_files: Res<GameFiles>,
-    mut creatures_store: ResMut<crate::CreatureAssetStoreState>,
-    mut creatures_batch: ResMut<crate::CreatureBatchState>,
+    mut scene: ResMut<crate::SpriteSceneState>,
+    sprite_batch: Res<crate::UnifiedSpriteBatchState>,
     mut to_load: Query<
         (Entity, &Position, &CreatureSprite, &Direction),
         With<CreatureLoadRequested>,
@@ -592,9 +592,9 @@ pub fn creature_load_system(
             break;
         }
 
-        let result = creatures_batch.batch.add_creature(
+        let result = sprite_batch.batch.add_creature(
             &shared_state.queue,
-            &mut creatures_store.store,
+            &mut scene.scene,
             &game_files.inner().archive(),
             sprite.id,
             *direction as u8,

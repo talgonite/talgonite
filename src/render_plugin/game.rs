@@ -1,13 +1,12 @@
 use crate::app_state::AppState;
 use crate::slint_support::frame_exchange::{BackBufferPool, ControlMessage, FrameChannels};
 use crate::{
-    Camera, CreatureAssetStoreState, CreatureBatchState, EffectManagerState, ItemAssetStoreState,
-    ItemBatchState, MapRendererState, MinimapRendererState, PlayerAssetStoreState,
-    PlayerBatchState, RendererState, TranslucentPlayerPassState, WindowSurface, game_files,
+    Camera, EffectManagerState, MapRendererState, MinimapRendererState, RendererState,
+    SpriteSceneState, TranslucentPlayerPassState, UnifiedSpriteBatchState, WindowSurface,
+    game_files,
 };
-use async_std::task::block_on;
 use bevy::prelude::*;
-use rendering::scene::{EffectManager, creatures, items, players};
+use rendering::scene::{EffectManager, UnifiedSpriteBatch, unified_batch::SpriteScene};
 
 use crate::ecs::components::HoverName;
 use crate::ecs::interaction::HoveredEntity;
@@ -68,9 +67,8 @@ fn init_render_managers_after_gamefiles(
     files: Option<Res<game_files::GameFiles>>,
     renderer: Option<Res<RendererState>>,
     camera: Option<Res<Camera>>,
-    existing_creatures: Option<Res<CreatureAssetStoreState>>,
-    existing_players: Option<Res<PlayerAssetStoreState>>,
-    existing_items: Option<Res<ItemAssetStoreState>>,
+    existing_scene: Option<Res<SpriteSceneState>>,
+    existing_batch: Option<Res<UnifiedSpriteBatchState>>,
     existing_effects: Option<Res<EffectManagerState>>,
     _existing_portrait: Option<Res<crate::resources::PlayerPortraitState>>,
     existing_character_preview: Option<Res<crate::resources::CharacterCreatorPreviewState>>,
@@ -81,33 +79,23 @@ fn init_render_managers_after_gamefiles(
         _ => return,
     };
 
-    if existing_creatures.is_none() {
-        let store = block_on(creatures::CreatureAssetStore::new(
-            &renderer.device,
-            &renderer.queue,
-            &files.inner().archive(),
-        ));
-        let batch = creatures::CreatureBatch::new(&renderer.device, &store);
-        commands.insert_resource(CreatureAssetStoreState { store });
-        commands.insert_resource(CreatureBatchState { batch });
-    }
+    // The sprite scene (shared atlas + stores) and the single instance batch
+    // are one unit: create them together so every store allocates from the
+    // same atlas and the main scene draws everything in a single call.
+    let needs_sprite_scene = existing_scene.is_none() || existing_batch.is_none();
 
-    if existing_players.is_none() {
-        let store = players::PlayerAssetStore::new(
-            &renderer.device,
-            &renderer.queue,
-            &files.inner().archive(),
-        );
-        let batch = players::PlayerBatch::new(&renderer.device, &store);
+    if needs_sprite_scene {
+        let scene = SpriteScene::new(&renderer.device, &renderer.queue, &files.inner().archive());
+        let batch = UnifiedSpriteBatch::new(&renderer.device, &scene);
 
         commands.insert_resource(crate::resources::PlayerPortraitState::new(
-            &renderer, &store,
+            &renderer, &scene,
         ));
         commands.insert_resource(crate::resources::ProfilePortraitState::new(
-            &renderer, &store,
+            &renderer, &scene,
         ));
         commands.insert_resource(crate::resources::LobbyPortraitRenderer::new(
-            &renderer, &store,
+            &renderer, &scene,
         ));
 
         let (gender, hair_style, hair_color, armor_id, version) = existing_character_preview
@@ -123,19 +111,11 @@ fn init_render_managers_after_gamefiles(
             })
             .unwrap_or((1, 0, 0, 1, 0));
         commands.insert_resource(crate::resources::CharacterCreatorPreviewState::with_target(
-            &renderer, &store, gender, hair_style, hair_color, armor_id, version,
+            &renderer, &scene, gender, hair_style, hair_color, armor_id, version,
         ));
 
-        commands.insert_resource(PlayerAssetStoreState { store });
-        commands.insert_resource(PlayerBatchState { batch });
-    }
-
-    if existing_items.is_none() {
-        let store =
-            items::ItemAssetStore::new(&renderer.device, &renderer.queue, &files.inner().archive());
-        let batch = items::ItemBatch::new(&renderer.device, &store);
-        commands.insert_resource(ItemAssetStoreState { store });
-        commands.insert_resource(ItemBatchState { batch });
+        commands.insert_resource(SpriteSceneState { scene });
+        commands.insert_resource(UnifiedSpriteBatchState { batch });
     }
 
     if existing_effects.is_none() {
@@ -172,18 +152,16 @@ fn needs_render_managers(
     files: Option<Res<game_files::GameFiles>>,
     renderer: Option<Res<RendererState>>,
     camera: Option<Res<Camera>>,
-    existing_creatures: Option<Res<CreatureAssetStoreState>>,
-    existing_players: Option<Res<PlayerAssetStoreState>>,
-    existing_items: Option<Res<ItemAssetStoreState>>,
+    existing_scene: Option<Res<SpriteSceneState>>,
+    existing_batch: Option<Res<UnifiedSpriteBatchState>>,
     existing_effects: Option<Res<EffectManagerState>>,
     existing_translucent_players: Option<Res<TranslucentPlayerPassState>>,
 ) -> bool {
     files.is_some()
         && renderer.is_some()
         && camera.is_some()
-        && (existing_creatures.is_none()
-            || existing_players.is_none()
-            || existing_items.is_none()
+        && (existing_scene.is_none()
+            || existing_batch.is_none()
             || existing_effects.is_none()
             || existing_translucent_players.is_none())
 }
@@ -281,9 +259,7 @@ fn draw_frame(
     render_hardware: Res<RendererState>,
     camera: Res<Camera>,
     map_renderer_state: Option<Res<MapRendererState>>,
-    creature_batch_state: Option<Res<CreatureBatchState>>,
-    item_batch_state: Option<Res<ItemBatchState>>,
-    player_batch_state: Option<Res<PlayerBatchState>>,
+    sprite_batch_state: Option<Res<UnifiedSpriteBatchState>>,
     effect_manager_state: Option<Res<EffectManagerState>>,
     minimap_renderer_state: Option<Res<MinimapRendererState>>,
     translucent_player_pass_state: Option<Res<TranslucentPlayerPassState>>,
@@ -370,9 +346,7 @@ fn draw_frame(
         // wgpu requires every bind group / vertex buffer referenced by a render
         // pass to outlive it, so borrow the renderer resources for the whole pass.
         let map_renderer = map_renderer_state.as_ref().map(|m| &m.map_renderer);
-        let item_batch = item_batch_state.as_ref().map(|im| &im.batch);
-        let creature_batch = creature_batch_state.as_ref().map(|cm| &cm.batch);
-        let player_batch = player_batch_state.as_ref().map(|pb| &pb.batch);
+        let sprite_batch = sprite_batch_state.as_ref().map(|sb| &sb.batch);
         let effect_manager = effect_manager_state.as_ref().map(|em| &em.effect_manager);
 
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -401,14 +375,8 @@ fn draw_frame(
         if let Some(m) = map_renderer {
             m.render(&mut render_pass);
         }
-        if let Some(im) = item_batch {
-            im.render(&mut render_pass);
-        }
-        if let Some(cm) = creature_batch {
-            cm.render(&mut render_pass);
-        }
-        if let Some(pb) = player_batch {
-            pb.render(&mut render_pass);
+        if let Some(sb) = sprite_batch {
+            sb.render(&mut render_pass);
         }
         if let Some(em) = effect_manager {
             em.render(&mut render_pass, &camera.camera.camera_bind_group);
@@ -425,8 +393,8 @@ fn draw_frame(
         }
     }
 
-    if let (Some(pb), Some(translucent_player_pass_state)) =
-        (&player_batch_state, &translucent_player_pass_state)
+    if let (Some(sb), Some(translucent_player_pass_state)) =
+        (&sprite_batch_state, &translucent_player_pass_state)
     {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Translucent Player Render Pass"),
@@ -452,11 +420,11 @@ fn draw_frame(
         render_pass.set_stencil_reference(0);
         render_pass.set_pipeline(&render_hardware.scene.translucent_player_pipeline);
         render_pass.set_bind_group(1, &camera.camera.camera_bind_group, &[]);
-        pb.batch.render(&mut render_pass);
+        sb.batch.render(&mut render_pass);
     }
 
     if let (Some(_), Some(translucent_player_pass_state)) =
-        (&player_batch_state, &translucent_player_pass_state)
+        (&sprite_batch_state, &translucent_player_pass_state)
     {
         let composite_bind_group = render_hardware
             .scene

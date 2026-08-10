@@ -36,23 +36,18 @@ impl StructuredFormatProcessor {
 
             let mut reader = Cursor::new(file_buffer);
             let mpf = MpfFile::read_from_da(&mut reader).expect("Failed to read MPF file");
-            let mpf_bytes = oxicode::encode_to_vec(&mpf)?;
             let base = file_name.trim_end_matches(".mpf");
             let (sheet, sheet_images) = sheet_processor::build_creature_sheets(&mpf);
             let sheet_bytes = oxicode::encode_to_vec(&sheet)?;
 
-            let mut records = vec![AssetRecord::bytes(
-                dat_path.join(format!("{base}.mpf.bin")),
-                mpf_bytes,
-            )];
-            records.extend(sheet_records(
+            let records = sheet_records(
                 dat_path,
                 base,
-                formats::ktx2::VK_FORMAT_R8_UNORM,
+                1, // palette-indexed R8 pixels
                 sheet_bytes,
                 sheet.chunks,
                 sheet_images,
-            )?);
+            )?;
 
             return Ok(StructuredDatEntry::Assets(records));
         }
@@ -121,26 +116,32 @@ impl StructuredFormatProcessor {
                 let base = file_name.trim_end_matches(".epf");
                 let (sheet, sheet_images) = sheet_processor::build_item_sheets(&epf);
                 let sheet_bytes = oxicode::encode_to_vec(&sheet)?;
-                let mut records = vec![AssetRecord::bytes(
-                    dat_path.join(format!("{base}.epf.bin")),
-                    oxicode::encode_to_vec(&epf)?,
-                )];
-                records.extend(sheet_records(
+                let records = sheet_records(
                     dat_path,
                     base,
-                    formats::ktx2::VK_FORMAT_R8_UNORM,
+                    1, // palette-indexed R8 pixels
                     sheet_bytes,
                     sheet.chunks,
                     sheet_images,
-                )?);
+                )?;
                 return Ok(StructuredDatEntry::Assets(records));
             }
 
-            let epf_bytes = oxicode::encode_to_vec(&epf)?;
-            return Ok(StructuredDatEntry::Assets(vec![AssetRecord::bytes(
-                dat_path.join(file_name.replace(".epf", ".epf.bin")),
-                epf_bytes,
-            )]));
+            // Every other EPF (UI icon sets like `setoa/skill001`, world map
+            // images, leftover Legend parts) is packed the same way, so the
+            // runtime always reads one shared `{base}.sheet.bin` file and
+            // never stores the pixel payload twice.
+            let base = file_name.trim_end_matches(".epf");
+            let (sheet, sheet_images) = sheet_processor::build_item_sheets(&epf);
+            let sheet_bytes = oxicode::encode_to_vec(&sheet)?;
+            return Ok(StructuredDatEntry::Assets(sheet_records(
+                dat_path,
+                base,
+                1, // palette-indexed R8 pixels
+                sheet_bytes,
+                sheet.chunks,
+                sheet_images,
+            )?));
         }
 
         Ok(StructuredDatEntry::Unhandled)
@@ -207,8 +208,86 @@ fn read_epf(file_buffer: &[u8]) -> anyhow::Result<EpfImage> {
 #[cfg(test)]
 mod tests {
     use super::{StructuredDatEntry, StructuredFormatProcessor};
+    use crate::asset_record::AssetRecord;
     use std::io::Cursor;
     use std::path::Path;
+
+    fn test_epf_buffer() -> Vec<u8> {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&1u16.to_le_bytes()); // frame_count
+        buf.extend_from_slice(&32u16.to_le_bytes()); // pixel_width
+        buf.extend_from_slice(&32u16.to_le_bytes()); // pixel_height
+        buf.extend_from_slice(&0u16.to_le_bytes()); // unknown
+        buf.extend_from_slice(&0u32.to_le_bytes()); // toc_address
+        buf.extend_from_slice(&0u16.to_le_bytes()); // top
+        buf.extend_from_slice(&0u16.to_le_bytes()); // left
+        buf.extend_from_slice(&16u16.to_le_bytes()); // bottom
+        buf.extend_from_slice(&16u16.to_le_bytes()); // right
+        buf.extend_from_slice(&0u32.to_le_bytes()); // start_address
+        buf.extend_from_slice(&256u32.to_le_bytes()); // end_address
+        buf.extend_from_slice(&[7u8; 256]); // palette indices
+        buf
+    }
+
+    fn test_mpf_buffer() -> Vec<u8> {
+        let mut buf = Vec::new();
+        // The header doubles as the first fields: the initial i32 is
+        // reinterpreted as frame_count | pixel_width<<8 | pixel_height<<16 |
+        // data_length_byte<<24, and is only a 12-byte header when it equals -1.
+        buf.push(1); // frame_count
+        buf.extend_from_slice(&1i16.to_le_bytes()); // pixel_width (bytes 1..3)
+        buf.extend_from_slice(&1i16.to_le_bytes()); // pixel_height (bytes 3..5)
+        buf.extend_from_slice(&256i32.to_le_bytes()); // data_length
+        buf.push(0); // walk frame_index_away
+        buf.push(1); // walk frame_count
+        buf.extend_from_slice(&0i16.to_le_bytes()); // has_multiple_attacks = false
+        // The parser re-reads the two bytes of `has_multiple_attacks` as the
+        // attack animation's fields, so only standing/optional/extra follow.
+        buf.push(0); // standing frame_index_away
+        buf.push(0); // standing frame_count
+        buf.push(0); // optional_frame_count
+        buf.push(0); // extra animation type
+        buf.extend_from_slice(&0i16.to_le_bytes()); // left
+        buf.extend_from_slice(&0i16.to_le_bytes()); // top
+        buf.extend_from_slice(&16i16.to_le_bytes()); // right
+        buf.extend_from_slice(&16i16.to_le_bytes()); // bottom
+        buf.extend_from_slice(&8i16.to_le_bytes()); // center_x
+        buf.extend_from_slice(&16i16.to_le_bytes()); // center_y
+        buf.extend_from_slice(&0i32.to_le_bytes()); // start_address
+        buf.extend_from_slice(&[7u8; 256]); // palette indices
+        buf
+    }
+
+    fn emitted_records(
+        processor: &StructuredFormatProcessor,
+        dat_path: &Path,
+        file_name: &str,
+        bytes: Vec<u8>,
+    ) -> Vec<AssetRecord> {
+        let mut effect_job = crate::deferred_job::EffectAssetJobBuilder::new();
+        let mut reader = Cursor::new(bytes);
+        match processor
+            .process_entry(
+                dat_path,
+                file_name,
+                reader.get_ref().len(),
+                &mut reader,
+                false,
+                &mut effect_job,
+            )
+            .unwrap()
+        {
+            StructuredDatEntry::Assets(records) => records,
+            _ => panic!("expected asset records"),
+        }
+    }
+
+    fn emitted_paths(records: &[AssetRecord]) -> Vec<String> {
+        records
+            .iter()
+            .map(|record| record.path().to_string_lossy().into_owned())
+            .collect()
+    }
 
     #[test]
     fn process_entry_ignores_unstructured_files() {
@@ -228,5 +307,38 @@ mod tests {
             .unwrap();
 
         assert!(matches!(result, StructuredDatEntry::Unhandled));
+    }
+
+    #[test]
+    fn mpf_emits_sheet_records_without_duplicate_pixel_payload() {
+        let processor = StructuredFormatProcessor;
+        let records = emitted_records(&processor, Path::new("hades"), "mns001.mpf", test_mpf_buffer());
+        let paths = emitted_paths(&records);
+
+        assert!(paths.contains(&"hades/mns001.sheet.bin".to_string()));
+        assert_eq!(records.len(), 1);
+        assert!(!paths.iter().any(|path| path.ends_with(".mpf.bin")));
+    }
+
+    #[test]
+    fn item_epf_emits_sheet_records_without_duplicate_pixel_payload() {
+        let processor = StructuredFormatProcessor;
+        let records = emitted_records(&processor, Path::new("Legend"), "item001.epf", test_epf_buffer());
+        let paths = emitted_paths(&records);
+
+        assert!(paths.contains(&"Legend/item001.sheet.bin".to_string()));
+        assert_eq!(records.len(), 1);
+        assert!(!paths.iter().any(|path| path.ends_with(".epf.bin")));
+    }
+
+    #[test]
+    fn plain_epf_emits_sheet_records_for_ui_consumers() {
+        let processor = StructuredFormatProcessor;
+        let records = emitted_records(&processor, Path::new("setoa"), "skill001.epf", test_epf_buffer());
+        let paths = emitted_paths(&records);
+
+        assert!(paths.contains(&"setoa/skill001.sheet.bin".to_string()));
+        assert_eq!(records.len(), 1);
+        assert!(!paths.iter().any(|path| path.ends_with(".epf.bin")));
     }
 }

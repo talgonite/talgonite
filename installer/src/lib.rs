@@ -26,7 +26,7 @@ use crate::da741_profile::Da741Profile;
 use crate::sink::{AssetSink, SquashfsAssetSink};
 use crate::source::InstallSource;
 
-const VERSION_BUF: &[u8] = b"741_8";
+const VERSION_BUF: &[u8] = b"741_9";
 
 pub trait InstallProgress: Send + Sync {
     fn report(&self, percent: f32, message: String);

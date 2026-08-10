@@ -11,14 +11,18 @@ pub mod items;
 pub mod map;
 pub mod minimap;
 pub mod players;
+pub mod sprite_atlas;
+pub mod unified_batch;
 
 pub use effects::{EffectHandle, EffectManager};
 pub mod sprite;
+pub mod sprite_store;
 pub mod texture_atlas;
 pub mod texture_bind;
 pub mod utils;
 
 pub use constants::*;
+pub use unified_batch::UnifiedSpriteBatch;
 pub use map::animations::{
     AnimationInstanceData, InstanceReference, WorldAnimation, WorldAnimationInstanceData,
 };

@@ -634,17 +634,17 @@ fn cleanup_player_sprite_instance(mut world: DeferredWorld, ctx: HookContext) {
 
     // Use UnsafeWorldCell to get both resources simultaneously to avoid borrow checker conflicts in DeferredWorld
     let cell = world.as_unsafe_world_cell();
-    let mut store_state = unsafe { cell.get_resource_mut::<crate::PlayerAssetStoreState>() };
-    let batch_state = unsafe { cell.get_resource::<crate::PlayerBatchState>() };
+    let mut scene = unsafe { cell.get_resource_mut::<crate::SpriteSceneState>() };
+    let batch_state = unsafe { cell.get_resource::<crate::UnifiedSpriteBatchState>() };
 
-    let (Some(store), Some(batch)) = (store_state.as_mut(), batch_state) else {
+    let (Some(scene), Some(batch)) = (scene.as_mut(), batch_state) else {
         return;
     };
 
     unsafe {
         batch
             .batch
-            .remove_player_sprite(&*queue_ptr, &mut store.store, handle);
+            .remove_player(&*queue_ptr, &mut scene.scene, handle);
     }
 }
 
@@ -663,17 +663,17 @@ fn cleanup_creature_instance(mut world: DeferredWorld, ctx: HookContext) {
 
     // Use UnsafeWorldCell to get both resources simultaneously to avoid borrow checker conflicts in DeferredWorld
     let cell = world.as_unsafe_world_cell();
-    let mut store_state = unsafe { cell.get_resource_mut::<crate::CreatureAssetStoreState>() };
-    let mut batch_state = unsafe { cell.get_resource_mut::<crate::CreatureBatchState>() };
+    let mut scene = unsafe { cell.get_resource_mut::<crate::SpriteSceneState>() };
+    let batch_state = unsafe { cell.get_resource::<crate::UnifiedSpriteBatchState>() };
 
-    let (Some(store), Some(batch)) = (store_state.as_mut(), batch_state.as_mut()) else {
+    let (Some(scene), Some(batch)) = (scene.as_mut(), batch_state) else {
         return;
     };
 
     unsafe {
         batch
             .batch
-            .remove_creature(&*queue_ptr, &mut store.store, handle);
+            .remove_creature(&*queue_ptr, &mut scene.scene, handle);
     }
 }
 
@@ -692,17 +692,17 @@ fn cleanup_item_instance(mut world: DeferredWorld, ctx: HookContext) {
     };
 
     let cell = world.as_unsafe_world_cell();
-    let mut store_state = unsafe { cell.get_resource_mut::<crate::ItemAssetStoreState>() };
-    let batch_state = unsafe { cell.get_resource::<crate::ItemBatchState>() };
+    let mut scene = unsafe { cell.get_resource_mut::<crate::SpriteSceneState>() };
+    let batch_state = unsafe { cell.get_resource::<crate::UnifiedSpriteBatchState>() };
 
-    let (Some(store), Some(batch)) = (store_state.as_mut(), batch_state) else {
+    let (Some(scene), Some(batch)) = (scene.as_mut(), batch_state) else {
         return;
     };
 
     unsafe {
         batch
             .batch
-            .remove_item(&*queue_ptr, &mut store.store, handle);
+            .remove_item(&*queue_ptr, &mut scene.scene, handle);
     }
 }
 

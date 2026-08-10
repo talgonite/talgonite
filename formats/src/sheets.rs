@@ -1,11 +1,11 @@
 //! Pre-packed sprite sheets.
 //!
 //! The installer packs every animation asset (player part, creature, item
-//! sheet, or effect) into one or more sheet images and writes a small metadata
-//! file next to each image. At runtime the scene stores load the sheet image
-//! and its metadata, allocate atlas slots for the chunks, and upload the
-//! pre-packed pixels - they never decode the original animation format or
-//! compute a frame layout themselves.
+//! sheet, or effect) into one or more sheet chunks and writes a single file
+//! per asset: oxicode metadata followed by the raw pixel data for every
+//! chunk. At runtime the scene stores decode the metadata, allocate atlas
+//! slots for the chunks, and upload the pre-packed pixels - they never decode
+//! the original animation format or compute a frame layout themselves.
 
 use crate::epf::{AnimationDirection, EpfAnimationType};
 use crate::mpf::MpfAnimation;
@@ -124,6 +124,120 @@ pub struct EffectSheetFrame {
     /// Zero for EPF effects.
     pub center_x: i16,
     pub center_y: i16,
+}
+
+/// A sheet metadata type that knows its chunks (and therefore its pixel
+/// layout).
+pub trait SheetMeta {
+    fn chunks(&self) -> &[SheetChunk];
+}
+
+impl SheetMeta for PlayerSheet {
+    fn chunks(&self) -> &[SheetChunk] {
+        &self.chunks
+    }
+}
+
+impl SheetMeta for CreatureSheet {
+    fn chunks(&self) -> &[SheetChunk] {
+        &self.chunks
+    }
+}
+
+impl SheetMeta for ItemSheet {
+    fn chunks(&self) -> &[SheetChunk] {
+        &self.chunks
+    }
+}
+
+impl SheetMeta for EffectSheet {
+    fn chunks(&self) -> &[SheetChunk] {
+        &self.chunks
+    }
+}
+
+/// Byte offset of each chunk's pixel data inside a sheet file's trailing
+/// pixel blob, plus the total blob length. Rows are tight (`width * height`
+/// pixels per chunk, `bytes_per_pixel` bytes per pixel).
+pub fn chunk_pixel_offsets(
+    chunks: &[SheetChunk],
+    bytes_per_pixel: u32,
+) -> (Vec<usize>, usize) {
+    let mut offsets = Vec::with_capacity(chunks.len());
+    let mut total = 0usize;
+    for chunk in chunks {
+        offsets.push(total);
+        total += chunk.width as usize * chunk.height as usize * bytes_per_pixel as usize;
+    }
+    (offsets, total)
+}
+
+/// Encodes one sheet file: oxicode metadata followed by the raw pixel data
+/// for every chunk, concatenated in chunk order. Chunk dimensions live in the
+/// metadata, so the pixel data carries no per-file header.
+pub fn encode_sheet<M: Encode>(meta: &M, images: Vec<Vec<u8>>) -> anyhow::Result<Vec<u8>> {
+    let mut bytes = oxicode::encode_to_vec(meta)?;
+    for image in images {
+        bytes.extend_from_slice(&image);
+    }
+    Ok(bytes)
+}
+
+/// Borrows each chunk's pixel data out of a sheet file's trailing pixel blob,
+/// which starts `consumed` bytes after the oxicode metadata. Returns an error
+/// if the blob is not exactly the size the chunk dimensions imply. The
+/// returned slices borrow from `bytes`, so `bytes` must outlive them.
+pub fn chunk_pixel_slices<'a>(
+    bytes: &'a [u8],
+    consumed: usize,
+    chunks: &[SheetChunk],
+    bytes_per_pixel: u32,
+) -> anyhow::Result<Vec<&'a [u8]>> {
+    let (offsets, total) = chunk_pixel_offsets(chunks, bytes_per_pixel);
+    let pixels = bytes
+        .get(consumed..)
+        .ok_or_else(|| anyhow::anyhow!("sheet file missing pixel data"))?;
+    anyhow::ensure!(
+        pixels.len() == total,
+        "sheet pixel data size mismatch: expected {total} bytes, got {}",
+        pixels.len()
+    );
+
+    let mut slices = Vec::with_capacity(chunks.len());
+    for (index, chunk) in chunks.iter().enumerate() {
+        let len = chunk.width as usize * chunk.height as usize * bytes_per_pixel as usize;
+        let start = offsets[index];
+        slices.push(&pixels[start..start + len]);
+    }
+    Ok(slices)
+}
+
+/// Copies each chunk's pixel data out of a sheet file's trailing pixel blob,
+/// which starts `consumed` bytes after the oxicode metadata.
+pub fn chunk_pixels(
+    bytes: &[u8],
+    consumed: usize,
+    chunks: &[SheetChunk],
+    bytes_per_pixel: u32,
+) -> anyhow::Result<Vec<Vec<u8>>> {
+    Ok(chunk_pixel_slices(bytes, consumed, chunks, bytes_per_pixel)?
+        .into_iter()
+        .map(|slice| slice.to_vec())
+        .collect())
+}
+
+/// Decodes one sheet file into its metadata and one owned pixel buffer per
+/// chunk (copies the pixel blob).
+pub fn decode_sheet<M: Decode + SheetMeta>(
+    bytes: &[u8],
+    bytes_per_pixel: u32,
+) -> anyhow::Result<(M, Vec<Vec<u8>>)> {
+    let (meta, consumed): (M, usize) = oxicode::decode_from_slice(bytes)?;
+    let slices = chunk_pixel_slices(bytes, consumed, meta.chunks(), bytes_per_pixel)?;
+    Ok((
+        meta,
+        slices.into_iter().map(|slice| slice.to_vec()).collect(),
+    ))
 }
 
 /// Shelf-packs `(frame_index, width, height)` entries into rows of at most
@@ -375,7 +489,8 @@ fn split_chunks(
 mod tests {
     use super::{
         CreatureSheet, CreatureSheetFrame, EffectSheet, EffectSheetFrame, ItemSheet, PackedChunk,
-        PlacedFrame, PlayerSheet, SheetChunk, SheetFrame, pack_chunks, shelf_layout,
+        PlacedFrame, PlayerSheet, SheetChunk, SheetFrame, decode_sheet, encode_sheet, pack_chunks,
+        shelf_layout,
     };
     use crate::epf::{AnimationDirection, EpfAnimationType};
     use crate::mpf::{MpfAnimation, MpfAnimationType};
@@ -390,6 +505,58 @@ mod tests {
         assert_eq!(placed[1], (1, 100, 0));
         assert_eq!(placed[2], (2, 0, 50));
         assert_eq!(placed[3], (3, 100, 50));
+    }
+
+    #[test]
+    fn sheet_file_round_trips_metadata_and_raw_pixels() {
+        let chunks = vec![
+            SheetChunk {
+                width: 4,
+                height: 2,
+            },
+            SheetChunk {
+                width: 2,
+                height: 2,
+            },
+        ];
+        let images = vec![vec![1u8; 4 * 2], vec![2u8; 2 * 2]];
+        let meta = ItemSheet {
+            width: 4,
+            height: 2,
+            chunks: chunks.clone(),
+            frames: vec![Some(SheetFrame {
+                chunk: 0,
+                x: 0,
+                y: 0,
+                width: 2,
+                height: 2,
+                top: 0,
+                left: 0,
+                bottom: 2,
+                right: 2,
+            })],
+        };
+
+        let file = encode_sheet(&meta, images.clone()).unwrap();
+        let (decoded, pixels) = decode_sheet::<ItemSheet>(&file, 1).unwrap();
+        assert_eq!(decoded, meta);
+        assert_eq!(pixels, images);
+    }
+
+    #[test]
+    fn decode_sheet_rejects_truncated_pixel_data() {
+        let meta = ItemSheet {
+            width: 4,
+            height: 2,
+            chunks: vec![SheetChunk {
+                width: 4,
+                height: 2,
+            }],
+            frames: Vec::new(),
+        };
+        let mut file = encode_sheet(&meta, vec![vec![1u8; 8]]).unwrap();
+        file.pop(); // truncate one pixel
+        assert!(decode_sheet::<ItemSheet>(&file, 1).is_err());
     }
 
     #[test]

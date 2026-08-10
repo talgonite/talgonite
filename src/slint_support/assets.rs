@@ -1,8 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
 
-use formats::epf::EpfImage;
+use formats::epf::AnimationDirection;
 use formats::game_files::SquashfsError;
+use formats::mpf::MpfAnimationType;
+use formats::sheets::{CreatureSheet, ItemSheet, SheetFrame};
 use formats::util::parallel_indexed;
 use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
 use tracing::debug;
@@ -11,8 +13,8 @@ use crate::game_files::GameFiles;
 use crate::metafile_store::MetafileStore;
 
 /// Which icon sheet a sprite id refers to. Icons with the same kind share the
-/// same EPF file layout and palette, so sprite ids are only meaningful within
-/// a kind.
+/// same packed sheet layout and palette, so sprite ids are only meaningful
+/// within a kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IconKind {
     Item,
@@ -34,9 +36,13 @@ pub struct SlintAssetLoader {
     icon_cache: RwLock<IconCache>,
 }
 
-/// One icon in a batch, with the exact file + frame + palette it needs.
+/// One icon in a batch, with the exact sheet + frame + palette it needs.
 struct IconLoadPlan {
-    epf_path: String,
+    /// Base path of the packed sheet, without extension (e.g.
+    /// `Legend/item001`). The runtime reads the single `{base}.sheet.bin`
+    /// file (oxicode metadata + raw chunk pixels), exactly like the scene
+    /// stores.
+    sheet_path: String,
     palette_path: String,
     palette_index: usize,
     frame_index: usize,
@@ -167,35 +173,30 @@ impl SlintAssetLoader {
             }
 
             debug!(
-                "NPC {} not found in portrait map, falling back to MPF",
+                "NPC {} not found in portrait map, falling back to creature sheet",
                 npc_name
             );
         }
 
-        let mpf_path = format!("hades/mns{:03}.mpf.bin", sprite_id);
-        let mpf_bytes = game_files
-            .get_file(&mpf_path)
-            .ok_or_else(|| format!("MPF not found: {}", mpf_path))?;
-        let (mpf_file, _): (formats::mpf::MpfFile, _) =
-            oxicode::decode_from_slice(&mpf_bytes).map_err(|e| e.to_string())?;
+        let base = format!("hades/mns{:03}", sprite_id);
+        let (sheet, chunk_pixels) = Self::load_sheet::<CreatureSheet>(game_files, &base, 1)?;
 
-        let frame_index = if let Some(anim) = mpf_file
+        let frame_index = if let Some(anim) = sheet
             .animations
             .iter()
-            .find(|a| a.animation_type == formats::mpf::MpfAnimationType::Standing)
+            .find(|a| a.animation_type == MpfAnimationType::Standing)
         {
-            anim.frame_index_for_direction(formats::epf::AnimationDirection::Towards) as usize
+            anim.frame_index_for_direction(AnimationDirection::Towards) as usize
         } else {
             0
         };
 
-        if frame_index >= mpf_file.frames.len() {
-            return Err(format!("Frame index {} out of range", frame_index));
-        }
-
-        let frame = &mpf_file.frames[frame_index];
-        let w = (frame.right - frame.left).max(1) as u32;
-        let h = (frame.bottom - frame.top).max(1) as u32;
+        let frame = sheet
+            .frames
+            .get(frame_index)
+            .copied()
+            .flatten()
+            .ok_or_else(|| format!("Frame index {} out of range", frame_index))?;
 
         let palette_path = "hades/mns.ktx2";
         let palette_bytes = game_files
@@ -204,43 +205,24 @@ impl SlintAssetLoader {
         let (_, _, pal_data) = rendering::texture::Texture::load_ktx2(&palette_bytes)
             .map_err(|e| format!("palette load: {e}"))?;
 
-        let palette_size = 4 * 256;
-        let palette_index = mpf_file.palette_number as usize;
-        let total_palettes = pal_data.len() / palette_size;
-
-        if palette_index >= total_palettes {
-            return Err(format!(
-                "palette index {palette_index} out of range (total {total_palettes})"
-            ));
-        }
-        let pal_offset = palette_size * palette_index;
-        let palette_rgba = &pal_data[pal_offset..pal_offset + palette_size];
-
-        let mut pixel_buffer = SharedPixelBuffer::<Rgba8Pixel>::new(w, h);
-        let pixels = pixel_buffer.make_mut_slice();
-
-        let frame_indices = &frame.data[..(w * h) as usize];
-
-        for (i, &idx) in frame_indices.iter().enumerate() {
-            if idx == 0 {
-                pixels[i] = Rgba8Pixel {
-                    r: 0,
-                    g: 0,
-                    b: 0,
-                    a: 0,
-                };
-            } else {
-                let pal_idx = idx as usize * 4;
-                pixels[i] = Rgba8Pixel {
-                    r: palette_rgba[pal_idx],
-                    g: palette_rgba[pal_idx + 1],
-                    b: palette_rgba[pal_idx + 2],
-                    a: palette_rgba[pal_idx + 3],
-                };
-            }
-        }
-
-        Ok(Image::from_rgba8(pixel_buffer))
+        let palette_rgba = Self::palette_row(&pal_data, sheet.palette_number as usize)?;
+        let chunk = sheet
+            .chunks
+            .get(frame.chunk as usize)
+            .ok_or_else(|| format!("chunk {} out of range", frame.chunk))?;
+        let pixels = chunk_pixels
+            .get(frame.chunk as usize)
+            .ok_or_else(|| format!("chunk {} pixels missing", frame.chunk))?;
+        let buffer = Self::bake_indexed_rect(
+            pixels,
+            chunk.width,
+            frame.x,
+            frame.y,
+            frame.width,
+            frame.height,
+            palette_rgba,
+        )?;
+        Ok(Image::from_rgba8(buffer))
     }
 
     pub fn load_world_map_image(
@@ -248,7 +230,7 @@ impl SlintAssetLoader {
         game_files: &GameFiles,
         field_name: &str,
     ) -> Result<Image, String> {
-        let epf_path = format!("setoa/{}.epf.bin", field_name);
+        let base = format!("setoa/{}", field_name);
         let pal_path = format!("setoa/{}.pal", field_name);
 
         let pal_bytes = game_files
@@ -266,17 +248,36 @@ impl SlintAssetLoader {
             palette_rgba[i * 4 + 3] = 255;
         }
 
-        let epf_bytes = game_files
-            .get_file(&epf_path)
-            .ok_or_else(|| format!("EPF file not found: {}", epf_path))?;
-        let epf_image = SlintAssetLoader::decode_epf_image(&epf_bytes)?;
-        let buffer = SlintAssetLoader::build_frame_buffer(&epf_image, 0, &palette_rgba)?;
+        let (sheet, chunk_pixels) = Self::load_sheet::<ItemSheet>(game_files, &base, 1)?;
+        let frame = sheet
+            .frames
+            .first()
+            .copied()
+            .flatten()
+            .ok_or_else(|| "world map sheet has no frames".to_string())?;
+        let chunk = sheet
+            .chunks
+            .get(frame.chunk as usize)
+            .ok_or_else(|| format!("chunk {} out of range", frame.chunk))?;
+        let pixels = chunk_pixels
+            .get(frame.chunk as usize)
+            .ok_or_else(|| format!("chunk {} pixels missing", frame.chunk))?;
+        let buffer = Self::bake_indexed_rect(
+            pixels,
+            chunk.width,
+            frame.x,
+            frame.y,
+            frame.width,
+            frame.height,
+            &palette_rgba,
+        )?;
         Ok(Image::from_rgba8(buffer))
     }
 
     /// Load `requests` (assumed deduplicated) in parallel and return a result
-    /// per request. File reads go through the archive's parallel reader, then
-    /// EPF decode and pixel expansion are spread across worker threads.
+    /// per request. Sheet metadata, chunk images, and palettes are read
+    /// through the archive's parallel reader, then rect extraction and pixel
+    /// expansion are spread across worker threads.
     fn load_icons_batch(
         &self,
         game_files: &GameFiles,
@@ -291,7 +292,7 @@ impl SlintAssetLoader {
                     let file_index = zero_based / ITEMS_PER_FILE + 1;
                     let index_in_file = (zero_based % ITEMS_PER_FILE) as usize;
                     IconLoadPlan {
-                        epf_path: format!("Legend/item{:03}.epf.bin", file_index),
+                        sheet_path: format!("Legend/item{:03}", file_index),
                         palette_path: "Legend/item.ktx2".to_string(),
                         palette_index: self
                             .item_palette_table
@@ -302,13 +303,13 @@ impl SlintAssetLoader {
                     }
                 }
                 IconKind::Skill => IconLoadPlan {
-                    epf_path: "setoa/skill001.epf.bin".to_string(),
+                    sheet_path: "setoa/skill001".to_string(),
                     palette_path: "setoa/gui.ktx2".to_string(),
                     palette_index: 6,
                     frame_index: sprite as usize,
                 },
                 IconKind::Spell => IconLoadPlan {
-                    epf_path: "setoa/spell001.epf.bin".to_string(),
+                    sheet_path: "setoa/spell001".to_string(),
                     palette_path: "setoa/gui.ktx2".to_string(),
                     palette_index: 6,
                     frame_index: sprite as usize,
@@ -316,16 +317,16 @@ impl SlintAssetLoader {
             })
             .collect();
 
-        // Collect every distinct archive path (EPF files + palettes) so the
-        // whole batch is read in one parallel pass.
+        // Collect every distinct palette path so palettes are read in one
+        // parallel pass and shared across every icon in the batch.
         let mut paths: Vec<String> = Vec::new();
-        let mut path_index: HashMap<&str, usize> = HashMap::new();
+        let mut path_index: HashMap<String, usize> = HashMap::new();
         for plan in &plans {
-            for path in [&plan.epf_path, &plan.palette_path] {
-                if let std::collections::hash_map::Entry::Vacant(entry) = path_index.entry(path) {
-                    entry.insert(paths.len());
-                    paths.push(path.clone());
-                }
+            if let std::collections::hash_map::Entry::Vacant(entry) =
+                path_index.entry(plan.palette_path.clone())
+            {
+                entry.insert(paths.len());
+                paths.push(plan.palette_path.clone());
             }
         }
 
@@ -336,8 +337,8 @@ impl SlintAssetLoader {
             files.insert(path, result);
         }
 
-        // Decode each palette file once (shared across every icon in the batch);
-        // individual icons slice out the palette index they need below.
+        // Decode each palette file once; individual icons slice out the
+        // palette index they need below.
         let mut palettes: HashMap<String, Result<Vec<u8>, String>> = HashMap::new();
         for plan in &plans {
             if palettes.contains_key(&plan.palette_path) {
@@ -351,10 +352,10 @@ impl SlintAssetLoader {
             palettes.insert(plan.palette_path.clone(), palette);
         }
 
-        // Decode each EPF file once, in parallel.
-        let epf_paths: Vec<String> = plans
+        // Decode each sheet (metadata + chunk images) once, in parallel.
+        let sheet_bases: Vec<String> = plans
             .iter()
-            .map(|plan| plan.epf_path.clone())
+            .map(|plan| plan.sheet_path.clone())
             .collect::<HashSet<_>>()
             .into_iter()
             .collect();
@@ -363,18 +364,14 @@ impl SlintAssetLoader {
             .unwrap_or(1)
             .max(1);
 
-        let mut epf_images: HashMap<String, Result<EpfImage, String>> =
-            HashMap::with_capacity(epf_paths.len());
-        for (_, (path, decoded)) in parallel_indexed(epf_paths.len(), worker_count, |index| {
-            let path = &epf_paths[index];
-            let decoded = match files.get(path) {
-                Some(Ok(bytes)) => SlintAssetLoader::decode_epf_image(bytes),
-                Some(Err(err)) => Err(format!("{}: {}", path, err)),
-                None => Err(format!("{} not found", path)),
-            };
-            (path.clone(), decoded)
+        let mut sheets: HashMap<String, Result<(ItemSheet, Vec<Vec<u8>>), String>> =
+            HashMap::with_capacity(sheet_bases.len());
+        for (_, (base, decoded)) in parallel_indexed(sheet_bases.len(), worker_count, |index| {
+            let base = &sheet_bases[index];
+            let decoded = Self::load_sheet::<ItemSheet>(game_files, base, 1);
+            (base.clone(), decoded)
         }) {
-            epf_images.insert(path, decoded);
+            sheets.insert(base, decoded);
         }
 
         // Build the final RGBA pixel buffers for every request, in parallel.
@@ -383,7 +380,7 @@ impl SlintAssetLoader {
         for (index, result) in
             parallel_indexed(plans.len(), worker_count.min(plans.len()).max(1), |index| {
                 let plan = &plans[index];
-                Self::build_icon_buffer(plan, &epf_images, &palettes)
+                Self::build_icon_buffer(plan, &sheets, &palettes)
             })
         {
             buffers[index] = Some(result);
@@ -397,13 +394,13 @@ impl SlintAssetLoader {
 
     fn build_icon_buffer(
         plan: &IconLoadPlan,
-        epf_images: &HashMap<String, Result<EpfImage, String>>,
+        sheets: &HashMap<String, Result<(ItemSheet, Vec<Vec<u8>>), String>>,
         palettes: &HashMap<String, Result<Vec<u8>, String>>,
     ) -> Result<SharedPixelBuffer<Rgba8Pixel>, String> {
-        let epf = match epf_images.get(&plan.epf_path) {
-            Some(Ok(image)) => image,
-            Some(Err(err)) => return Err(format!("{}: {}", plan.epf_path, err)),
-            None => return Err(format!("{} not read", plan.epf_path)),
+        let (sheet, chunk_pixels) = match sheets.get(&plan.sheet_path) {
+            Some(Ok(sheet)) => sheet,
+            Some(Err(err)) => return Err(format!("{}: {}", plan.sheet_path, err)),
+            None => return Err(format!("{} not read", plan.sheet_path)),
         };
         let palette = match palettes.get(&plan.palette_path) {
             Some(Ok(bytes)) => bytes,
@@ -411,17 +408,14 @@ impl SlintAssetLoader {
             None => return Err(format!("{} not read", plan.palette_path)),
         };
 
-        const PALETTE_SIZE: usize = 4 * 256;
-        let offset = PALETTE_SIZE * plan.palette_index;
-        let palette_rgba = palette.get(offset..offset + PALETTE_SIZE).ok_or_else(|| {
-            format!(
-                "palette index {} out of range (total {})",
-                plan.palette_index,
-                palette.len() / PALETTE_SIZE
-            )
-        })?;
-
-        SlintAssetLoader::build_frame_buffer(epf, plan.frame_index, palette_rgba)
+        let palette_rgba = Self::palette_row(palette, plan.palette_index)?;
+        let frame = sheet
+            .frames
+            .get(plan.frame_index)
+            .copied()
+            .flatten()
+            .ok_or_else(|| format!("frame index {} out of range", plan.frame_index))?;
+        Self::bake_sheet_frame(frame, sheet, chunk_pixels, palette_rgba)
     }
 
     fn decode_palette_file(palette_bytes: &[u8]) -> Result<Vec<u8>, String> {
@@ -433,56 +427,105 @@ impl SlintAssetLoader {
         Ok(pal_data)
     }
 
-    fn decode_epf_image(epf_bytes: &[u8]) -> Result<EpfImage, String> {
-        if epf_bytes.is_empty() {
-            return Err("EPF file is empty".to_string());
-        }
-        let (epf_image, _): (EpfImage, _) =
-            oxicode::decode_from_slice(epf_bytes).map_err(|e| format!("decode epf: {e}"))?;
-        Ok(epf_image)
+    /// Reads a packed sheet's single file (`{base}.sheet.bin`, oxicode
+    /// metadata + raw chunk pixels). The metadata layout is shared with the
+    /// scene stores, so the UI addresses frames through the exact same index.
+    fn load_sheet<M: oxicode::Decode + formats::sheets::SheetMeta>(
+        game_files: &GameFiles,
+        base: &str,
+        bytes_per_pixel: u32,
+    ) -> Result<(M, Vec<Vec<u8>>), String> {
+        let meta_path = format!("{base}.sheet.bin");
+        let meta_bytes = game_files
+            .get_file(&meta_path)
+            .ok_or_else(|| format!("{} not found", meta_path))?;
+        formats::sheets::decode_sheet::<M>(&meta_bytes, bytes_per_pixel)
+            .map_err(|e| format!("decode sheet: {e}"))
     }
 
-    fn build_frame_buffer(
-        epf_image: &EpfImage,
-        frame_index: usize,
+    /// Bakes one frame rect out of an `ItemSheet` chunk into an RGBA buffer.
+    fn bake_sheet_frame(
+        frame: SheetFrame,
+        sheet: &ItemSheet,
+        chunk_pixels: &[Vec<u8>],
         palette_rgba: &[u8],
     ) -> Result<SharedPixelBuffer<Rgba8Pixel>, String> {
-        if frame_index >= epf_image.frames.len() {
-            return Err("frame index out of range".into());
-        }
+        let chunk = sheet
+            .chunks
+            .get(frame.chunk as usize)
+            .ok_or_else(|| format!("chunk {} out of range", frame.chunk))?;
+        let pixels = chunk_pixels
+            .get(frame.chunk as usize)
+            .ok_or_else(|| format!("chunk {} pixels missing", frame.chunk))?;
+        Self::bake_indexed_rect(
+            pixels,
+            chunk.width,
+            frame.x,
+            frame.y,
+            frame.width,
+            frame.height,
+            palette_rgba,
+        )
+    }
 
-        let frame = &epf_image.frames[frame_index];
-        let w = frame.right.saturating_sub(frame.left).max(1) as u32;
-        let h = frame.bottom.saturating_sub(frame.top).max(1) as u32;
-
-        if frame.data.len() < (w * h) as usize {
-            return Err("frame data truncated".into());
-        }
-
-        let mut pixel_buffer = SharedPixelBuffer::<Rgba8Pixel>::new(w, h);
+    /// Bakes palette-indexed pixels for a rect inside a row-major chunk
+    /// buffer into an RGBA buffer. Index 0 is transparent; other indices look
+    /// up `palette_rgba` (one 256-color row per palette).
+    fn bake_indexed_rect(
+        chunk_pixels: &[u8],
+        chunk_width: u32,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+        palette_rgba: &[u8],
+    ) -> Result<SharedPixelBuffer<Rgba8Pixel>, String> {
+        let w = width as usize;
+        let h = height as usize;
+        let chunk_width = chunk_width as usize;
+        let mut pixel_buffer = SharedPixelBuffer::<Rgba8Pixel>::new(width, height);
         let pixels = pixel_buffer.make_mut_slice();
 
-        let frame_indices = &frame.data[..(w * h) as usize];
-
-        for (i, &idx) in frame_indices.iter().enumerate() {
-            if idx == 0 {
-                pixels[i] = Rgba8Pixel {
-                    r: 0,
-                    g: 0,
-                    b: 0,
-                    a: 0,
-                };
-            } else {
-                let pal_idx = idx as usize * 4;
-                pixels[i] = Rgba8Pixel {
-                    r: palette_rgba[pal_idx],
-                    g: palette_rgba[pal_idx + 1],
-                    b: palette_rgba[pal_idx + 2],
-                    a: palette_rgba[pal_idx + 3],
-                };
+        for row in 0..h {
+            let row_base = (y as usize + row) * chunk_width + x as usize;
+            for col in 0..w {
+                let idx = *chunk_pixels
+                    .get(row_base + col)
+                    .ok_or_else(|| "chunk pixel data truncated".to_string())?;
+                let dst = row * w + col;
+                if idx == 0 {
+                    pixels[dst] = Rgba8Pixel {
+                        r: 0,
+                        g: 0,
+                        b: 0,
+                        a: 0,
+                    };
+                } else {
+                    let pal_idx = idx as usize * 4;
+                    pixels[dst] = Rgba8Pixel {
+                        r: palette_rgba[pal_idx],
+                        g: palette_rgba[pal_idx + 1],
+                        b: palette_rgba[pal_idx + 2],
+                        a: palette_rgba[pal_idx + 3],
+                    };
+                }
             }
         }
 
         Ok(pixel_buffer)
+    }
+
+    /// Returns the 256-color RGBA row for `palette_index` from a packed
+    /// palette texture (each row is 4 * 256 bytes).
+    fn palette_row<'a>(palette: &'a [u8], palette_index: usize) -> Result<&'a [u8], String> {
+        const PALETTE_SIZE: usize = 4 * 256;
+        let offset = PALETTE_SIZE * palette_index;
+        palette.get(offset..offset + PALETTE_SIZE).ok_or_else(|| {
+            format!(
+                "palette index {} out of range (total {})",
+                palette_index,
+                palette.len() / PALETTE_SIZE
+            )
+        })
     }
 }

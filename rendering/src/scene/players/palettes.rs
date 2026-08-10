@@ -1,12 +1,10 @@
 use super::types::{Gender, PlayerPieceType, PlayerSpriteKey};
-use crate::texture;
+use crate::scene::sprite_atlas::PaletteRows;
 use formats::game_files::SquashfsArchive;
 use rangemap::RangeMap;
 use rustc_hash::FxHashMap;
 
 type Archive = SquashfsArchive;
-
-const PALETTE_CHARS: [char; 9] = ['b', 'c', 'e', 'f', 'h', 'l', 'm', 'u', 'w'];
 
 #[derive(Debug, Clone)]
 pub struct PaletteLookup {
@@ -36,32 +34,11 @@ impl PaletteLookup {
 }
 
 pub struct PlayerPalettes {
-    info: FxHashMap<char, u32>,
     table: FxHashMap<char, PaletteLookup>,
-    count: u32,
 }
 
 impl PlayerPalettes {
-    pub fn new(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        archive: &Archive,
-    ) -> (Self, texture::Texture, texture::Texture) {
-        let (palette_texture, dye_texture, info) = Self::load_palettes(archive, device, queue);
-        let table = Self::load_palette_table(archive);
-
-        (
-            Self {
-                info,
-                table,
-                count: palette_texture.texture.height(),
-            },
-            palette_texture,
-            dye_texture,
-        )
-    }
-
-    fn load_palette_table(archive: &Archive) -> FxHashMap<char, PaletteLookup> {
+    pub fn new(archive: &Archive) -> Self {
         let mut palette_table = FxHashMap::default();
 
         fn load(archive: &Archive, path: &str) -> anyhow::Result<RangeMap<u16, u16>> {
@@ -71,7 +48,7 @@ impl PlayerPalettes {
             Ok(base_palette_table)
         }
 
-        for letter in PALETTE_CHARS.iter() {
+        for letter in crate::scene::sprite_atlas::PLAYER_PALETTE_CHARS.iter() {
             palette_table.insert(
                 *letter,
                 PaletteLookup::new(
@@ -82,58 +59,19 @@ impl PlayerPalettes {
             );
         }
 
-        palette_table
-    }
-
-    fn load_palettes(
-        archive: &Archive,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) -> (texture::Texture, texture::Texture, FxHashMap<char, u32>) {
-        let mut data = Vec::new();
-        let mut range_map = FxHashMap::default();
-        let mut total_h = 0;
-
-        let dye_data = archive.get_file_or_panic("Legend/color0.ktx2");
-
-        let dye_palette =
-            texture::Texture::from_ktx2_rgba8(device, queue, "dye_data", &dye_data).unwrap();
-
-        debug_assert_eq!(dye_palette.texture.width(), 256);
-
-        for letter in PALETTE_CHARS.iter() {
-            let path = format!("khanpal/pal{}.ktx2", letter);
-            let bytes = archive.get_file_or_panic(&path);
-
-            let (w, h, palette_data) = texture::Texture::load_ktx2(&bytes).unwrap();
-
-            range_map.insert(*letter, total_h);
-
-            debug_assert_eq!(w, 256);
-            total_h += h;
-
-            data.extend_from_slice(&palette_data);
+        Self {
+            table: palette_table,
         }
-
-        (
-            texture::Texture::from_data(
-                device,
-                queue,
-                "dye_palette",
-                256,
-                total_h,
-                wgpu::TextureFormat::Rgba8Unorm,
-                &data,
-            )
-            .unwrap(),
-            dye_palette,
-            range_map,
-        )
     }
 
-    pub fn get_palette_params(&self, key: &PlayerSpriteKey, dye_color: u8) -> (f32, f32) {
+    pub fn get_palette_params(
+        &self,
+        key: &PlayerSpriteKey,
+        dye_color: u8,
+        rows: &PaletteRows,
+    ) -> (f32, f32) {
         let palette_prefix = key.prefix_for_palette(key.sprite_id);
-        let palette_y = *self.info.get(&palette_prefix).unwrap_or(&0);
+        let palette_y = rows.players.get(&palette_prefix).copied().unwrap_or(0);
 
         let palette_index = if matches!(
             key.slot,
@@ -147,7 +85,7 @@ impl PlayerPalettes {
             }
         };
 
-        let v_coord = ((palette_y + palette_index as u32) as f32 + 0.5) / self.count as f32;
+        let v_coord = rows.row(palette_y, palette_index as u32);
         let dye_param = if matches!(
             key.slot,
             PlayerPieceType::Body | PlayerPieceType::Face | PlayerPieceType::Emote

@@ -289,9 +289,17 @@ impl EffectManager {
             .map(|s| s.frame_indices.clone());
 
         let base = format!("roh/efct{:03}", effect_id);
-        let meta_bytes = archive.get_file(&format!("{base}.sheet.bin")).ok()?;
-        let (meta, _) = oxicode::decode_from_slice::<EffectSheet>(&meta_bytes).ok()?;
-        self.load_sheet(queue, archive, effect_id, &base, meta, sequence)
+        let sheet_bytes = archive.get_file(&format!("{base}.sheet.bin")).ok()?;
+        let (meta, consumed) = oxicode::decode_from_slice::<EffectSheet>(&sheet_bytes).ok()?;
+        let bytes_per_pixel = if meta.indexed { 1 } else { 4 };
+        let chunk_slices = formats::sheets::chunk_pixel_slices(
+            &sheet_bytes,
+            consumed,
+            &meta.chunks,
+            bytes_per_pixel,
+        )
+        .ok()?;
+        self.load_sheet(queue, effect_id, meta, &chunk_slices, sequence)
     }
 
     /// Frees every cached effect with no live instances, returning its atlas
@@ -325,26 +333,14 @@ impl EffectManager {
     /// Loads a pre-packed effect sheet: allocates one atlas slot per chunk,
     /// uploads the sheet pixels (baking palette-indexed EPF frames to RGBA
     /// first), and caches the effect.
-    fn load_sheet(
+    fn load_sheet<'a>(
         &mut self,
         queue: &wgpu::Queue,
-        archive: &SquashfsArchive,
         effect_id: u16,
-        base: &str,
         meta: EffectSheet,
+        chunk_slices: &[&'a [u8]],
         sequence: Option<Vec<usize>>,
     ) -> Option<()> {
-        let paths: Vec<String> = (0..meta.chunks.len())
-            .map(|chunk| format!("{base}.sheet{chunk}.ktx2"))
-            .collect();
-        let results = archive.get_files_parallel(&paths);
-        let mut images = Vec::with_capacity(meta.chunks.len());
-        for result in results {
-            let bytes = result.ok()?;
-            let (_, _, pixels) = texture::Texture::load_ktx2(&bytes).ok()?;
-            images.push(pixels);
-        }
-
         let mut allocations: Vec<etagere::Allocation> = Vec::with_capacity(meta.chunks.len());
         for chunk in &meta.chunks {
             let mut allocation = self
@@ -370,14 +366,12 @@ impl EffectManager {
             allocations.push(allocation);
         }
 
-        // Upload one whole chunk image per slot. A sheet belongs to a single
-        // effect, so one palette row applies to every pixel; baking the whole
-        // chunk keeps all frames intact (per-frame uploads of the same slot
-        // would overwrite each other) and matches the old uploader exactly.
-        let mut uploads = Vec::with_capacity(meta.chunks.len());
-        for (chunk_index, image) in images.into_iter().enumerate() {
-            let chunk = meta.chunks[chunk_index];
-            let data = if meta.indexed {
+        // Bake palette-indexed chunks up front so their buffers outlive the
+        // uploads that borrow them; RGBA chunks upload directly from the file
+        // slices without a copy.
+        let mut baked = Vec::with_capacity(meta.chunks.len());
+        for (_, image) in chunk_slices.iter().enumerate() {
+            if meta.indexed {
                 let palette_index =
                     self.palette_indices.get(&effect_id).copied().unwrap_or(0) as u8;
                 let Some(palette) = self.palette_data.as_ref() else {
@@ -386,7 +380,21 @@ impl EffectManager {
                     }
                     return None;
                 };
-                self.apply_palette(&image, palette, palette_index)
+                baked.push(self.apply_palette(image, palette, palette_index));
+            } else {
+                baked.push(Vec::new());
+            }
+        }
+
+        // Upload one whole chunk image per slot. A sheet belongs to a single
+        // effect, so one palette row applies to every pixel; baking the whole
+        // chunk keeps all frames intact (per-frame uploads of the same slot
+        // would overwrite each other) and matches the old uploader exactly.
+        let mut uploads = Vec::with_capacity(meta.chunks.len());
+        for (chunk_index, &image) in chunk_slices.iter().enumerate() {
+            let chunk = meta.chunks[chunk_index];
+            let data: &[u8] = if meta.indexed {
+                &baked[chunk_index]
             } else {
                 image
             };

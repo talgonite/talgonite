@@ -2,6 +2,7 @@ use formats::epf::EpfImage;
 use formats::util::parallel_indexed;
 use rendering::scene::players::PlayerPieceType;
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 use crate::asset_record::AssetRecord;
 use crate::deferred_job::AnimationAssetJob;
@@ -155,8 +156,8 @@ impl AnimationProcessor {
     }
 }
 
-/// Packs one player part's animations into sheet images and returns the
-/// metadata record plus one KTX2 record per chunk.
+/// Packs one player part's animations into sheet chunks and returns the
+/// single per-asset sheet record (oxicode metadata + raw chunk pixels).
 fn build_player_sheet_records(
     prefix: &str,
     num: &str,
@@ -164,22 +165,14 @@ fn build_player_sheet_records(
 ) -> anyhow::Result<Vec<AssetRecord>> {
     let (sheet, sheet_images) = sheet_processor::build_player_sheets(animations);
     let sheet_bytes = oxicode::encode_to_vec(&sheet)?;
-    let base = format!("khan/{}/{}", prefix, num);
-    let mut records = vec![AssetRecord::bytes(format!("{base}.sheet.bin"), sheet_bytes)];
-    for (chunk_index, image) in sheet_images.into_iter().enumerate() {
-        let chunk = sheet.chunks[chunk_index];
-        let ktx = formats::ktx2::encode_ktx2(
-            chunk.width,
-            chunk.height,
-            formats::ktx2::VK_FORMAT_R8_UNORM,
-            &image,
-        )?;
-        records.push(AssetRecord::bytes(
-            format!("{base}.sheet{chunk_index}.ktx2"),
-            ktx,
-        ));
-    }
-    Ok(records)
+    sheet_processor::sheet_records(
+        Path::new("khan"),
+        &format!("{prefix}/{num}"),
+        1,
+        sheet_bytes,
+        sheet.chunks,
+        sheet_images,
+    )
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -202,7 +195,6 @@ impl KhanCleanupEntry {
 #[cfg(test)]
 mod tests {
     use super::{AnimationProcessor, build_player_sheet_records};
-    use crate::asset_record::AssetRecord;
     use crate::deferred_job::AnimationAssetJob;
     use formats::epf::{AnimationDirection, EpfAnimation, EpfAnimationType, EpfFrame, EpfImage};
     use std::collections::HashMap;
@@ -249,9 +241,8 @@ mod tests {
             .collect();
 
         assert!(paths.contains(&"khan/ma/001.sheet.bin".to_string()));
-        assert!(paths.contains(&"khan/ma/001.sheet0.ktx2".to_string()));
         assert!(paths.contains(&"khan/mb/002.sheet.bin".to_string()));
-        assert!(paths.contains(&"khan/mb/002.sheet0.ktx2".to_string()));
+        assert!(!paths.iter().any(|path| path.ends_with(".ktx2")));
     }
 
     #[test]
@@ -262,7 +253,7 @@ mod tests {
             image: test_epf(9),
         }];
         let records = build_player_sheet_records("mm", "042", &animations).unwrap();
-        assert_eq!(records.len(), 2);
+        assert_eq!(records.len(), 1);
 
         let mut paths = HashMap::new();
         for record in records {
@@ -273,7 +264,6 @@ mod tests {
             paths.insert(path, bytes);
         }
         assert!(paths.contains_key(Path::new("khan/mm/042.sheet.bin")));
-        assert!(paths.contains_key(Path::new("khan/mm/042.sheet0.ktx2")));
-        assert!(paths[Path::new("khan/mm/042.sheet0.ktx2")].len() > 100);
+        assert!(paths[Path::new("khan/mm/042.sheet.bin")].len() > 100);
     }
 }

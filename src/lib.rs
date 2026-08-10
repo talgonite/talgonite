@@ -39,10 +39,9 @@ pub mod webui;
 pub use minimap_assets::{FULLSCREEN_MINIMAP_ASSETS, MinimapAssets};
 
 pub use resources::{
-    Camera, CreatureAssetStoreState, CreatureBatchState, EffectManagerState, ItemAssetStoreState,
-    ItemBatchState, MapRendererState, MinimapCacheState, MinimapRendererState,
-    PlayerAssetStoreState, PlayerBatchState, PlayerPortraitState, PortraitRenderTarget,
-    RendererState, StorageConfig, TranslucentPlayerPassState, WindowSurface,
+    Camera, EffectManagerState, MapRendererState, MinimapCacheState, MinimapRendererState,
+    PlayerPortraitState, PortraitRenderTarget, RendererState, SpriteSceneState, StorageConfig,
+    TranslucentPlayerPassState, UnifiedSpriteBatchState, WindowSurface,
 };
 
 #[derive(Resource)]
