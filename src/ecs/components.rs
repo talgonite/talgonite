@@ -291,6 +291,8 @@ pub struct PlayerSpriteRenderCache {
     pub anim_type: formats::epf::EpfAnimationType,
     pub frame_index: usize,
     pub frame_count: usize,
+    /// Instance flags last written to the GPU; forces updates when they change.
+    pub flags: rendering::instance::InstanceFlag,
 }
 
 #[derive(Bundle)]

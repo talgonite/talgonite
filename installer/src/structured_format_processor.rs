@@ -312,7 +312,12 @@ mod tests {
     #[test]
     fn mpf_emits_sheet_records_without_duplicate_pixel_payload() {
         let processor = StructuredFormatProcessor;
-        let records = emitted_records(&processor, Path::new("hades"), "mns001.mpf", test_mpf_buffer());
+        let records = emitted_records(
+            &processor,
+            Path::new("hades"),
+            "mns001.mpf",
+            test_mpf_buffer(),
+        );
         let paths = emitted_paths(&records);
 
         assert!(paths.contains(&"hades/mns001.sheet.bin".to_string()));
@@ -323,7 +328,12 @@ mod tests {
     #[test]
     fn item_epf_emits_sheet_records_without_duplicate_pixel_payload() {
         let processor = StructuredFormatProcessor;
-        let records = emitted_records(&processor, Path::new("Legend"), "item001.epf", test_epf_buffer());
+        let records = emitted_records(
+            &processor,
+            Path::new("Legend"),
+            "item001.epf",
+            test_epf_buffer(),
+        );
         let paths = emitted_paths(&records);
 
         assert!(paths.contains(&"Legend/item001.sheet.bin".to_string()));
@@ -334,7 +344,12 @@ mod tests {
     #[test]
     fn plain_epf_emits_sheet_records_for_ui_consumers() {
         let processor = StructuredFormatProcessor;
-        let records = emitted_records(&processor, Path::new("setoa"), "skill001.epf", test_epf_buffer());
+        let records = emitted_records(
+            &processor,
+            Path::new("setoa"),
+            "skill001.epf",
+            test_epf_buffer(),
+        );
         let paths = emitted_paths(&records);
 
         assert!(paths.contains(&"setoa/skill001.sheet.bin".to_string()));

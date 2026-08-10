@@ -263,6 +263,8 @@ fn spawn_display_player(
         _ => false,
     };
 
+    let is_local = Some(player.id) == local_id;
+
     let mut player_entity = commands.spawn((
         PlayerBundle {
             player: Player {
@@ -282,7 +284,6 @@ fn spawn_display_player(
         Hitbox::screen_space(Vec2::new(-0.25, -1.25), Vec2::new(0.25, 0.65)),
     ));
 
-    let is_local = Some(player.id) == local_id;
     if is_local {
         player_entity.insert((
             LocalPlayer,
@@ -392,15 +393,16 @@ fn spawn_display_player(
         }
         DisplayArgs::Dead {
             head_sprite,
-            body_sprite,
+            body_sprite: _,
             is_translucent: _,
             face_sprite: _,
             is_male: _,
         } => {
             player_entity.with_children(|parent| {
                 parent.spawn(PlayerSprite {
-                    id: *body_sprite as u16,
-                    slot: PlayerPieceType::Body,
+                    // Ghosts use the dedicated shape layer, not a khan/mm id.
+                    id: 2,
+                    slot: PlayerPieceType::BodyShape,
                     color: 0,
                 });
                 parent.spawn(PlayerSprite {
@@ -440,11 +442,21 @@ fn spawn_player_sprites(
 ) {
     player_entity.with_children(|parent| {
         if body_sprite < 0xA0 {
-            parent.spawn(PlayerSprite {
-                id: if body_sprite >= 0x50 { 5 } else { 1 },
-                slot: PlayerPieceType::Body,
-                color: body_color,
-            });
+            // Invisible bodies keep the normal body; the transparency flag
+            // (PlayerRenderState) fades the whole player.
+            if matches!(body_sprite, 0x50 | 0x60) {
+                parent.spawn(PlayerSprite {
+                    id: 1,
+                    slot: PlayerPieceType::Body,
+                    color: body_color,
+                });
+            } else {
+                parent.spawn(PlayerSprite {
+                    id: if body_sprite >= 0x50 { 5 } else { 1 },
+                    slot: PlayerPieceType::Body,
+                    color: body_color,
+                });
+            }
         }
 
         if face_sprite > 0 {

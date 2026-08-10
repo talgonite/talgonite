@@ -1,22 +1,20 @@
 pub mod types;
 pub use types::*;
 
-use formats::sheets::CreatureSheet;
 use bevy_math::Vec2;
-use rustc_hash::FxHashMap;
 use formats::game_files::SquashfsArchive;
+use formats::sheets::CreatureSheet;
+use rustc_hash::FxHashMap;
 
+use crate::scene::{
+    Instance, Z_CREATURES, get_isometric_coordinate,
+    sprite_atlas::{PaletteRows, SPRITE_ATLAS_HEIGHT, SPRITE_ATLAS_WIDTH, SpriteAtlas},
+    sprite_store::{SpriteStore, SpriteStoreLifecycle, allocate_chunks},
+    texture_atlas::{FrameRow, FrameUpload, merge_uploads},
+};
 use crate::{
     instance::InstanceFlag,
     scene::utils::{atlas_uv, calculate_tile_z},
-};
-use crate::{
-    scene::{
-        Instance, Z_CREATURES, get_isometric_coordinate,
-        sprite_atlas::{PaletteRows, SPRITE_ATLAS_HEIGHT, SPRITE_ATLAS_WIDTH, SpriteAtlas},
-        sprite_store::{SpriteStore, SpriteStoreLifecycle, allocate_chunks},
-        texture_atlas::{FrameRow, FrameUpload, merge_uploads},
-    },
 };
 
 const VERTEX_WIDTH: usize = 512;
@@ -59,9 +57,11 @@ impl SpriteStore for CreatureAssetStore {
         }
 
         let base = format!("hades/mns{:03}", sprite_id);
-        let sheet_bytes = archive.get_file(&format!("{base}.sheet.bin")).map_err(|e| {
-            anyhow::anyhow!("Failed to load sheet for creature {}: {}", sprite_id, e)
-        })?;
+        let sheet_bytes = archive
+            .get_file(&format!("{base}.sheet.bin"))
+            .map_err(|e| {
+                anyhow::anyhow!("Failed to load sheet for creature {}: {}", sprite_id, e)
+            })?;
         let (meta, consumed): (CreatureSheet, usize) = oxicode::decode_from_slice(&sheet_bytes)?;
         let chunk_slices =
             formats::sheets::chunk_pixel_slices(&sheet_bytes, consumed, &meta.chunks, 1)?;

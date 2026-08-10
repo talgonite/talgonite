@@ -15,6 +15,11 @@ pub enum InstanceFlag {
     XRay = 1,
     Hover = 2,
     Translucent = 4,
+    /// Local player's invisible self pops through occluders.
+    Overlay = 8,
+    /// Translucent + Overlay (4 | 8), as its own variant so the bit value is
+    /// a valid discriminant.
+    TranslucentOverlay = 12,
 }
 
 #[derive(Clone)]

@@ -159,10 +159,7 @@ impl SheetMeta for EffectSheet {
 /// Byte offset of each chunk's pixel data inside a sheet file's trailing
 /// pixel blob, plus the total blob length. Rows are tight (`width * height`
 /// pixels per chunk, `bytes_per_pixel` bytes per pixel).
-pub fn chunk_pixel_offsets(
-    chunks: &[SheetChunk],
-    bytes_per_pixel: u32,
-) -> (Vec<usize>, usize) {
+pub fn chunk_pixel_offsets(chunks: &[SheetChunk], bytes_per_pixel: u32) -> (Vec<usize>, usize) {
     let mut offsets = Vec::with_capacity(chunks.len());
     let mut total = 0usize;
     for chunk in chunks {
@@ -220,10 +217,12 @@ pub fn chunk_pixels(
     chunks: &[SheetChunk],
     bytes_per_pixel: u32,
 ) -> anyhow::Result<Vec<Vec<u8>>> {
-    Ok(chunk_pixel_slices(bytes, consumed, chunks, bytes_per_pixel)?
-        .into_iter()
-        .map(|slice| slice.to_vec())
-        .collect())
+    Ok(
+        chunk_pixel_slices(bytes, consumed, chunks, bytes_per_pixel)?
+            .into_iter()
+            .map(|slice| slice.to_vec())
+            .collect(),
+    )
 }
 
 /// Decodes one sheet file into its metadata and one owned pixel buffer per

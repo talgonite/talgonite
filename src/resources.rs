@@ -281,10 +281,7 @@ impl PortraitRenderTarget {
 }
 
 impl PlayerPortraitState {
-    pub fn new(
-        renderer: &RendererState,
-        scene: &SpriteScene,
-    ) -> Self {
+    pub fn new(renderer: &RendererState, scene: &SpriteScene) -> Self {
         Self {
             target: PortraitRenderTarget::new(renderer, scene, "player_portrait", 64, -42.0),
         }
@@ -292,10 +289,7 @@ impl PlayerPortraitState {
 }
 
 impl ProfilePortraitState {
-    pub fn new(
-        renderer: &RendererState,
-        scene: &SpriteScene,
-    ) -> Self {
+    pub fn new(renderer: &RendererState, scene: &SpriteScene) -> Self {
         Self {
             target: PortraitRenderTarget::new(renderer, scene, "profile_portrait", 128, -32.0),
         }
@@ -303,10 +297,7 @@ impl ProfilePortraitState {
 }
 
 impl LobbyPortraitRenderer {
-    pub fn new(
-        renderer: &RendererState,
-        scene: &SpriteScene,
-    ) -> Self {
+    pub fn new(renderer: &RendererState, scene: &SpriteScene) -> Self {
         let portrait_size = 64;
         let depth_texture = rendering::texture::Texture::create_depth_texture(
             &renderer.device,

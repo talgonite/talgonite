@@ -1,8 +1,8 @@
 pub mod types;
 pub use types::*;
 
-use formats::sheets::{ItemSheet, SheetChunk};
 use bevy_math::Vec2;
+use formats::sheets::{ItemSheet, SheetChunk};
 use std::collections::HashMap;
 use tracing::error;
 
@@ -88,9 +88,7 @@ const ITEM_COUNT_BUCKET_SIZE: u32 = 20;
 
 impl ItemAssetStore {
     #[tracing::instrument(level = "info", skip_all)]
-    pub fn new(
-        archive: &formats::game_files::SquashfsArchive,
-    ) -> Self {
+    pub fn new(archive: &formats::game_files::SquashfsArchive) -> Self {
         let palette_table_data = archive
             .get_file("Legend/item.tbl.bin")
             .expect("item palette table missing");
@@ -118,7 +116,10 @@ impl ItemAssetStore {
         allocations: Option<Vec<etagere::Allocation>>,
     ) {
         let Some(allocations) = allocations else {
-            error!("Sprite atlas full - cannot allocate item sheet {}", sheet_index);
+            error!(
+                "Sprite atlas full - cannot allocate item sheet {}",
+                sheet_index
+            );
             return; // a later add can retry
         };
 
@@ -158,13 +159,9 @@ impl ItemAssetStore {
         let pending = std::mem::take(&mut self.pending_sheets);
         let mut uploads = Vec::new();
         for sheet in &pending {
-            let slices = formats::sheets::chunk_pixel_slices(
-                &sheet.bytes,
-                sheet.consumed,
-                &sheet.chunks,
-                1,
-            )
-            .expect("pixel blob validated when the sheet was staged");
+            let slices =
+                formats::sheets::chunk_pixel_slices(&sheet.bytes, sheet.consumed, &sheet.chunks, 1)
+                    .expect("pixel blob validated when the sheet was staged");
             for (rect, chunk_index) in &sheet.slots {
                 let chunk = sheet.chunks[*chunk_index];
                 uploads.push(FrameUpload {
@@ -211,7 +208,6 @@ impl ItemAssetStore {
             "Evicted unused item sheets to make room in the atlas"
         );
     }
-
 }
 
 /// Build the GPU instance for an item at its current position/sprite.

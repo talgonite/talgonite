@@ -4,26 +4,24 @@ pub mod types;
 pub use palettes::*;
 pub use types::*;
 
+use bevy_math::{Vec2, Vec3};
 use etagere::Allocation;
 use formats::epf::{AnimationDirection, EpfAnimationType};
 use formats::sheets::PlayerSheet;
-use bevy_math::{Vec2, Vec3};
 use rustc_hash::{FxHashMap, FxHashSet};
 use tracing::error;
 use wgpu;
 
 use crate::instance::InstanceFlag;
 use crate::make_quad;
-use crate::scene::unified_batch::{SpriteScene, build_player_instance};
 use crate::scene::sprite_store::{SpriteStore, SpriteStoreLifecycle, allocate_chunks};
+use crate::scene::unified_batch::{SpriteScene, build_player_instance};
 use crate::scene::utils::{atlas_uv, calculate_tile_z, direction_to_orientation};
-use crate::{
-    scene::{
-        Instance, TILE_WIDTH_HALF, Z_PLAYERS_BASE, get_isometric_coordinate,
-        sprite::SpriteBatch,
-        sprite_atlas::{PaletteRows, SPRITE_ATLAS_HEIGHT, SPRITE_ATLAS_WIDTH, SpriteAtlas},
-        texture_atlas::{FrameRow, FrameUpload, merge_uploads},
-    },
+use crate::scene::{
+    Instance, TILE_WIDTH_HALF, Z_PLAYERS_BASE, get_isometric_coordinate,
+    sprite::SpriteBatch,
+    sprite_atlas::{PaletteRows, SPRITE_ATLAS_HEIGHT, SPRITE_ATLAS_WIDTH, SpriteAtlas},
+    texture_atlas::{FrameRow, FrameUpload, merge_uploads},
 };
 use formats::game_files::SquashfsArchive;
 
@@ -71,14 +69,15 @@ impl SpriteStore for PlayerAssetStore {
 
         if !self.loaded_sprites.contains_key(key) {
             let base = Self::player_sprite_path(key);
-            let sheet_bytes = archive.get_file(&format!("{base}.sheet.bin")).map_err(|error| {
-                if matches!(&error, formats::game_files::SquashfsError::FileNotFound(_)) {
-                    self.missing_sprites.insert(*key);
-                }
-                anyhow::Error::from(error)
-            })?;
-            let (sheet, consumed): (PlayerSheet, usize) =
-                oxicode::decode_from_slice(&sheet_bytes)?;
+            let sheet_bytes = archive
+                .get_file(&format!("{base}.sheet.bin"))
+                .map_err(|error| {
+                    if matches!(&error, formats::game_files::SquashfsError::FileNotFound(_)) {
+                        self.missing_sprites.insert(*key);
+                    }
+                    anyhow::Error::from(error)
+                })?;
+            let (sheet, consumed): (PlayerSheet, usize) = oxicode::decode_from_slice(&sheet_bytes)?;
             let chunk_slices =
                 formats::sheets::chunk_pixel_slices(&sheet_bytes, consumed, &sheet.chunks, 1)?;
             let allocations = allocate_chunks(atlas, queue, self, others, &sheet.chunks);
@@ -318,10 +317,7 @@ impl PlayerAssetStore {
             .collect();
 
         let Some(allocations) = allocations else {
-            error!(
-                "Sprite atlas full - cannot allocate sprite {:?}",
-                key
-            );
+            error!("Sprite atlas full - cannot allocate sprite {:?}", key);
             return (
                 LoadedSprite {
                     frames: sheet.frames,
@@ -505,8 +501,9 @@ impl PlayerBatch {
         tint: Vec3,
     ) -> anyhow::Result<PlayerSpriteHandle> {
         scene.ensure_player(&sprite, queue, archive)?;
-        let (instance, stack_order) =
-            build_player_instance(scene, &sprite, color, direction, x, y, entity_id, flags, tint);
+        let (instance, stack_order) = build_player_instance(
+            scene, &sprite, color, direction, x, y, entity_id, flags, tint,
+        );
 
         let instance_index = self
             .batch

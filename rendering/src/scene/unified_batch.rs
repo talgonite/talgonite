@@ -15,12 +15,12 @@ use formats::mpf::{MpfAnimation, MpfAnimationType};
 use crate::instance::{Instance, InstanceFlag, SharedInstanceBatch};
 use crate::make_quad;
 use crate::scene::creatures::{
-    AddCreatureResult, CreateInstanceHandle, CreatureAssetStore, get_instance_for_frame as
-    get_creature_instance_for_frame,
+    AddCreatureResult, CreateInstanceHandle, CreatureAssetStore,
+    get_instance_for_frame as get_creature_instance_for_frame,
 };
 use crate::scene::items::{
-    ITEMS_PER_EPF_FILE, Item, ItemAssetStore, ItemInstanceHandle, get_instance_for_frame as
-    get_item_instance_for_frame,
+    ITEMS_PER_EPF_FILE, Item, ItemAssetStore, ItemInstanceHandle,
+    get_instance_for_frame as get_item_instance_for_frame,
 };
 use crate::scene::players::{
     PlayerAssetStore, PlayerSpriteHandle, PlayerSpriteIndex, PlayerSpriteKey,
@@ -234,8 +234,9 @@ impl UnifiedSpriteBatch {
         tint: Vec3,
     ) -> anyhow::Result<PlayerSpriteHandle> {
         scene.ensure_player(&sprite, queue, archive)?;
-        let (instance, stack_order) =
-            build_player_instance(scene, &sprite, color, direction, x, y, entity_id, flags, tint);
+        let (instance, stack_order) = build_player_instance(
+            scene, &sprite, color, direction, x, y, entity_id, flags, tint,
+        );
         let instance_index = self
             .instances
             .add(queue, instance)
@@ -245,7 +246,8 @@ impl UnifiedSpriteBatch {
             index: PlayerSpriteIndex(instance_index),
             stack_order,
         };
-        self.handles.insert(handle.index.index(), SpriteKey::Player(sprite));
+        self.handles
+            .insert(handle.index.index(), SpriteKey::Player(sprite));
         Ok(handle)
     }
 
@@ -387,7 +389,7 @@ impl UnifiedSpriteBatch {
             .find(|a| a.animation_type == MpfAnimationType::Standing)
             .ok_or_else(|| {
                 anyhow::anyhow!("No standing animation found for sprite {}", sprite_id)
-        })?;
+            })?;
         let frame_index = anim.frame_index_for_direction(anim_dir);
         let instance = get_creature_instance_for_frame(
             loaded_sprite,
@@ -463,7 +465,10 @@ impl UnifiedSpriteBatch {
     ) -> Option<ItemInstanceHandle> {
         let sheet_index = ((item.sprite - 1) as u32 / ITEMS_PER_EPF_FILE) + 1;
         let frame_index = ((item.sprite - 1) as u32 % ITEMS_PER_EPF_FILE) as usize;
-        if scene.ensure_item_sheet(sheet_index, queue, archive).is_err() {
+        if scene
+            .ensure_item_sheet(sheet_index, queue, archive)
+            .is_err()
+        {
             return None;
         }
 

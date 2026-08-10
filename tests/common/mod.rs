@@ -351,9 +351,7 @@ impl TestScene {
                 map_renderer_state.map_renderer.render(&mut render_pass);
             }
 
-            if let Some(sprite_batch_state) =
-                world.get_resource::<UnifiedSpriteBatchState>()
-            {
+            if let Some(sprite_batch_state) = world.get_resource::<UnifiedSpriteBatchState>() {
                 sprite_batch_state.batch.render(&mut render_pass);
             }
 

@@ -10,7 +10,7 @@ const CREATURE_SPRITE_OFFSET: u16 = 0x8000;
 
 #[derive(Debug, Clone)]
 pub enum DisplayArgs {
-    /// BodySprite.None + transparent flag set (server uses this pattern then unsets transparency client-side)
+    /// BodySprite.None: no appearance (player not visible to the viewer).
     Hidden,
     /// Creature/alternate full-body sprite override (head/boots colors only)
     Sprite {
@@ -350,8 +350,8 @@ impl TryFromBytes for DisplayPlayer {
             let is_male = matches!(body_sprite, 16 | 48 | 80 | 112 | 128 | 160);
             let is_dead = matches!(body_sprite, 48 | 64); // ghost sprites
 
-            // Hidden pattern: body none + transparency bit set -> hidden (transparency flag consumed)
-            if body_sprite == 0 && !is_translucent_raw {
+            // Body none -> no appearance; the transparency bit is unrelated.
+            if body_sprite == 0 {
                 DisplayArgs::Hidden
             } else if is_dead {
                 DisplayArgs::Dead {

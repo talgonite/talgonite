@@ -1,7 +1,7 @@
+use bevy_math::Vec2;
 use etagere::Allocation;
 use formats::epf::{AnimationDirection, EpfAnimationType};
 use formats::sheets::SheetFrame;
-use bevy_math::Vec2;
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -34,6 +34,8 @@ pub enum PlayerPieceType {
     HelmetBg,
     HelmetFg,
     Boots,
+    /// Body shape layer (`khan/{m|w}b/00N`); used for ghosts.
+    BodyShape,
     Body,
     Pants,
     Face,
@@ -51,6 +53,7 @@ impl PlayerPieceType {
             PlayerPieceType::HelmetBg => 'h',
             PlayerPieceType::HelmetFg => 'e',
             PlayerPieceType::Body => 'm',
+            PlayerPieceType::BodyShape => 'b',
             PlayerPieceType::Arms => {
                 if id > 999 {
                     'j'
@@ -97,6 +100,7 @@ impl PlayerPieceType {
                 PlayerPieceType::Face => 0.22,
                 PlayerPieceType::Pants => 0.18,
                 PlayerPieceType::Body => 0.12,
+                PlayerPieceType::BodyShape => 0.12,
                 PlayerPieceType::Accessory1Bg => 0.09,
                 PlayerPieceType::Accessory2Bg => 0.08,
                 PlayerPieceType::Accessory3Bg => 0.07,
@@ -117,6 +121,7 @@ impl PlayerPieceType {
                 PlayerPieceType::Emote => 0.245, // Slightly above face
                 PlayerPieceType::Face => 0.24,
                 PlayerPieceType::Body => 0.2,
+                PlayerPieceType::BodyShape => 0.2,
                 PlayerPieceType::Shield => 0.15,
                 PlayerPieceType::Accessory1Bg => 0.09,
                 PlayerPieceType::Accessory2Bg => 0.08,

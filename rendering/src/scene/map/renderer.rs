@@ -4,8 +4,8 @@ use crate::{
     make_quad,
     scene::{map::door_data::DOOR_DATA, utils::calculate_tile_z},
 };
-use etagere::Allocation;
 use bevy_math::Vec2;
+use etagere::Allocation;
 use std::collections::{HashMap, HashSet};
 use wgpu;
 

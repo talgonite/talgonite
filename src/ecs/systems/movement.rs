@@ -14,6 +14,12 @@ use packets::{
     types::BodyAnimationKind,
 };
 
+/// One tile step in seconds, matching the walk input cooldown.
+const WALK_STEP_DURATION: f32 = 0.5;
+
+/// Player walk frames per direction (5 in the packed game data).
+const PLAYER_WALK_FRAME_COUNT: usize = 5;
+
 /// Handles local player movement from input events.
 /// Performs collision detection against walls and other entities.
 pub fn player_movement_system(
@@ -179,7 +185,7 @@ fn handle_walk_request(
         start: start_pos,
         end: target_pos,
         elapsed: 0.0,
-        duration: 0.5,
+        duration: WALK_STEP_DURATION,
     });
 
     if uses_creature_sprite {
@@ -201,13 +207,10 @@ fn handle_walk_request(
             }
         }
     } else {
-        // Canonical walk frame count for ECS timing; the render-sync system
-        // maps this into piece-local frame counts per equipment piece.
-        const PLAYER_WALK_FRAME_COUNT: usize = 8;
         entity_commands.insert(AnimationBundle::new(
             AnimationMode::OneShot,
             AnimationType::Player(EpfAnimationType::Walk),
-            0.5 / PLAYER_WALK_FRAME_COUNT as f32,
+            WALK_STEP_DURATION / PLAYER_WALK_FRAME_COUNT as f32,
             PLAYER_WALK_FRAME_COUNT,
         ));
     }
@@ -256,7 +259,7 @@ pub fn entity_motion_system(
                         start: start_pos,
                         end: end_pos,
                         elapsed: 0.0,
-                        duration: 0.5,
+                        duration: WALK_STEP_DURATION,
                     });
 
                     if creature_sprite.is_some() {
@@ -283,11 +286,10 @@ pub fn entity_motion_system(
                             }
                         }
                     } else if let Some(_player) = player {
-                        const PLAYER_WALK_FRAME_COUNT: usize = 8;
                         commands.entity(entity).insert(AnimationBundle::new(
                             AnimationMode::OneShot,
                             AnimationType::Player(EpfAnimationType::Walk),
-                            0.5 / PLAYER_WALK_FRAME_COUNT as f32,
+                            WALK_STEP_DURATION / PLAYER_WALK_FRAME_COUNT as f32,
                             PLAYER_WALK_FRAME_COUNT,
                         ));
                     }

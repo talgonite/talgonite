@@ -74,6 +74,7 @@ var t_depth: texture_depth_2d;
 
 const INSTANCE_FLAG_XRAY: u32 = 1u;
 const INSTANCE_FLAG_TRANSLUCENT: u32 = 4u;
+const INSTANCE_FLAG_OVERLAY: u32 = 8u;
 const LEGACY_XRAY_DEPTH_OFFSET: f32 = 0.2;
 
 fn is_translucent_player(flags: u32) -> bool {
@@ -208,9 +209,11 @@ fn fs_translucent_player(in: VertexOutput) -> TranslucentPlayerOutput {
     var out: TranslucentPlayerOutput;
     out.color = shade_fragment(in);
 
-    // Legacy self-visibility should render above occluders, but only for the
-    // local-player xray overlay path (xray_size == Off).
-    if (in.flags & INSTANCE_FLAG_XRAY) != 0u && camera.xray_size <= 0.0 {
+    // Pop through occluders by a fixed depth offset, keeping each piece's
+    // relative depth so paper-doll layers still occlude each other.
+    let pop_through = (in.flags & INSTANCE_FLAG_OVERLAY) != 0u
+        || ((in.flags & INSTANCE_FLAG_XRAY) != 0u && camera.xray_size <= 0.0);
+    if pop_through {
         out.depth = min(0.999, in.clip_position.z + LEGACY_XRAY_DEPTH_OFFSET);
     } else {
         out.depth = in.clip_position.z;

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
+use bevy_math::Vec2;
 use formats::game_files::SquashfsArchive;
 use formats::sheets::EffectSheet;
-use bevy_math::Vec2;
 use tracing::error;
 
 use crate::instance::InstanceFlag;

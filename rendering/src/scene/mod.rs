@@ -22,10 +22,10 @@ pub mod texture_bind;
 pub mod utils;
 
 pub use constants::*;
-pub use unified_batch::UnifiedSpriteBatch;
 pub use map::animations::{
     AnimationInstanceData, InstanceReference, WorldAnimation, WorldAnimationInstanceData,
 };
+pub use unified_batch::UnifiedSpriteBatch;
 pub use utils::{get_isometric_coordinate, screen_to_iso_tile, tile_to_screen};
 
 const WALL_ATLAS_WIDTH: usize = 2048;
@@ -457,6 +457,17 @@ impl Scene {
 mod tests {
     use crate::scene::map::{floor::FloorTile, wall::WallSide};
     use bevy_math::Vec2;
+
+    #[test]
+    fn shaders_parse() {
+        for source in [
+            include_str!("../shaders/shader.wgsl"),
+            include_str!("../shaders/translucent_player_composite.wgsl"),
+        ] {
+            wgpu::naga::front::wgsl::parse_str(source)
+                .unwrap_or_else(|err| panic!("shader failed to parse: {err}"));
+        }
+    }
 
     #[test]
     fn test_simple_map() {

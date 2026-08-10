@@ -27,13 +27,15 @@ fn player_instance_state(
     is_local_player: bool,
     settings: &Settings,
 ) -> InstanceFlag {
-    if render_state.translucent {
-        InstanceFlag::Translucent
-    } else if is_local_player && settings.graphics.xray_size == crate::settings_types::XRaySize::Off
-    {
-        InstanceFlag::XRay
-    } else {
-        InstanceFlag::None
+    match (render_state.translucent, is_local_player) {
+        // Invisible local player: translucent, always pops through walls.
+        (true, true) => InstanceFlag::TranslucentOverlay,
+        (true, false) => InstanceFlag::Translucent,
+        // Visible local player pops through walls only when x-ray is off.
+        (false, true) if settings.graphics.xray_size == crate::settings_types::XRaySize::Off => {
+            InstanceFlag::XRay
+        }
+        (false, true) | (false, false) => InstanceFlag::None,
     }
 }
 
@@ -292,6 +294,7 @@ fn hidden_player_sprite_cache() -> PlayerSpriteRenderCache {
         anim_type: EpfAnimationType::Idle,
         frame_index: 0,
         frame_count: 0,
+        flags: InstanceFlag::None,
     }
 }
 
@@ -299,12 +302,14 @@ fn visible_player_sprite_cache(
     animation_type: EpfAnimationType,
     frame_index: usize,
     frame_count: usize,
+    flags: InstanceFlag,
 ) -> PlayerSpriteRenderCache {
     PlayerSpriteRenderCache {
         visible: true,
         anim_type: animation_type,
         frame_index,
         frame_count,
+        flags,
     }
 }
 
@@ -336,7 +341,9 @@ pub fn sync_lobby_portraits(
                 continue;
             }
 
-            lobby_renderer.batch.clear_and_unload(&mut sprite_scene.scene);
+            lobby_renderer
+                .batch
+                .clear_and_unload(&mut sprite_scene.scene);
             let sprites = build_saved_preview_sprites(preview);
             populate_player_batch_with_sprites(
                 &renderer,
@@ -369,7 +376,9 @@ pub fn sync_lobby_portraits(
         }
     }
 
-    lobby_renderer.batch.clear_and_unload(&mut sprite_scene.scene);
+    lobby_renderer
+        .batch
+        .clear_and_unload(&mut sprite_scene.scene);
     portrait_state.version += 1;
 }
 
@@ -433,14 +442,7 @@ fn render_sprites_to_portrait_target(
     sprites: &[(PlayerSpriteKey, u8)],
 ) {
     target.batch.clear_and_unload(scene);
-    populate_player_batch_with_sprites(
-        renderer,
-        game_files,
-        scene,
-        &target.batch,
-        sprites,
-        1,
-    );
+    populate_player_batch_with_sprites(renderer, game_files, scene, &target.batch, sprites, 1);
 
     render_player_batch_to_target(
         renderer,
@@ -481,9 +483,7 @@ pub fn sync_items_to_renderer(
     }
 
     // Flush any item frames staged during this frame as one batched upload.
-    let SpriteScene {
-        items, atlas, ..
-    } = &mut sprite_scene.scene;
+    let SpriteScene { items, atlas, .. } = &mut sprite_scene.scene;
     items.flush_pending_uploads(&renderer.queue, atlas);
 }
 
@@ -565,7 +565,12 @@ pub fn sync_players_to_renderer(
         })
         .collect();
 
-    preload_player_sprite_keys(&shared_state, &game_files, &mut sprite_scene.scene, &sprite_keys);
+    preload_player_sprite_keys(
+        &shared_state,
+        &game_files,
+        &mut sprite_scene.scene,
+        &sprite_keys,
+    );
 
     for (
         sprite_entity,
@@ -681,6 +686,7 @@ pub fn update_player_sprites(
 
         let tint = resolve_hover_tint(targeting_hover);
         let flags = player_instance_state(render_state, local_player.is_some(), &settings);
+
         let is_towards = matches!(*direction, Direction::Right | Direction::Down);
         let direction = *direction as u8;
         let parent_dirty = settings_changed || dirty_parents.contains(&entity);
@@ -714,7 +720,12 @@ pub fn update_player_sprites(
                     let frame_index =
                         resolve_player_piece_frame_index(piece_frame_count, normalized_time);
 
-                    visible_player_sprite_cache(animation_type, frame_index, piece_frame_count)
+                    visible_player_sprite_cache(
+                        animation_type,
+                        frame_index,
+                        piece_frame_count,
+                        flags,
+                    )
                 } else {
                     hidden_player_sprite_cache()
                 };
@@ -1207,14 +1218,75 @@ fn minimap_lattice_index_from_walkability(
 mod tests {
     use super::{
         PlayerAnimationState, SIMPLE_TILE_VALUES, idle_animation_progress, minimap,
-        minimap_lattice_index_from_walkability, resolve_player_animation_state,
-        resolve_player_piece_frame_index,
+        minimap_lattice_index_from_walkability, player_instance_state,
+        resolve_player_animation_state, resolve_player_piece_frame_index,
     };
-    use crate::ecs::animation::{Animation, AnimationMode, AnimationTimer, AnimationType};
+    use crate::{
+        ecs::{
+            animation::{Animation, AnimationMode, AnimationTimer, AnimationType},
+            components::PlayerRenderState,
+        },
+        settings_types::Settings,
+    };
+    use bevy::math::Vec2;
     use bevy::prelude::{Timer, TimerMode};
     use formats::epf::EpfAnimationType;
-    use bevy::math::Vec2;
+    use rendering::instance::InstanceFlag;
     use rendering::scene::players::PlayerPieceType;
+
+    fn settings_with_xray(xray: crate::settings_types::XRaySize) -> Settings {
+        Settings {
+            graphics: crate::settings_types::GraphicsSettings {
+                xray_size: xray,
+                scale: 1.0,
+                high_quality_scaling: true,
+            },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn invisible_local_player_always_pops_through_walls() {
+        let xray_off = settings_with_xray(crate::settings_types::XRaySize::Off);
+        let xray_on = settings_with_xray(crate::settings_types::XRaySize::Small);
+        let translucent = PlayerRenderState::from_translucent(true);
+        let opaque = PlayerRenderState::from_translucent(false);
+
+        assert_eq!(
+            player_instance_state(&translucent, true, &xray_off),
+            InstanceFlag::TranslucentOverlay
+        );
+        assert_eq!(
+            player_instance_state(&translucent, true, &xray_on),
+            InstanceFlag::TranslucentOverlay
+        );
+        assert_eq!(
+            player_instance_state(&translucent, false, &xray_off),
+            InstanceFlag::Translucent
+        );
+        assert_eq!(
+            player_instance_state(&opaque, true, &xray_off),
+            InstanceFlag::XRay
+        );
+        assert_eq!(
+            player_instance_state(&opaque, true, &xray_on),
+            InstanceFlag::None
+        );
+        assert_eq!(
+            player_instance_state(&opaque, false, &xray_off),
+            InstanceFlag::None
+        );
+    }
+
+    #[test]
+    fn combined_instance_flags_keep_their_bits() {
+        // Regression: num_enum's FromPrimitive maps unknown discriminants to
+        // `#[default]`, which used to collapse this combined flag to `None`.
+        let combined = InstanceFlag::TranslucentOverlay;
+        let raw: u32 = combined.into();
+        assert_eq!(raw, 12);
+        assert_eq!(combined as u32, 12);
+    }
 
     fn minimap_lattice_from_blocked_grid(width: usize, blocked: &[u8]) -> Vec<u8> {
         let blocked_rows = blocked.chunks_exact(width).collect::<Vec<_>>();
