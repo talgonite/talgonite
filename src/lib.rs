@@ -20,6 +20,7 @@ pub mod ecs;
 pub mod events;
 pub mod game_files;
 pub mod input;
+pub mod lighting;
 pub mod map_store;
 pub mod metafile_store;
 pub mod minimap_assets;
@@ -34,14 +35,16 @@ pub mod settings;
 pub mod settings_types;
 pub mod slint_plugin;
 pub mod slint_support;
+pub mod weather;
 pub mod webui;
 
 pub use minimap_assets::{FULLSCREEN_MINIMAP_ASSETS, MinimapAssets};
 
 pub use resources::{
-    Camera, EffectManagerState, MapRendererState, MinimapCacheState, MinimapRendererState,
-    PlayerPortraitState, PortraitRenderTarget, RendererState, SpriteSceneState, StorageConfig,
-    TranslucentPlayerPassState, UnifiedSpriteBatchState, WindowSurface,
+    Camera, DarknessState, EffectManagerState, MapRendererState, MinimapCacheState,
+    MinimapRendererState, PlayerPortraitState, PortraitRenderTarget, RendererState,
+    SceneColorState, SpriteSceneState, StorageConfig, TranslucentPlayerPassState,
+    UnifiedSpriteBatchState, WeatherState, WindowSurface,
 };
 
 #[derive(Resource)]

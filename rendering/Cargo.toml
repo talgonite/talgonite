@@ -17,3 +17,8 @@ wgpu.workspace = true
 tracing.workspace = true
 num_enum.workspace = true
 rustc-hash = "2.1.1"
+rand.workspace = true
+
+[dev-dependencies]
+naga = "29"
+pollster = "1.0"

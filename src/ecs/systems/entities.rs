@@ -265,6 +265,13 @@ fn spawn_display_player(
 
     let is_local = Some(player.id) == local_id;
 
+    let lantern_size = match &player.args {
+        DisplayArgs::Normal { lantern_size, .. } => *lantern_size,
+        // Sprite-form players default to a small lantern.
+        DisplayArgs::Sprite { .. } => 1,
+        _ => 0,
+    };
+
     let mut player_entity = commands.spawn((
         PlayerBundle {
             player: Player {
@@ -279,6 +286,7 @@ fn spawn_display_player(
             entity_id: EntityId { id: player.id },
         },
         PlayerRenderState::from_translucent(is_translucent),
+        Lantern { size: lantern_size },
         InGameScoped,
         MapScoped,
         Hitbox::screen_space(Vec2::new(-0.25, -1.25), Vec2::new(0.25, 0.65)),

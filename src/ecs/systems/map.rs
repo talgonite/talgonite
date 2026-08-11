@@ -2,8 +2,9 @@
 
 use super::super::components::*;
 use crate::{
-    Camera, MapRendererState, MinimapCacheState, MinimapRendererState, RendererState,
-    events::MapEvent, game_files::GameFiles,
+    Camera, DarknessState, MapRendererState, MinimapCacheState, MinimapRendererState,
+    RendererState, WeatherState, events::MapEvent, game_files::GameFiles, lighting::LightMetadata,
+    metafile_store::MetafileStore,
 };
 use bevy::prelude::*;
 use rendering::scene::map::renderer::MapRenderer;
@@ -17,9 +18,12 @@ pub fn map_system(
     scoped_q: Query<(Entity, Option<&LocalPlayer>), With<MapScoped>>,
     map_entities: Query<&GameMap>,
     renderer: Option<Res<RendererState>>,
-    mut camera: Option<ResMut<Camera>>,
+    camera: Option<ResMut<Camera>>,
     minimap_renderer_state: Option<Res<MinimapRendererState>>,
     settings: Res<crate::settings::Settings>,
+    mut darkness_state: Option<ResMut<DarknessState>>,
+    mut weather_state: Option<ResMut<WeatherState>>,
+    metafile_store: Res<MetafileStore>,
     mut door_queue: ResMut<MapDoorQueue>,
     mut tile_counters: ResMut<crate::resources::ItemTileCounters>,
 ) {
@@ -35,6 +39,10 @@ pub fn map_system(
     for event in map_events.read() {
         match event {
             MapEvent::Clear => {
+                // Hide the overlay until the new map loads.
+                if let Some(darkness) = darkness_state.as_deref_mut() {
+                    darkness.renderer.set_ambient(0.0, [0, 0, 0]);
+                }
                 handle_map_clear(
                     &mut commands,
                     &scoped_q,
@@ -59,9 +67,15 @@ pub fn map_system(
                 if !cleared_this_frame {
                     if let Some(current_map) = map_entities.iter().next() {
                         if current_map.map_id == map_info.map_id {
-                            info!(
-                                "Skipping SetInfo for map_id {} - already on this map (likely refresh)",
-                                map_info.map_id
+                            // Same-map refresh: apply flag-driven state without
+                            // rebuilding the map renderer.
+                            handle_map_weather(weather_state.as_deref_mut(), map_info.flags);
+                            handle_map_darkness(
+                                darkness_state.as_deref_mut(),
+                                renderer.as_deref(),
+                                &archive,
+                                &metafile_store,
+                                map_info,
                             );
                             continue;
                         }
@@ -78,10 +92,21 @@ pub fn map_system(
                     map_info,
                     map_bytes,
                 );
+                handle_map_darkness(
+                    darkness_state.as_deref_mut(),
+                    renderer.as_deref(),
+                    &archive,
+                    &metafile_store,
+                    map_info,
+                );
+                handle_map_weather(weather_state.as_deref_mut(), map_info.flags);
                 spawned_this_frame = true;
             }
             MapEvent::SetLightLevel(kind) => {
-                handle_light_level(camera.as_deref_mut(), renderer.as_deref(), kind);
+                handle_light_level(darkness_state.as_deref_mut(), kind);
+            }
+            MapEvent::ReloadLightMetadata => {
+                reload_light_metadata(darkness_state.as_deref_mut(), &metafile_store);
             }
             MapEvent::SetDoors(door_data) => {
                 door_queue.pending.extend(door_data.doors.clone());
@@ -91,6 +116,25 @@ pub fn map_system(
 
     if let Some(map_renderer) = local_map_renderer {
         commands.insert_resource(MapRendererState { map_renderer });
+    }
+}
+
+/// Sets the weather mode from the map flags' low nibble (1 = snow, 2 = rain).
+fn handle_map_weather(weather_state: Option<&mut WeatherState>, flags: u8) {
+    use rendering::scene::weather::WeatherMode;
+
+    let Some(weather) = weather_state else {
+        return;
+    };
+
+    let mode = match flags & 0x0F {
+        0x01 => WeatherMode::Snow,
+        0x02 => WeatherMode::Rain,
+        _ => WeatherMode::None,
+    };
+    weather.mode = mode;
+    if let Some(renderer) = &mut weather.renderer {
+        renderer.set_mode(mode);
     }
 }
 
@@ -209,26 +253,105 @@ fn handle_map_set_info(
     local_map_renderer
 }
 
+/// Applies a light level packet.
 fn handle_light_level(
-    camera: Option<&mut Camera>,
-    renderer: Option<&RendererState>,
+    darkness_state: Option<&mut DarknessState>,
     kind: &packets::server::LightLevelKind,
 ) {
-    use packets::server::LightLevelKind;
-
     tracing::info!("Setting light level to {:?}", kind);
 
-    let (r, g, b) = match kind {
-        LightLevelKind::DarkestA => (-0.02745098, -0.011764706, -0.02745098),
-        LightLevelKind::DarkerB => (-0.011764706, -0.011764706, -0.011764706),
-        LightLevelKind::DarkB => (-0.011764706, -0.011764706, -0.011764706),
-        LightLevelKind::LighterA => (-0.011764706, -0.011764706, -0.011764706),
-        LightLevelKind::LightestA => (-0.011764706, -0.011764706, -0.011764706),
-        _ => (0.0, 0.0, 0.0),
+    let Some(darkness) = darkness_state else {
+        return;
     };
 
-    if let (Some(camera), Some(renderer)) = (camera, renderer) {
-        camera.camera.set_tint(&renderer.queue, r, g, b);
+    let level = *kind as u8;
+    darkness.last_light_level = Some(level);
+    apply_ambient(darkness, level);
+}
+
+fn apply_ambient(darkness: &mut DarknessState, level: u8) {
+    let (alpha, color) = darkness
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.resolve(darkness.map_id, level))
+        .unwrap_or_else(|| {
+            if darkness.is_dark_map {
+                (1.0, [0, 0, 0])
+            } else {
+                (0.0, [0, 0, 0])
+            }
+        });
+    darkness.renderer.set_ambient(alpha, color);
+}
+
+/// Re-parses the `Light` metafile and reapplies the current light level.
+fn reload_light_metadata(
+    darkness_state: Option<&mut DarknessState>,
+    metafile_store: &MetafileStore,
+) {
+    let Some(darkness) = darkness_state else {
+        return;
+    };
+
+    darkness.metadata = metafile_store
+        .get_metafile_data("Light")
+        .map(LightMetadata::from_metafile);
+
+    match darkness.last_light_level {
+        Some(level) => apply_ambient(darkness, level),
+        None => darkness
+            .renderer
+            .set_ambient(if darkness.is_dark_map { 1.0 } else { 0.0 }, [0, 0, 0]),
+    }
+}
+
+/// Loads the map's HEA light map and light metadata, then applies the current
+/// light level.
+fn handle_map_darkness(
+    darkness_state: Option<&mut DarknessState>,
+    renderer: Option<&RendererState>,
+    archive: &GameFiles,
+    metafile_store: &MetafileStore,
+    map_info: &packets::server::MapInfo,
+) {
+    let (Some(darkness), Some(renderer)) = (darkness_state, renderer) else {
+        return;
+    };
+
+    let weather_nibble = map_info.flags & 0x0F;
+    let is_dark = weather_nibble == 0x03; // MapFlags.Darkness
+    let hea = crate::lighting::load_hea(archive.inner().archive(), map_info.map_id);
+
+    darkness.map_id = map_info.map_id;
+    darkness.is_dark_map = is_dark;
+    darkness.sources.clear();
+    darkness.metadata = metafile_store
+        .get_metafile_data("Light")
+        .map(LightMetadata::from_metafile);
+    darkness
+        .renderer
+        .set_map(&renderer.device, &renderer.queue, map_info.height, hea);
+    darkness
+        .renderer
+        .set_ambient(if is_dark { 1.0 } else { 0.0 }, [0, 0, 0]);
+
+    tracing::info!(
+        map_id = map_info.map_id,
+        flags = map_info.flags,
+        is_dark,
+        has_hea = darkness.renderer.has_hea(),
+        has_light_metadata = darkness
+            .metadata
+            .as_ref()
+            .is_some_and(|metadata| metadata.has_entry(map_info.map_id)),
+        "Map darkness state"
+    );
+
+    match darkness.last_light_level {
+        Some(level) => apply_ambient(darkness, level),
+        None => darkness
+            .renderer
+            .set_ambient(if is_dark { 1.0 } else { 0.0 }, [0, 0, 0]),
     }
 }
 

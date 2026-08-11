@@ -6,6 +6,7 @@ use wgpu::{self};
 
 pub mod constants;
 pub mod creatures;
+pub mod darkness;
 pub mod effects;
 pub mod items;
 pub mod map;
@@ -20,6 +21,7 @@ pub mod sprite_store;
 pub mod texture_atlas;
 pub mod texture_bind;
 pub mod utils;
+pub mod weather;
 
 pub use constants::*;
 pub use map::animations::{
@@ -161,6 +163,10 @@ pub struct Scene {
     pub translucent_player_pipeline: wgpu::RenderPipeline,
     pub translucent_player_composite_pipeline: wgpu::RenderPipeline,
     pub translucent_player_composite_bind_group_layout: wgpu::BindGroupLayout,
+    pub darkness_pipeline: wgpu::RenderPipeline,
+    pub darkness_bind_group_layout: wgpu::BindGroupLayout,
+    pub weather_pipeline: wgpu::RenderPipeline,
+    pub weather_bind_group_layout: wgpu::BindGroupLayout,
     pub depth_texture: texture::Texture,
 }
 
@@ -237,6 +243,20 @@ impl Scene {
                     include_str!("../shaders/translucent_player_composite.wgsl").into(),
                 ),
             });
+
+        let darkness_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Darkness Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/darkness.wgsl").into()),
+        });
+
+        let weather_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Weather Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/weather.wgsl").into()),
+        });
+
+        let weather_bind_group_layout = create_weather_bind_group_layout(device);
+
+        let darkness_bind_group_layout = create_darkness_bind_group_layout(device);
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -411,12 +431,67 @@ impl Scene {
                 multiview_mask: None,
             });
 
+        let darkness_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Darkness Pipeline Layout"),
+                bind_group_layouts: &[Some(&darkness_bind_group_layout)],
+                immediate_size: 0,
+            });
+
+        let darkness_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
+            label: Some("Darkness Pipeline"),
+            layout: Some(&darkness_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &darkness_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &darkness_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: texture_format,
+                    // The shader outputs the final pixel; no blending.
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+        });
+
+        let weather_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Weather Pipeline Layout"),
+                bind_group_layouts: &[Some(&weather_bind_group_layout)],
+                immediate_size: 0,
+            });
+
+        let weather_pipeline = create_weather_pipeline(
+            device,
+            &weather_pipeline_layout,
+            &weather_shader,
+            texture_format,
+        );
+
         Self {
             pipeline: render_pipeline,
             screen_blend_pipeline,
             translucent_player_pipeline,
             translucent_player_composite_pipeline,
             translucent_player_composite_bind_group_layout,
+            darkness_pipeline,
+            darkness_bind_group_layout,
+            weather_pipeline,
+            weather_bind_group_layout,
             depth_texture,
         }
     }
@@ -467,6 +542,132 @@ mod tests {
             wgpu::naga::front::wgsl::parse_str(source)
                 .unwrap_or_else(|err| panic!("shader failed to parse: {err}"));
         }
+    }
+
+    /// Validates that every shader `@location` is backed by a vertex buffer
+    /// attribute; skips without an adapter.
+    #[test]
+    fn weather_pipeline_matches_shader_inputs() {
+        let device = pollster::block_on(async {
+            let instance =
+                wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+            let adapters = instance.enumerate_adapters(wgpu::Backends::all()).await;
+            let adapter = adapters.into_iter().next()?;
+
+            let (device, _queue) = adapter
+                .request_device(&wgpu::DeviceDescriptor {
+                    label: Some("Weather Pipeline Test Device"),
+                    required_features: wgpu::Features::IMMEDIATES,
+                    required_limits: wgpu::Limits {
+                        max_immediate_size: 16,
+                        ..Default::default()
+                    },
+                    memory_hints: Default::default(),
+                    ..Default::default()
+                })
+                .await
+                .ok()?;
+            Some(device)
+        });
+
+        let Some(device) = device else {
+            eprintln!("No GPU adapter available; skipping weather pipeline validation");
+            return;
+        };
+
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Weather Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/weather.wgsl").into()),
+        });
+        let bind_group_layout = super::create_weather_bind_group_layout(&device);
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Weather Pipeline Layout"),
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
+        });
+
+        let pipeline = super::create_weather_pipeline(
+            &device,
+            &pipeline_layout,
+            &shader,
+            wgpu::TextureFormat::Rgba8Unorm,
+        );
+        let _ = pipeline;
+    }
+
+    /// Validates the darkness renderer's samplers and bind group against the
+    /// scene layout; skips without an adapter.
+    #[test]
+    fn darkness_renderer_samplers_and_bind_group_validate() {
+        let device = pollster::block_on(async {
+            let instance =
+                wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+            let adapters = instance.enumerate_adapters(wgpu::Backends::all()).await;
+            let adapter = adapters.into_iter().next()?;
+
+            let (device, queue) = adapter
+                .request_device(&wgpu::DeviceDescriptor {
+                    label: Some("Darkness Renderer Test Device"),
+                    required_features: wgpu::Features::IMMEDIATES,
+                    required_limits: wgpu::Limits {
+                        max_immediate_size: 16,
+                        ..Default::default()
+                    },
+                    memory_hints: Default::default(),
+                    ..Default::default()
+                })
+                .await
+                .ok()?;
+            Some((device, queue))
+        });
+
+        let Some((device, queue)) = device else {
+            eprintln!("No GPU adapter available; skipping darkness renderer validation");
+            return;
+        };
+
+        let mut renderer = crate::scene::darkness::DarknessRenderer::new(&device, &queue);
+        renderer.set_ambient(1.0, [0, 0, 0]);
+        renderer.set_masks(
+            &device,
+            &queue,
+            Some(crate::scene::darkness::LightMask {
+                width: 3,
+                height: 3,
+                pixels: vec![0, 0, 0, 0, 32, 0, 0, 0, 0],
+            }),
+            None,
+        );
+        renderer.update_uniform(
+            &queue,
+            [0.0, 0.0],
+            1.0,
+            [800.0, 600.0],
+            &[crate::scene::darkness::LightSource {
+                screen_x: 400.0,
+                screen_y: 300.0,
+                mask_layer: 0,
+            }],
+        );
+
+        let scene_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Darkness Test Scene Texture"),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let scene_view = scene_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let layout = super::create_darkness_bind_group_layout(&device);
+        let bind_group = renderer.create_bind_group(&device, &layout, &scene_view);
+        let _ = bind_group;
     }
 
     #[test]
@@ -536,4 +737,208 @@ mod tests {
             }
         }
     }
+}
+
+/// Free function so tests can validate the pipeline against the shader
+/// without a full Scene.
+fn create_weather_pipeline(
+    device: &wgpu::Device,
+    layout: &wgpu::PipelineLayout,
+    shader: &wgpu::ShaderModule,
+    texture_format: wgpu::TextureFormat,
+) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        cache: None,
+        label: Some("Weather Pipeline"),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module: shader,
+            entry_point: Some("vs_main"),
+            buffers: &[
+                wgpu::VertexBufferLayout {
+                    array_stride: 8,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &[wgpu::VertexAttribute {
+                        format: wgpu::VertexFormat::Float32x2,
+                        offset: 0,
+                        shader_location: 6,
+                    }],
+                },
+                wgpu::VertexBufferLayout {
+                    array_stride: 40,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &[
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x2,
+                            offset: 0,
+                            shader_location: 0,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x2,
+                            offset: 8,
+                            shader_location: 1,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x2,
+                            offset: 16,
+                            shader_location: 2,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x2,
+                            offset: 24,
+                            shader_location: 3,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Uint32,
+                            offset: 32,
+                            shader_location: 4,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Uint32,
+                            offset: 36,
+                            shader_location: 5,
+                        },
+                    ],
+                },
+            ],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: shader,
+            entry_point: Some("fs_main"),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: texture_format,
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            ..Default::default()
+        },
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        multiview_mask: None,
+    })
+}
+
+fn create_weather_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    multisampled: false,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    multisampled: false,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 4,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
+        label: Some("weather_bind_group_layout"),
+    })
+}
+
+fn create_darkness_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    multisampled: false,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    multisampled: false,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    multisampled: false,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 4,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    multisampled: false,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 5,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 6,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
+        label: Some("darkness_bind_group_layout"),
+    })
 }

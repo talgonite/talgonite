@@ -219,27 +219,47 @@ fn populate_player_batch_with_sprites(
     }
 }
 
+const IDLE_FRAME_DURATION: f32 = 0.25;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct PlayerAnimationState {
     anim_type: EpfAnimationType,
     normalized_time: f32,
-    idle_normalized_time: f32,
+    elapsed_secs: f32,
 }
 
 impl PlayerAnimationState {
-    fn resolve_piece_animation(self, slot: PlayerPieceType) -> Option<(EpfAnimationType, f32)> {
+    /// The animation a piece renders for the current state, without timing.
+    fn resolved_piece_animation_type(self, slot: PlayerPieceType) -> Option<EpfAnimationType> {
         match (self.anim_type.is_emote(), slot) {
-            (true, PlayerPieceType::Emote) => Some((self.anim_type, self.normalized_time)),
+            (true, PlayerPieceType::Emote) => Some(self.anim_type),
             (true, PlayerPieceType::Face) => None,
-            (true, _) => Some((EpfAnimationType::Idle, self.idle_normalized_time)),
+            (true, _) => Some(EpfAnimationType::Idle),
             (false, PlayerPieceType::Emote) => None,
-            (false, _) => Some((self.anim_type, self.normalized_time)),
+            (false, _) => Some(self.anim_type),
+        }
+    }
+
+    /// Normalized progress for a piece, using per-frame timing for idle.
+    fn piece_normalized_time(
+        self,
+        animation_type: EpfAnimationType,
+        piece_frame_count: usize,
+    ) -> f32 {
+        if animation_type == EpfAnimationType::Idle {
+            idle_animation_progress(self.elapsed_secs, piece_frame_count)
+        } else {
+            self.normalized_time
         }
     }
 }
 
-fn idle_animation_progress(elapsed_secs: f32) -> f32 {
-    elapsed_secs % 1.0
+fn idle_animation_progress(elapsed_secs: f32, frame_count: usize) -> f32 {
+    if frame_count <= 1 {
+        0.0
+    } else {
+        (elapsed_secs / (IDLE_FRAME_DURATION * frame_count as f32)) % 1.0
+    }
 }
 
 fn resolve_player_animation_state(
@@ -247,8 +267,6 @@ fn resolve_player_animation_state(
     animation_timer: Option<&crate::ecs::animation::AnimationTimer>,
     elapsed_secs: f32,
 ) -> PlayerAnimationState {
-    let idle_normalized_time = idle_animation_progress(elapsed_secs);
-
     match (animation, animation_timer) {
         (Some(anim), Some(_timer)) if anim.mode != AnimationMode::Finished => {
             if let AnimationType::Player(anim_type) = anim.anim_type {
@@ -262,20 +280,20 @@ fn resolve_player_animation_state(
                 PlayerAnimationState {
                     anim_type,
                     normalized_time,
-                    idle_normalized_time,
+                    elapsed_secs,
                 }
             } else {
                 PlayerAnimationState {
                     anim_type: EpfAnimationType::Idle,
-                    normalized_time: idle_normalized_time,
-                    idle_normalized_time,
+                    normalized_time: 0.0,
+                    elapsed_secs,
                 }
             }
         }
         _ => PlayerAnimationState {
             anim_type: EpfAnimationType::Idle,
-            normalized_time: idle_normalized_time,
-            idle_normalized_time,
+            normalized_time: 0.0,
+            elapsed_secs,
         },
     }
 }
@@ -694,51 +712,53 @@ pub fn update_player_sprites(
         for child_entity in children.iter() {
             if let Ok((sprite, sprite_instance, cached)) = children_query.get(child_entity) {
                 let child_dirty = dirty_children.contains(&child_entity);
-                let desired_cache = if let Some((animation_type, normalized_time)) =
-                    animation_state.resolve_piece_animation(sprite.slot)
-                {
-                    let piece_frame_count = cached
-                        .filter(|cached| {
-                            !parent_dirty
-                                && !child_dirty
-                                && cached.visible
-                                && cached.anim_type == animation_type
-                                && cached.frame_count > 0
-                        })
-                        .map(|cached| cached.frame_count)
-                        .unwrap_or_else(|| {
-                            sprite_batch
-                                .batch
-                                .animation_frame_count(
-                                    &sprite_scene.scene.players,
-                                    &sprite_instance.handle,
-                                    animation_type,
-                                    is_towards,
-                                )
-                                .unwrap_or(1)
-                        });
-                    let frame_index =
-                        resolve_player_piece_frame_index(piece_frame_count, normalized_time);
-
-                    visible_player_sprite_cache(
-                        animation_type,
-                        frame_index,
-                        piece_frame_count,
-                        flags,
-                    )
-                } else {
-                    hidden_player_sprite_cache()
-                };
-
-                if !parent_dirty && !child_dirty && cached == Some(&desired_cache) {
-                    continue;
-                }
-
-                if !desired_cache.visible {
+                let Some(animation_type) =
+                    animation_state.resolved_piece_animation_type(sprite.slot)
+                else {
+                    let desired_cache = hidden_player_sprite_cache();
+                    if !parent_dirty && !child_dirty && cached == Some(&desired_cache) {
+                        continue;
+                    }
                     let _ = sprite_batch
                         .batch
                         .hide_player(&shared_state.queue, &sprite_instance.handle);
                     commands.entity(child_entity).insert(desired_cache);
+                    continue;
+                };
+
+                let piece_frame_count = cached
+                    .filter(|cached| {
+                        !parent_dirty
+                            && !child_dirty
+                            && cached.visible
+                            && cached.anim_type == animation_type
+                            && cached.frame_count > 0
+                    })
+                    .map(|cached| cached.frame_count)
+                    .unwrap_or_else(|| {
+                        sprite_batch
+                            .batch
+                            .animation_frame_count(
+                                &sprite_scene.scene.players,
+                                &sprite_instance.handle,
+                                animation_type,
+                                is_towards,
+                            )
+                            .unwrap_or(1)
+                    });
+
+                let normalized_time =
+                    animation_state.piece_normalized_time(animation_type, piece_frame_count);
+                let frame_index =
+                    resolve_player_piece_frame_index(piece_frame_count, normalized_time);
+                let desired_cache = visible_player_sprite_cache(
+                    animation_type,
+                    frame_index,
+                    piece_frame_count,
+                    flags,
+                );
+
+                if !parent_dirty && !child_dirty && cached == Some(&desired_cache) {
                     continue;
                 }
 
@@ -1371,7 +1391,7 @@ mod tests {
             PlayerAnimationState {
                 anim_type: EpfAnimationType::Walk,
                 normalized_time: 0.5,
-                idle_normalized_time: 0.75,
+                elapsed_secs: 9.75,
             }
         );
     }
@@ -1391,8 +1411,8 @@ mod tests {
             resolve_player_animation_state(Some(&animation), Some(&timer), 3.25),
             PlayerAnimationState {
                 anim_type: EpfAnimationType::Idle,
-                normalized_time: 0.25,
-                idle_normalized_time: 0.25,
+                normalized_time: 0.0,
+                elapsed_secs: 3.25,
             }
         );
     }
@@ -1402,18 +1422,26 @@ mod tests {
         let state = PlayerAnimationState {
             anim_type: EpfAnimationType::SymbolLove,
             normalized_time: 0.4,
-            idle_normalized_time: 0.9,
+            elapsed_secs: 0.9,
         };
 
         assert_eq!(
-            state.resolve_piece_animation(PlayerPieceType::Emote),
-            Some((EpfAnimationType::SymbolLove, 0.4))
+            state.resolved_piece_animation_type(PlayerPieceType::Emote),
+            Some(EpfAnimationType::SymbolLove)
         );
-        assert_eq!(state.resolve_piece_animation(PlayerPieceType::Face), None);
         assert_eq!(
-            state.resolve_piece_animation(PlayerPieceType::Body),
-            Some((EpfAnimationType::Idle, 0.9))
+            state.resolved_piece_animation_type(PlayerPieceType::Face),
+            None
         );
+        assert_eq!(
+            state.resolved_piece_animation_type(PlayerPieceType::Body),
+            Some(EpfAnimationType::Idle)
+        );
+        assert_eq!(
+            state.piece_normalized_time(EpfAnimationType::SymbolLove, 4),
+            0.4
+        );
+        assert_eq!(state.piece_normalized_time(EpfAnimationType::Idle, 4), 0.9);
     }
 
     #[test]
@@ -1425,7 +1453,10 @@ mod tests {
     }
 
     #[test]
-    fn idle_animation_progress_wraps_to_subsecond_fraction() {
-        assert_eq!(idle_animation_progress(12.25), 0.25);
+    fn idle_animation_progress_uses_per_frame_duration() {
+        assert_eq!(idle_animation_progress(0.25, 4), 0.25);
+        assert_eq!(idle_animation_progress(12.25, 4), 0.25);
+        assert_eq!(idle_animation_progress(0.25, 8), 0.125);
+        assert_eq!(idle_animation_progress(0.5, 8), 0.25);
     }
 }

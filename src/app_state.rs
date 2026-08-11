@@ -98,6 +98,9 @@ pub fn cleanup_ingame_world(
     commands.remove_resource::<MapRendererState>();
     commands.remove_resource::<MinimapCacheState>();
     commands.remove_resource::<MinimapRendererState>();
+    commands.remove_resource::<crate::DarknessState>();
+    commands.remove_resource::<crate::SceneColorState>();
+    commands.remove_resource::<crate::WeatherState>();
     commands.remove_resource::<crate::ecs::collision::MapCollisionData>();
     map_events.write(MapEvent::Clear);
 }

@@ -334,6 +334,12 @@ pub struct CameraBundle {
 #[derive(Component)]
 pub struct CameraTarget;
 
+/// Lantern size: 0 = none, 1 = small, 2 = large.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct Lantern {
+    pub size: u8,
+}
+
 #[derive(Component)]
 pub struct GameMap {
     pub map_id: u16,

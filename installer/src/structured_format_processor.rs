@@ -105,6 +105,12 @@ impl StructuredFormatProcessor {
                 .map(|name| name.eq_ignore_ascii_case("roh"))
                 .unwrap_or(false)
                 && file_name.starts_with("efct");
+            // Lantern masks (mask101/102) become R8 ktx2 of the first frame.
+            let is_light_mask = dat_path
+                .file_name()
+                .map(|name| name.eq_ignore_ascii_case("Legend"))
+                .unwrap_or(false)
+                && file_name.starts_with("mask10");
 
             if is_effect {
                 let effect_id = file_name[4..7].parse::<u16>().unwrap_or(0);
@@ -127,6 +133,15 @@ impl StructuredFormatProcessor {
                 return Ok(StructuredDatEntry::Assets(records));
             }
 
+            if is_light_mask {
+                let base = file_name.trim_end_matches(".epf");
+                let ktx2_bytes = mask_epf_to_light_ktx2(&epf)?;
+                return Ok(StructuredDatEntry::Assets(vec![AssetRecord::bytes(
+                    dat_path.join(format!("{base}.light.ktx2")),
+                    ktx2_bytes,
+                )]));
+            }
+
             // Every other EPF (UI icon sets like `setoa/skill001`, world map
             // images, leftover Legend parts) is packed the same way, so the
             // runtime always reads one shared `{base}.sheet.bin` file and
@@ -146,6 +161,27 @@ impl StructuredFormatProcessor {
 
         Ok(StructuredDatEntry::Unhandled)
     }
+}
+
+/// Converts a lantern mask EPF's first frame into an R8 ktx2 payload.
+fn mask_epf_to_light_ktx2(epf: &EpfImage) -> anyhow::Result<Vec<u8>> {
+    let frame = epf
+        .frames
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("lantern mask EPF has no frames"))?;
+    let width = frame.right as u32 - frame.left as u32;
+    let height = frame.bottom as u32 - frame.top as u32;
+    anyhow::ensure!(
+        width > 0 && height > 0 && frame.data.len() == (width * height) as usize,
+        "lantern mask frame has unexpected geometry: {width}x{height}, {} px",
+        frame.data.len()
+    );
+    formats::ktx2::encode_ktx2(
+        width,
+        height,
+        formats::ktx2::VK_FORMAT_R8_UNORM,
+        &frame.data,
+    )
 }
 
 fn read_epf(file_buffer: &[u8]) -> anyhow::Result<EpfImage> {
@@ -207,7 +243,7 @@ fn read_epf(file_buffer: &[u8]) -> anyhow::Result<EpfImage> {
 
 #[cfg(test)]
 mod tests {
-    use super::{StructuredDatEntry, StructuredFormatProcessor};
+    use super::{StructuredDatEntry, StructuredFormatProcessor, mask_epf_to_light_ktx2};
     use crate::asset_record::AssetRecord;
     use std::io::Cursor;
     use std::path::Path;
@@ -355,5 +391,28 @@ mod tests {
         assert!(paths.contains(&"setoa/skill001.sheet.bin".to_string()));
         assert_eq!(records.len(), 1);
         assert!(!paths.iter().any(|path| path.ends_with(".epf.bin")));
+    }
+
+    #[test]
+    fn light_masks_convert_to_r8_ktx2() {
+        use formats::epf::{EpfFrame, EpfImage};
+
+        let epf = EpfImage {
+            width: 10,
+            height: 10,
+            frames: vec![EpfFrame {
+                top: 0,
+                left: 0,
+                bottom: 3,
+                right: 4,
+                data: vec![0, 32, 16, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            }],
+        };
+
+        let ktx2 = mask_epf_to_light_ktx2(&epf).unwrap();
+        let (width, height, pixels) = rendering::texture::Texture::load_ktx2(&ktx2).unwrap();
+
+        assert_eq!((width, height), (4, 3));
+        assert_eq!(pixels, epf.frames[0].data);
     }
 }

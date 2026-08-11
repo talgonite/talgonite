@@ -1,9 +1,9 @@
 use crate::app_state::AppState;
 use crate::slint_support::frame_exchange::{BackBufferPool, ControlMessage, FrameChannels};
 use crate::{
-    Camera, EffectManagerState, MapRendererState, MinimapRendererState, RendererState,
-    SpriteSceneState, TranslucentPlayerPassState, UnifiedSpriteBatchState, WindowSurface,
-    game_files,
+    Camera, DarknessState, EffectManagerState, MapRendererState, MinimapRendererState,
+    RendererState, SceneColorState, SpriteSceneState, TranslucentPlayerPassState,
+    UnifiedSpriteBatchState, WeatherState, WindowSurface, game_files,
 };
 use bevy::prelude::*;
 use rendering::scene::{EffectManager, UnifiedSpriteBatch, unified_batch::SpriteScene};
@@ -73,6 +73,9 @@ fn init_render_managers_after_gamefiles(
     _existing_portrait: Option<Res<crate::resources::PlayerPortraitState>>,
     existing_character_preview: Option<Res<crate::resources::CharacterCreatorPreviewState>>,
     existing_translucent_players: Option<Res<TranslucentPlayerPassState>>,
+    existing_scene_color: Option<Res<SceneColorState>>,
+    existing_darkness: Option<Res<DarknessState>>,
+    existing_weather: Option<Res<WeatherState>>,
 ) {
     let (files, renderer, camera) = match (files, renderer, camera) {
         (Some(f), Some(r), Some(c)) => (f, r, c),
@@ -146,6 +149,52 @@ fn init_render_managers_after_gamefiles(
             ),
         });
     }
+
+    if existing_scene_color.is_none() {
+        commands.insert_resource(SceneColorState {
+            color_texture: rendering::texture::Texture::create_render_texture(
+                &renderer.device,
+                "scene_color",
+                camera.camera.camera.width as u32,
+                camera.camera.camera.height as u32,
+                wgpu::TextureFormat::Rgba8Unorm,
+            ),
+        });
+    }
+
+    if existing_darkness.is_none() {
+        let mut darkness_renderer =
+            rendering::scene::darkness::DarknessRenderer::new(&renderer.device, &renderer.queue);
+        let archive = files.inner().archive();
+        darkness_renderer.set_masks(
+            &renderer.device,
+            &renderer.queue,
+            crate::lighting::load_light_mask(archive, "mask101"),
+            crate::lighting::load_light_mask(archive, "mask102"),
+        );
+        commands.insert_resource(DarknessState {
+            renderer: darkness_renderer,
+            metadata: None,
+            sources: Vec::new(),
+            map_id: 0,
+            is_dark_map: false,
+            last_light_level: None,
+        });
+    }
+
+    if existing_weather.is_none() {
+        let renderer = crate::weather::load_weather_assets(files.inner().archive()).map(|assets| {
+            rendering::scene::weather::WeatherRenderer::new(
+                &renderer.device,
+                &renderer.queue,
+                &assets,
+            )
+        });
+        commands.insert_resource(WeatherState {
+            renderer,
+            mode: rendering::scene::weather::WeatherMode::None,
+        });
+    }
 }
 
 fn needs_render_managers(
@@ -156,6 +205,9 @@ fn needs_render_managers(
     existing_batch: Option<Res<UnifiedSpriteBatchState>>,
     existing_effects: Option<Res<EffectManagerState>>,
     existing_translucent_players: Option<Res<TranslucentPlayerPassState>>,
+    existing_scene_color: Option<Res<SceneColorState>>,
+    existing_darkness: Option<Res<DarknessState>>,
+    existing_weather: Option<Res<WeatherState>>,
 ) -> bool {
     files.is_some()
         && renderer.is_some()
@@ -163,7 +215,10 @@ fn needs_render_managers(
         && (existing_scene.is_none()
             || existing_batch.is_none()
             || existing_effects.is_none()
-            || existing_translucent_players.is_none())
+            || existing_translucent_players.is_none()
+            || existing_scene_color.is_none()
+            || existing_darkness.is_none()
+            || existing_weather.is_none())
 }
 
 #[derive(Resource, Default)]
@@ -183,6 +238,7 @@ fn apply_pending_resize(
     mut pool: ResMut<BackBufferPool>,
     minimap: Option<ResMut<MinimapRendererState>>,
     translucent_players: Option<ResMut<TranslucentPlayerPassState>>,
+    scene_color: Option<ResMut<SceneColorState>>,
 ) {
     if !pending.dirty || pending.width == 0 || pending.height == 0 {
         return;
@@ -251,6 +307,16 @@ fn apply_pending_resize(
         );
     }
 
+    if let Some(mut scene_color) = scene_color {
+        scene_color.color_texture = rendering::texture::Texture::create_render_texture(
+            &renderer_state.device,
+            "scene_color",
+            pending.width,
+            pending.height,
+            wgpu::TextureFormat::Rgba8Unorm,
+        );
+    }
+
     pending.dirty = false;
 }
 
@@ -263,7 +329,11 @@ fn draw_frame(
     effect_manager_state: Option<Res<EffectManagerState>>,
     minimap_renderer_state: Option<Res<MinimapRendererState>>,
     translucent_player_pass_state: Option<Res<TranslucentPlayerPassState>>,
+    scene_color_state: Option<Res<SceneColorState>>,
+    mut darkness_state: Option<ResMut<DarknessState>>,
+    mut weather_state: Option<ResMut<WeatherState>>,
     channels: Res<FrameChannels>,
+    time: Res<Time>,
     mut pool: ResMut<BackBufferPool>,
     mut pending: ResMut<PendingResize>,
 ) {
@@ -336,10 +406,27 @@ fn draw_frame(
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
+    // Update the darkness uniform for this frame.
+    if let Some(darkness) = darkness_state.as_deref_mut() {
+        darkness.renderer.update_uniform(
+            &render_hardware.queue,
+            [camera.camera.position().x, camera.camera.position().y],
+            camera.camera.zoom(),
+            [camera.camera.camera.width, camera.camera.camera.height],
+            &darkness.sources,
+        );
+    }
+
     // (Global texture uploader removed; direct queue submissions now occur at load time.)
 
     // Background pass: draw while not InGame, and also as a fallback when InGame but no map is loaded yet
     let color_load_op = wgpu::LoadOp::Clear(wgpu::Color::BLACK);
+    // Render the world offscreen when the darkness composite is active, else
+    // straight to the back buffer.
+    let scene_target = scene_color_state
+        .as_ref()
+        .map(|state| &state.color_texture.view)
+        .unwrap_or(&view);
 
     // world scene pass (only runs while InGame)
     {
@@ -351,7 +438,7 @@ fn draw_frame(
 
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
+                view: scene_target,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: color_load_op,
@@ -437,7 +524,7 @@ fn draw_frame(
         let mut composite_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Translucent Player Composite Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
+                view: scene_target,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Load,
@@ -450,6 +537,67 @@ fn draw_frame(
         composite_pass.set_pipeline(&render_hardware.scene.translucent_player_composite_pipeline);
         composite_pass.set_bind_group(0, &composite_bind_group, &[]);
         composite_pass.draw(0..3, 0..1);
+    }
+
+    // Blend the offscreen scene into the back buffer with the darkness overlay.
+    if let (Some(scene_color), Some(darkness_state)) = (&scene_color_state, &darkness_state) {
+        let darkness_bind_group = darkness_state.renderer.create_bind_group(
+            &render_hardware.device,
+            &render_hardware.scene.darkness_bind_group_layout,
+            &scene_color.color_texture.view,
+        );
+
+        let mut darkness_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Darkness Composite Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+                depth_slice: None,
+            })],
+            ..Default::default()
+        });
+        darkness_pass.set_pipeline(&render_hardware.scene.darkness_pipeline);
+        darkness_pass.set_bind_group(0, &darkness_bind_group, &[]);
+        darkness_pass.draw(0..3, 0..1);
+    }
+
+    // Draw weather above the darkened world.
+    if let Some(weather_state) = weather_state.as_deref_mut() {
+        if let Some(weather) = &mut weather_state.renderer {
+            weather.update(
+                &render_hardware.queue,
+                time.delta_secs(),
+                [camera.camera.camera.width, camera.camera.camera.height],
+            );
+            if weather.is_active() && weather.instance_count() > 0 {
+                let weather_bind_group = weather.create_bind_group(
+                    &render_hardware.device,
+                    &render_hardware.scene.weather_bind_group_layout,
+                );
+                let mut weather_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Weather Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                        depth_slice: None,
+                    })],
+                    ..Default::default()
+                });
+                weather_pass.set_pipeline(&render_hardware.scene.weather_pipeline);
+                weather_pass.set_bind_group(0, &weather_bind_group, &[]);
+                weather_pass.set_vertex_buffer(0, weather.vertex_buffer().slice(..));
+                weather_pass.set_vertex_buffer(1, weather.instance_buffer().slice(..));
+                weather_pass.draw(0..6, 0..weather.instance_count());
+            }
+        }
     }
 
     if let Some(minimap) = minimap_renderer_state.filter(|minimap| minimap.visible) {

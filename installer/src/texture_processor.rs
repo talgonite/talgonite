@@ -1,3 +1,4 @@
+use formats::hea::HeaFile;
 use formats::ktx2;
 use formats::spf::SpfFile;
 use std::io::{Cursor, Read};
@@ -44,7 +45,37 @@ impl TextureAssetProcessor {
             )?));
         }
 
+        // Pre-rasterize HEA light maps into R8 ktx2 so the runtime skips RLE
+        // decoding.
+        if file_name.ends_with(".hea") {
+            return Ok(Some(vec![self.process_hea(
+                dat_path,
+                file_name,
+                file_size,
+                entry_reader,
+            )?]));
+        }
+
         Ok(None)
+    }
+
+    fn process_hea(
+        &self,
+        dat_path: &Path,
+        file_name: &str,
+        file_size: usize,
+        entry_reader: &mut dyn Read,
+    ) -> anyhow::Result<AssetRecord> {
+        let mut bytes = vec![0u8; file_size];
+        entry_reader.read_exact(&mut bytes)?;
+
+        let base = file_name.trim_end_matches(".hea");
+        let ktx2_bytes = hea_to_light_ktx2(&bytes)?;
+
+        Ok(AssetRecord::bytes(
+            dat_path.join(format!("{base}.light.ktx2")),
+            ktx2_bytes,
+        ))
     }
 
     fn process_tile_pages(
@@ -212,11 +243,56 @@ impl TextureAssetProcessor {
     }
 }
 
+/// Rasterizes an HEA light map and wraps it as an R8 ktx2 payload.
+pub(crate) fn hea_to_light_ktx2(hea_bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
+    let hea = HeaFile::from_bytes(hea_bytes)?;
+    let raster = hea.rasterize();
+    formats::ktx2::encode_ktx2(
+        hea.scanline_width.max(0) as u32,
+        hea.scanline_count.max(0) as u32,
+        formats::ktx2::VK_FORMAT_R8_UNORM,
+        &raster,
+    )
+}
+
 #[cfg(test)]
 mod tests {
-    use super::TextureAssetProcessor;
+    use super::*;
     use std::io::Cursor;
     use std::path::Path;
+
+    /// Little-endian HEA: one 100px-wide layer, `scanline_count` scanlines,
+    /// and the given RLE payload.
+    fn synthetic_hea(scanline_count: i32, offsets: &[i32], rle: &[u8]) -> Vec<u8> {
+        let mut out = Vec::new();
+        for v in [0i32, 640, 480, 640, 480, 100, 100, 100, scanline_count, 1] {
+            out.extend_from_slice(&v.to_le_bytes());
+        }
+        out.extend_from_slice(&0i32.to_le_bytes()); // threshold
+        for offset in offsets {
+            out.extend_from_slice(&offset.to_le_bytes()); // scanline word offsets
+        }
+        out.extend_from_slice(rle);
+        out
+    }
+
+    #[test]
+    fn hea_converts_to_r8_ktx2() {
+        let rle = [
+            0x20, 10, 0x00, 90, // scanline 0: 10 bright + 90 dark
+            0x01, 5, 0x00, 95, // scanline 1: 5 dim + 95 dark
+        ];
+        let hea_bytes = synthetic_hea(2, &[0, 2], &rle);
+
+        let ktx2 = hea_to_light_ktx2(&hea_bytes).unwrap();
+        let (width, height, pixels) = rendering::texture::Texture::load_ktx2(&ktx2).unwrap();
+
+        assert_eq!((width, height), (100, 2));
+        assert_eq!(&pixels[..10], &[0x20; 10]);
+        assert!(pixels[10..100].iter().all(|&v| v == 0));
+        assert_eq!(&pixels[100..105], &[0x01; 5]);
+        assert!(pixels[105..].iter().all(|&v| v == 0));
+    }
 
     #[test]
     fn try_process_only_handles_texture_entries() {

@@ -354,6 +354,31 @@ pub struct TranslucentPlayerPassState {
     pub depth_texture: rendering::texture::Texture,
 }
 
+/// Offscreen world target for the darkness composite.
+#[derive(Resource)]
+pub struct SceneColorState {
+    pub color_texture: rendering::texture::Texture,
+}
+
+/// Darkness renderer plus per-frame light sources and metadata.
+#[derive(Resource)]
+pub struct DarknessState {
+    pub renderer: rendering::scene::darkness::DarknessRenderer,
+    pub metadata: Option<crate::lighting::LightMetadata>,
+    pub sources: Vec<rendering::scene::darkness::LightSource>,
+    pub map_id: u16,
+    pub is_dark_map: bool,
+    /// Most recent light level from the server, reapplied on map changes.
+    pub last_light_level: Option<u8>,
+}
+
+/// Weather overlay; `renderer` is `None` when assets are missing.
+#[derive(Resource)]
+pub struct WeatherState {
+    pub renderer: Option<rendering::scene::weather::WeatherRenderer>,
+    pub mode: rendering::scene::weather::WeatherMode,
+}
+
 #[derive(Resource)]
 pub struct CharacterCreatorPreviewState {
     pub target: Option<PortraitRenderTarget>,

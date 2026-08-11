@@ -161,6 +161,7 @@ impl Plugin for GamePlugin {
                     systems::update_items_to_renderer,
                     systems::sync_players_to_renderer,
                     systems::update_player_sprites,
+                    systems::lighting_gather_system,
                     systems::creature_movement_sync,
                     systems::sync_player_portrait,
                     systems::sync_profile_portrait,

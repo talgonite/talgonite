@@ -10,6 +10,8 @@ pub enum MapEvent {
     Clear,
     SetInfo(server::MapInfo, std::sync::Arc<[u8]>),
     SetLightLevel(server::LightLevelKind),
+    /// The server pushed a fresh `Light` metafile.
+    ReloadLightMetadata,
     SetDoors(server::Door),
 }
 

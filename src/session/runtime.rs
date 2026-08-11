@@ -355,7 +355,7 @@ fn process_net_packets(
                 }
                 &server::Codes::MetaData => {
                     if let Some(q) = parse_packet::<server::MetaData>(data) {
-                        handle_metadata(&outbox, &mut metafile_store, q);
+                        handle_metadata(&outbox, &mut metafile_store, &mut map_events, q);
                     }
                 }
                 &server::Codes::DisplayGroupInvite => {
@@ -585,6 +585,7 @@ fn handle_map_load_complete(session: &mut NetSessionState, outbox: &crate::netwo
 fn handle_metadata(
     outbox: &crate::network::PacketOutbox,
     metafile_store: &mut crate::metafile_store::MetafileStore,
+    map_events: &mut MessageWriter<MapEvent>,
     metadata: server::MetaData,
 ) {
     match metadata {
@@ -642,7 +643,11 @@ fn handle_metadata(
             );
 
             // Save the metafile (this validates the checksum)
-            metafile_store.save_metafile(&name, &data, check_sum);
+            let saved = metafile_store.save_metafile(&name, &data, check_sum);
+            if saved && name.eq_ignore_ascii_case("Light") {
+                // Re-resolve darkness from the fresh Light metafile.
+                map_events.write(MapEvent::ReloadLightMetadata);
+            }
         }
     }
 }
