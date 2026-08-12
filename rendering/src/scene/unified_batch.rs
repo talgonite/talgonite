@@ -198,6 +198,10 @@ impl UnifiedSpriteBatch {
         self.instances.len() == 0
     }
 
+    pub fn translucent_count(&self) -> usize {
+        self.instances.translucent_count()
+    }
+
     pub fn clear(&self) {
         self.instances.clear();
         self.handles.clear();

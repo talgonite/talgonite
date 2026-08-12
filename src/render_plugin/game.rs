@@ -147,6 +147,7 @@ fn init_render_managers_after_gamefiles(
                 camera.camera.camera.height as u32,
                 "translucent_player_depth",
             ),
+            composite_bind_group: None,
         });
     }
 
@@ -178,6 +179,7 @@ fn init_render_managers_after_gamefiles(
             sources: Vec::new(),
             map_id: 0,
             is_dark_map: false,
+            composite_bind_group: None,
             last_light_level: None,
         });
     }
@@ -239,6 +241,7 @@ fn apply_pending_resize(
     minimap: Option<ResMut<MinimapRendererState>>,
     translucent_players: Option<ResMut<TranslucentPlayerPassState>>,
     scene_color: Option<ResMut<SceneColorState>>,
+    darkness_state: Option<ResMut<DarknessState>>,
 ) {
     if !pending.dirty || pending.width == 0 || pending.height == 0 {
         return;
@@ -305,6 +308,7 @@ fn apply_pending_resize(
             pending.height,
             "translucent_player_depth",
         );
+        translucent_players.composite_bind_group = None;
     }
 
     if let Some(mut scene_color) = scene_color {
@@ -315,6 +319,10 @@ fn apply_pending_resize(
             pending.height,
             wgpu::TextureFormat::Rgba8Unorm,
         );
+    }
+
+    if let Some(mut darkness) = darkness_state {
+        darkness.composite_bind_group = None;
     }
 
     pending.dirty = false;
@@ -328,7 +336,7 @@ fn draw_frame(
     sprite_batch_state: Option<Res<UnifiedSpriteBatchState>>,
     effect_manager_state: Option<Res<EffectManagerState>>,
     minimap_renderer_state: Option<Res<MinimapRendererState>>,
-    translucent_player_pass_state: Option<Res<TranslucentPlayerPassState>>,
+    mut translucent_player_pass_state: Option<ResMut<TranslucentPlayerPassState>>,
     scene_color_state: Option<Res<SceneColorState>>,
     mut darkness_state: Option<ResMut<DarknessState>>,
     mut weather_state: Option<ResMut<WeatherState>>,
@@ -408,25 +416,29 @@ fn draw_frame(
 
     // Update the darkness uniform for this frame.
     if let Some(darkness) = darkness_state.as_deref_mut() {
-        darkness.renderer.update_uniform(
-            &render_hardware.queue,
-            [camera.camera.position().x, camera.camera.position().y],
-            camera.camera.zoom(),
-            [camera.camera.camera.width, camera.camera.camera.height],
-            &darkness.sources,
-        );
+        if darkness.needs_composite() {
+            darkness.renderer.update_uniform(
+                &render_hardware.queue,
+                [camera.camera.position().x, camera.camera.position().y],
+                camera.camera.zoom(),
+                [camera.camera.camera.width, camera.camera.camera.height],
+                &darkness.sources,
+            );
+        }
     }
 
     // (Global texture uploader removed; direct queue submissions now occur at load time.)
 
     // Background pass: draw while not InGame, and also as a fallback when InGame but no map is loaded yet
     let color_load_op = wgpu::LoadOp::Clear(wgpu::Color::BLACK);
-    // Render the world offscreen when the darkness composite is active, else
-    // straight to the back buffer.
-    let scene_target = scene_color_state
-        .as_ref()
-        .map(|state| &state.color_texture.view)
-        .unwrap_or(&view);
+    // The darkness composite is a fullscreen pass over an offscreen scene;
+    // maps without a light map or dark flag render straight to the back buffer.
+    let scene_target = match (&scene_color_state, &darkness_state) {
+        (Some(scene_color), Some(darkness)) if darkness.needs_composite() => {
+            &scene_color.color_texture.view
+        }
+        _ => &view,
+    };
 
     // world scene pass (only runs while InGame)
     {
@@ -481,88 +493,111 @@ fn draw_frame(
     }
 
     if let (Some(sb), Some(translucent_player_pass_state)) =
-        (&sprite_batch_state, &translucent_player_pass_state)
+        (&sprite_batch_state, &mut translucent_player_pass_state)
     {
-        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Translucent Player Render Pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &translucent_player_pass_state.color_texture.view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                    store: wgpu::StoreOp::Store,
-                },
-                depth_slice: None,
-            })],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &translucent_player_pass_state.depth_texture.view,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(0.0),
-                    store: wgpu::StoreOp::Store,
+        if sb.batch.translucent_count() > 0 {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Translucent Player Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &translucent_player_pass_state.color_texture.view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &translucent_player_pass_state.depth_texture.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(0.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
                 }),
-                stencil_ops: None,
-            }),
-            ..Default::default()
-        });
-        render_pass.set_stencil_reference(0);
-        render_pass.set_pipeline(&render_hardware.scene.translucent_player_pipeline);
-        render_pass.set_bind_group(1, &camera.camera.camera_bind_group, &[]);
-        sb.batch.render(&mut render_pass);
+                ..Default::default()
+            });
+            render_pass.set_stencil_reference(0);
+            render_pass.set_pipeline(&render_hardware.scene.translucent_player_pipeline);
+            render_pass.set_bind_group(1, &camera.camera.camera_bind_group, &[]);
+            sb.batch.render(&mut render_pass);
+        }
     }
 
-    if let (Some(_), Some(translucent_player_pass_state)) =
-        (&sprite_batch_state, &translucent_player_pass_state)
+    if let (Some(sb), Some(translucent_player_pass_state)) =
+        (&sprite_batch_state, &mut translucent_player_pass_state)
     {
-        let composite_bind_group = render_hardware
-            .scene
-            .create_translucent_player_composite_bind_group(
-                &render_hardware.device,
-                &translucent_player_pass_state.color_texture.view,
-                &translucent_player_pass_state.depth_texture.view,
-            );
+        if sb.batch.translucent_count() > 0 {
+            let composite_bind_group =
+                if translucent_player_pass_state.composite_bind_group.is_none() {
+                    let bind_group = render_hardware
+                        .scene
+                        .create_translucent_player_composite_bind_group(
+                            &render_hardware.device,
+                            &translucent_player_pass_state.color_texture.view,
+                            &translucent_player_pass_state.depth_texture.view,
+                        );
+                    translucent_player_pass_state.composite_bind_group = Some(bind_group.clone());
+                    bind_group
+                } else {
+                    translucent_player_pass_state
+                        .composite_bind_group
+                        .clone()
+                        .unwrap()
+                };
 
-        let mut composite_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Translucent Player Composite Pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: scene_target,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: wgpu::StoreOp::Store,
-                },
-                depth_slice: None,
-            })],
-            ..Default::default()
-        });
-        composite_pass.set_pipeline(&render_hardware.scene.translucent_player_composite_pipeline);
-        composite_pass.set_bind_group(0, &composite_bind_group, &[]);
-        composite_pass.draw(0..3, 0..1);
+            let mut composite_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Translucent Player Composite Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: scene_target,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                ..Default::default()
+            });
+            composite_pass
+                .set_pipeline(&render_hardware.scene.translucent_player_composite_pipeline);
+            composite_pass.set_bind_group(0, &composite_bind_group, &[]);
+            composite_pass.draw(0..3, 0..1);
+        }
     }
 
     // Blend the offscreen scene into the back buffer with the darkness overlay.
-    if let (Some(scene_color), Some(darkness_state)) = (&scene_color_state, &darkness_state) {
-        let darkness_bind_group = darkness_state.renderer.create_bind_group(
-            &render_hardware.device,
-            &render_hardware.scene.darkness_bind_group_layout,
-            &scene_color.color_texture.view,
-        );
+    if let (Some(scene_color), Some(darkness_state)) = (&scene_color_state, &mut darkness_state) {
+        if darkness_state.needs_composite() {
+            let darkness_bind_group = if darkness_state.composite_bind_group.is_none() {
+                let bind_group = darkness_state.renderer.create_bind_group(
+                    &render_hardware.device,
+                    &render_hardware.scene.darkness_bind_group_layout,
+                    &scene_color.color_texture.view,
+                );
+                darkness_state.composite_bind_group = Some(bind_group.clone());
+                bind_group
+            } else {
+                darkness_state.composite_bind_group.clone().unwrap()
+            };
 
-        let mut darkness_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Darkness Composite Pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: wgpu::StoreOp::Store,
-                },
-                depth_slice: None,
-            })],
-            ..Default::default()
-        });
-        darkness_pass.set_pipeline(&render_hardware.scene.darkness_pipeline);
-        darkness_pass.set_bind_group(0, &darkness_bind_group, &[]);
-        darkness_pass.draw(0..3, 0..1);
+            let mut darkness_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Darkness Composite Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                ..Default::default()
+            });
+            darkness_pass.set_pipeline(&render_hardware.scene.darkness_pipeline);
+            darkness_pass.set_bind_group(0, &darkness_bind_group, &[]);
+            darkness_pass.draw(0..3, 0..1);
+        }
     }
 
     // Draw weather above the darkened world.

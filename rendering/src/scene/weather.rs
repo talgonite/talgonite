@@ -97,6 +97,7 @@ pub struct WeatherRenderer {
     vertex_buffer: wgpu::Buffer,
     instance_buffer: wgpu::Buffer,
     instances: Vec<WeatherInstanceRaw>,
+    bind_group: Option<wgpu::BindGroup>,
 
     snow_frames: Vec<Vec<SnowFrame>>,
     rain_size: (u32, u32),
@@ -187,6 +188,7 @@ impl WeatherRenderer {
             vertex_buffer,
             instance_buffer,
             instances: Vec::with_capacity(MAX_WEATHER_INSTANCES),
+            bind_group: None,
             snow_frames: assets.snow_frames.clone(),
             rain_size: (assets.rain.width, assets.rain.height),
             snow_particles: Vec::new(),
@@ -263,10 +265,14 @@ impl WeatherRenderer {
     }
 
     pub fn create_bind_group(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         layout: &wgpu::BindGroupLayout,
     ) -> wgpu::BindGroup {
+        if let Some(bind_group) = &self.bind_group {
+            return bind_group.clone();
+        }
+
         let snow_view = self
             .snow_texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -274,7 +280,7 @@ impl WeatherRenderer {
             .rain_texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Weather Bind Group"),
             layout,
             entries: &[
@@ -299,7 +305,9 @@ impl WeatherRenderer {
                     resource: self.uniform_buffer.as_entire_binding(),
                 },
             ],
-        })
+        });
+        self.bind_group = Some(bind_group.clone());
+        bind_group
     }
 
     fn update_snow(&mut self, dt: f32, viewport: (u32, u32), vp_w: u32, vp_h: u32) {
@@ -375,8 +383,13 @@ impl WeatherRenderer {
         while self.rain_rows.first().is_some_and(|row| row.y > -tile_h) {
             let top = self.rain_rows[0].y;
             let perm = self.random_permutation();
-            self.rain_rows
-                .insert(0, RainRow { y: top - tile_h, permutation: perm });
+            self.rain_rows.insert(
+                0,
+                RainRow {
+                    y: top - tile_h,
+                    permutation: perm,
+                },
+            );
         }
 
         self.rain_rows.retain(|row| row.y < vp_h as f32);

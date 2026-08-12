@@ -331,6 +331,7 @@ fn handle_map_darkness(
     darkness
         .renderer
         .set_map(&renderer.device, &renderer.queue, map_info.height, hea);
+    darkness.composite_bind_group = None;
     darkness
         .renderer
         .set_ambient(if is_dark { 1.0 } else { 0.0 }, [0, 0, 0]);

@@ -352,6 +352,7 @@ impl DerefMut for ProfilePortraitState {
 pub struct TranslucentPlayerPassState {
     pub color_texture: rendering::texture::Texture,
     pub depth_texture: rendering::texture::Texture,
+    pub composite_bind_group: Option<wgpu::BindGroup>,
 }
 
 /// Offscreen world target for the darkness composite.
@@ -368,8 +369,17 @@ pub struct DarknessState {
     pub sources: Vec<rendering::scene::darkness::LightSource>,
     pub map_id: u16,
     pub is_dark_map: bool,
+    /// Cached composite bind group, invalidated on resize and map changes.
+    pub composite_bind_group: Option<wgpu::BindGroup>,
     /// Most recent light level from the server, reapplied on map changes.
     pub last_light_level: Option<u8>,
+}
+
+impl DarknessState {
+    /// Whether the darkness composite must run for the current map.
+    pub fn needs_composite(&self) -> bool {
+        self.renderer.has_hea() || self.is_dark_map
+    }
 }
 
 /// Weather overlay; `renderer` is `None` when assets are missing.

@@ -366,6 +366,7 @@ pub struct SharedInstanceBatch {
     next_index: AtomicUsize,
     free_indices: Arc<Mutex<Vec<usize>>>,
     written_instances: Arc<Mutex<Vec<InstanceRaw>>>,
+    translucent_count: AtomicUsize,
 }
 
 impl SharedInstanceBatch {
@@ -394,11 +395,17 @@ impl SharedInstanceBatch {
             next_index: AtomicUsize::new(0),
             free_indices: Arc::new(Mutex::new(Vec::with_capacity(BATCH_SIZE))),
             written_instances: Arc::new(Mutex::new(vec![InstanceRaw::default(); BATCH_SIZE])),
+            translucent_count: AtomicUsize::new(0),
         }
     }
 
     pub fn len(&self) -> usize {
         self.next_index.load(Ordering::Relaxed)
+    }
+
+    /// Live instances the translucent/x-ray composite pass must draw.
+    pub fn translucent_count(&self) -> usize {
+        self.translucent_count.load(Ordering::Relaxed)
     }
 
     /// Draw all live instances with the batch's vertex buffer, instance buffer, and bind group.
@@ -418,12 +425,30 @@ impl SharedInstanceBatch {
         if let Ok(mut free_indices) = self.free_indices.lock() {
             free_indices.clear();
         }
+        if let Ok(mut written_instances) = self.written_instances.lock() {
+            written_instances.fill(InstanceRaw::default());
+        }
+        self.translucent_count.store(0, Ordering::Relaxed);
     }
 
     pub fn update(&self, queue: &wgpu::Queue, index: usize, instance: Instance) {
         let raw_instance = instance.to_raw();
 
         if let Ok(mut written_instances) = self.written_instances.lock() {
+            let old_translucent = needs_translucent_pass(
+                written_instances
+                    .get(index)
+                    .map_or(0, |cached| cached.flags),
+            );
+            let new_translucent = needs_translucent_pass(raw_instance.flags);
+            if old_translucent != new_translucent {
+                if new_translucent {
+                    self.translucent_count.fetch_add(1, Ordering::Relaxed);
+                } else {
+                    self.translucent_count.fetch_sub(1, Ordering::Relaxed);
+                }
+            }
+
             if written_instances.get(index) == Some(&raw_instance) {
                 return;
             }
@@ -470,5 +495,106 @@ impl SharedInstanceBatch {
         }
 
         self.update(queue, index, Instance::default());
+    }
+}
+
+fn needs_translucent_pass(flags: u32) -> bool {
+    flags & (u32::from(InstanceFlag::XRay) | u32::from(InstanceFlag::Translucent)) != 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_device() -> Option<(wgpu::Device, wgpu::Queue)> {
+        pollster::block_on(async {
+            let instance =
+                wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+            let adapter = instance.enumerate_adapters(wgpu::Backends::all()).await.into_iter().next()?;
+            adapter
+                .request_device(&wgpu::DeviceDescriptor {
+                    label: Some("Instance Batch Test Device"),
+                    required_features: wgpu::Features::IMMEDIATES,
+                    required_limits: wgpu::Limits {
+                        max_immediate_size: 16,
+                        ..Default::default()
+                    },
+                    memory_hints: Default::default(),
+                    ..Default::default()
+                })
+                .await
+                .ok()
+        })
+    }
+
+    fn empty_bind_group(device: &wgpu::Device) -> wgpu::BindGroup {
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Empty Test Layout"),
+            entries: &[],
+        });
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Empty Test Bind Group"),
+            layout: &layout,
+            entries: &[],
+        })
+    }
+
+    #[test]
+    fn translucent_flag_matches_shader_discard() {
+        assert!(!needs_translucent_pass(0));
+        assert!(!needs_translucent_pass(2)); // Hover
+        assert!(!needs_translucent_pass(8)); // Overlay alone
+        assert!(needs_translucent_pass(1)); // XRay
+        assert!(needs_translucent_pass(4)); // Translucent
+        assert!(needs_translucent_pass(12)); // TranslucentOverlay
+    }
+
+    #[test]
+    fn translucent_count_tracks_flag_changes() {
+        let Some((device, queue)) = test_device() else {
+            eprintln!("No GPU adapter available; skipping translucent count test");
+            return;
+        };
+
+        let batch = SharedInstanceBatch::new(&device, Vec::new(), empty_bind_group(&device));
+        assert_eq!(batch.translucent_count(), 0);
+
+        let index = batch
+            .add(&queue, Instance::with_texture_region(Vec3::ZERO, Vec2::ZERO, Vec2::ONE, Vec2::ZERO, 0.0))
+            .unwrap();
+        assert_eq!(batch.translucent_count(), 0);
+
+        batch.update(
+            &queue,
+            index,
+            Instance {
+                flags: InstanceFlag::XRay,
+                ..Default::default()
+            },
+        );
+        assert_eq!(batch.translucent_count(), 1);
+
+        batch.update(
+            &queue,
+            index,
+            Instance {
+                flags: InstanceFlag::Translucent,
+                ..Default::default()
+            },
+        );
+        assert_eq!(batch.translucent_count(), 1);
+
+        batch.update(
+            &queue,
+            index,
+            Instance {
+                flags: InstanceFlag::None,
+                ..Default::default()
+            },
+        );
+        assert_eq!(batch.translucent_count(), 0);
+
+        batch.remove(&queue, index);
+        assert_eq!(batch.translucent_count(), 0);
     }
 }

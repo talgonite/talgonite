@@ -81,7 +81,10 @@ impl LightMetadata {
             .get(&map_id)
             .map(String::as_str)
             .unwrap_or("default");
-        let Some(property) = self.properties.get(&format!("{}_{:X}", light_type, level)) else {
+        let Some(property) = self
+            .properties
+            .get(&format!("{}_{:X}", light_type, level).to_lowercase())
+        else {
             return None;
         };
 
@@ -154,6 +157,8 @@ mod tests {
     fn parses_light_properties_and_map_types() {
         let meta = meta(&[
             ("Default_0", &["0", "1", "18", "6", "11", "60"]),
+            ("Default_a", &["20", "21", "23", "100", "10", "100"]),
+            ("Default_b", &["22", "24", "20", "27", "1", "59"]),
             ("Default_4", &["8", "9", "32", "0", "0", "255"]),
             ("500", &["Default"]),
             ("501", &["Default"]),
@@ -169,6 +174,13 @@ mod tests {
 
         // Level 4 is alpha 32 -> fully bright -> zero opacity.
         assert_eq!(light.resolve(500, 4).unwrap().0, 0.0);
+        // Hex letter levels (10/11) resolve against the lowercase metafile keys.
+        let (alpha, color) = light.resolve(500, 10).unwrap();
+        assert!((alpha - 9.0 / 32.0).abs() < 1e-6);
+        assert_eq!(color, [100, 10, 100]);
+        let (alpha, color) = light.resolve(500, 11).unwrap();
+        assert!((alpha - 12.0 / 32.0).abs() < 1e-6);
+        assert_eq!(color, [27, 1, 59]);
         // Maps without an entry are untouched by light level packets.
         assert!(light.resolve(502, 0).is_none());
     }
