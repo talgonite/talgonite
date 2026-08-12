@@ -1,0 +1,5 @@
+// Force-logout overlay state, driven by the Rust session runtime.
+export global NetworkState {
+    in-out property <bool> disconnected: false;
+    callback acknowledged();
+}

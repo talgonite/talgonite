@@ -2406,6 +2406,9 @@ fn bridge_session_events(
                     }
                 }
             }
+            SessionEvent::NetworkDisconnected => {
+                outbound.write(UiOutbound(CoreToUi::NetworkDisconnected));
+            }
             _ => {}
         }
     }

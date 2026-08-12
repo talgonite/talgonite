@@ -109,6 +109,7 @@ pub fn attach_slint_ui(mut app: App) -> MainWindow {
         callbacks::wire_login_callbacks(&slint_app, ch.tx.clone());
         callbacks::wire_game_callbacks(&slint_app, ch.tx.clone());
         callbacks::wire_settings_callbacks(&slint_app, ch.tx.clone());
+        callbacks::wire_network_callbacks(&slint_app, ch.tx.clone());
     }
 
     // Set up rendering notifier

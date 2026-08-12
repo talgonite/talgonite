@@ -4,10 +4,10 @@ pub use game_ui::slint_types::{
     CastingIndicator, ChatMessage, ContextMenuEntry, ContextMenuState, Cooldown, DragDropState,
     EquipmentSlotData, GameState, GroupInviteNotification, GroupMember, HotbarEntry, InputBridge,
     InstallerState, InventoryItem, LegendMarkData, LobbyState, LoginBridge, LoginState,
-    MailBoardPost, MailBoardState, MainWindow, MenuEntry, NpcDialogData, NpcDialogState,
-    PlatformState, PopupId, PopupManagerState, ProfileData, SavedLoginItem, ServerItem,
-    SettingsState, Skill, SlotPanelType, SocialStatus, SocialStatusEntry, SocialStatusState,
-    SpeechBubble, Spell, WorldLabel, WorldListMemberUi, WorldMapNode,
+    MailBoardPost, MailBoardState, MainWindow, MenuEntry, NetworkState, NpcDialogData,
+    NpcDialogState, PlatformState, PopupId, PopupManagerState, ProfileData, SavedLoginItem,
+    ServerItem, SettingsState, Skill, SlotPanelType, SocialStatus, SocialStatusEntry,
+    SocialStatusState, SpeechBubble, Spell, WorldLabel, WorldListMemberUi, WorldMapNode,
 };
 
 use tracing_subscriber::prelude::*;

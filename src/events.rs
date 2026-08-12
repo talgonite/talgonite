@@ -121,6 +121,7 @@ pub enum SessionEvent {
     OtherProfile(server::OtherProfile),
     WorldList(server::WorldList),
     GroupInvite(server::DisplayGroupInvite),
+    NetworkDisconnected,
 }
 
 #[derive(Debug, Clone, Message)]

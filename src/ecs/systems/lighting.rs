@@ -31,12 +31,7 @@ pub fn lighting_gather_system(
             _ => 1, // large
         };
 
-        let screen = tile_to_screen(
-            Vec2::new(position.x, position.y),
-            cam_pos,
-            window,
-            zoom,
-        );
+        let screen = tile_to_screen(Vec2::new(position.x, position.y), cam_pos, window, zoom);
 
         darkness.sources.push(LightSource {
             screen_x: screen.x,

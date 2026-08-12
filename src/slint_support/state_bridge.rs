@@ -597,6 +597,10 @@ pub fn apply_core_to_slint(
                 strong.set_show_prelogin(false);
                 login_state.set_is_submitting(false);
             }
+            crate::webui::ipc::CoreToUi::NetworkDisconnected => {
+                let network_state = slint::ComponentHandle::global::<crate::NetworkState>(&strong);
+                network_state.set_disconnected(true);
+            }
             crate::webui::ipc::CoreToUi::ChatAppend { entries } => {
                 let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
 

@@ -108,6 +108,7 @@ fn process_net_packets(
             }
             NetworkEvent::Disconnected => {
                 tracing::warn!("Network disconnected");
+                session_events.write(SessionEvent::NetworkDisconnected);
             }
             NetworkEvent::Packet(code, data) => match code {
                 &server::Codes::HeartBeatResponse => {

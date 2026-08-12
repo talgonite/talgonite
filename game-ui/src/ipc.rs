@@ -369,6 +369,8 @@ pub enum CoreToUi {
         modifier_hotbar_rows_target_custom_only: bool,
         key_bindings: KeyBindingsUi,
     },
+    /// Session dropped: show the force-logout overlay.
+    NetworkDisconnected,
 }
 
 #[derive(Debug, Clone)]

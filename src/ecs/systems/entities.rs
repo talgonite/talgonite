@@ -74,7 +74,8 @@ pub fn spawn_entities_system(
             | SessionEvent::SelfProfile(_)
             | SessionEvent::OtherProfile(_)
             | SessionEvent::WorldList(_)
-            | SessionEvent::GroupInvite(_) => {}
+            | SessionEvent::GroupInvite(_)
+            | SessionEvent::NetworkDisconnected => {}
         }
     }
 

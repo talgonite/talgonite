@@ -510,7 +510,11 @@ mod tests {
         pollster::block_on(async {
             let instance =
                 wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-            let adapter = instance.enumerate_adapters(wgpu::Backends::all()).await.into_iter().next()?;
+            let adapter = instance
+                .enumerate_adapters(wgpu::Backends::all())
+                .await
+                .into_iter()
+                .next()?;
             adapter
                 .request_device(&wgpu::DeviceDescriptor {
                     label: Some("Instance Batch Test Device"),
@@ -560,7 +564,10 @@ mod tests {
         assert_eq!(batch.translucent_count(), 0);
 
         let index = batch
-            .add(&queue, Instance::with_texture_region(Vec3::ZERO, Vec2::ZERO, Vec2::ONE, Vec2::ZERO, 0.0))
+            .add(
+                &queue,
+                Instance::with_texture_region(Vec3::ZERO, Vec2::ZERO, Vec2::ONE, Vec2::ZERO, 0.0),
+            )
             .unwrap();
         assert_eq!(batch.translucent_count(), 0);
 

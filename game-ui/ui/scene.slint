@@ -10,6 +10,9 @@ export { SettingsState } from "settings_state.slint";
 export { LoginBridge } from "login_bridge.slint";
 export { InputBridge } from "input_bridge.slint";
 export { PopupManagerState, PopupId } from "popup_manager.slint";
+export { NetworkState } from "network_state.slint";
+import { NetworkState } from "network_state.slint";
+import { DisconnectOverlay } from "components/disconnect_overlay.slint";
 
 export component MainWindow inherits Window {
     in property <image> texture <=> i.source;
@@ -40,6 +43,7 @@ export component MainWindow inherits Window {
             root.request-snapshot();
         }
     }
+    if (NetworkState.disconnected): DisconnectOverlay { }
     init => {
         request-snapshot();
     }
