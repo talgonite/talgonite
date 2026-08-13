@@ -117,6 +117,7 @@ export struct CastingIndicator {
     visible: bool,
     text: string,
     progress: float,
+    targeting: bool,
 }
 
 export struct SpeechBubble {
@@ -246,6 +247,7 @@ export global GameState {
         visible: false,
         text: "Casting...",
         progress: 0.0,
+        targeting: false,
     };
     in-out property <[WorldLabel]> world_labels: [];
     in-out property <[SpeechBubble]> speech_bubbles: [];
@@ -300,6 +302,7 @@ export global GameState {
     callback kick-group-member(string);
     callback leave-group();
     callback request-self-profile();
+    callback cancel-spell-targeting();
 }
 
 export global PopupState {

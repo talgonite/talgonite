@@ -1157,6 +1157,8 @@ fn handle_ui_inbound_ingame(
 pub fn handle_popup_requests(
     mut inbound: MessageReader<UiInbound>,
     mut popup_manager: ResMut<crate::slint_support::popups::PopupManager>,
+    mut targeting_state: ResMut<crate::ecs::spell_casting::SpellTargetingState>,
+    mut queue_state: ResMut<crate::ecs::spell_casting::SpellQueueState>,
     outbox: Res<crate::network::PacketOutbox>,
     mut menu_ctx: ResMut<ActiveMenuContext>,
     mut board_state: ResMut<BoardSessionState>,
@@ -1176,6 +1178,11 @@ pub fn handle_popup_requests(
                 popup_manager.close(id).then_some(id)
             }
             UiToCore::PopupCloseTop => popup_manager.close_top(),
+            UiToCore::CancelSpellTargeting => {
+                targeting_state.pending_target = None;
+                queue_state.queued_spell = None;
+                None
+            }
             _ => None,
         };
         if let Some(id) = closed {

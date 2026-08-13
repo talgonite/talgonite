@@ -265,6 +265,14 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
             let _ = tx.send(UiToCore::RequestSelfProfile);
         });
     }
+    {
+        let tx = tx.clone();
+        game_state.on_cancel_spell_targeting(move || {
+            if tx.send(UiToCore::CancelSpellTargeting).is_err() {
+                tracing::error!("Failed to send CancelSpellTargeting message");
+            }
+        });
+    }
 
     // Drag-drop: the UI builds an opaque payload per drag source; the drop target
     // reports it back here together with the target slot and position.

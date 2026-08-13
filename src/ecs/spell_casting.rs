@@ -195,13 +195,15 @@ pub fn handle_spell_targeting(
     query: Query<(&EntityId, &Position, Option<&Player>, Option<&NPC>)>,
     outbox: Res<PacketOutbox>,
 ) {
+    if tile_clicks.read().next().is_some() || wall_clicks.read().next().is_some() {
+        targeting_state.pending_target = None;
+        queue_state.queued_spell = None;
+        return;
+    }
+
     let Some(pending_target) = targeting_state.pending_target.as_ref() else {
         return;
     };
-
-    if tile_clicks.read().next().is_some() || wall_clicks.read().next().is_some() {
-        return;
-    }
 
     for event in events.read() {
         if let Ok((entity_id, position, player, npc)) = query.get(event.entity) {

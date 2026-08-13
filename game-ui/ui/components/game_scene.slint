@@ -37,7 +37,9 @@ export component GameScene inherits Rectangle {
                 }
             }
             if (event.text == "\u{001b}") { // Escape
-                if (PopupManagerState.count() > 0) {
+                if (GameState.casting-indicator.targeting) {
+                    GameState.cancel-spell-targeting();
+                } else if (PopupManagerState.count() > 0) {
                     PopupManagerState.close-top-request();
                 } else {
                     PopupManagerState.open-request(PopupId.GameMenu);

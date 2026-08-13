@@ -1320,6 +1320,7 @@ pub fn sync_world_labels_to_slint(
         With<crate::ecs::components::LocalPlayer>,
     >,
     spell_casting: Res<crate::ecs::spell_casting::SpellCastingState>,
+    spell_targeting: Res<crate::ecs::spell_casting::SpellTargetingState>,
     entities_query: Query<(
         Entity,
         &crate::ecs::components::Position,
@@ -1379,7 +1380,10 @@ pub fn sync_world_labels_to_slint(
         visible: false,
         text: slint::SharedString::from("Casting..."),
         progress: 0.0,
+        targeting: false,
     };
+
+    casting_indicator.targeting = spell_targeting.pending_target.is_some();
 
     if let Some(cast) = spell_casting.active_cast.as_ref() {
         if cast.total_cast_lines > 0 {

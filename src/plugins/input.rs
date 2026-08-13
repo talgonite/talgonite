@@ -2,6 +2,7 @@ use crate::{
     app_state::AppState,
     ecs::components::{Direction, LocalPlayer, MovementTween},
     ecs::hotbar::{HotbarPanel, HotbarPanelState, HotbarRows},
+    ecs::spell_casting::{SpellQueueState, SpellTargetingState},
     ecs::systems::GameSet,
     events::{ClickSource, InputSource, PlayerAction, ResolvedPointerClickEvent},
     input::{
@@ -169,17 +170,23 @@ pub fn popup_control_system(
     gamepad_query: Query<&Gamepad>,
     gamepad_config: Res<GamepadConfig>,
     mut popup_manager: ResMut<PopupManager>,
+    mut targeting_state: ResMut<SpellTargetingState>,
+    mut queue_state: ResMut<SpellQueueState>,
 ) {
     let bindings = unified_bindings;
 
-    // Back: close the topmost window, or open the game menu if nothing is open.
+    // Back: cancel spell targeting first; otherwise close the topmost window,
+    // or open the game menu if nothing is open.
     if bindings.is_just_pressed(
         GameAction::Settings,
         &keyboard_input,
         Some(&gamepad_query),
         Some(&gamepad_config),
     ) {
-        if popup_manager.close_top().is_none() {
+        if targeting_state.pending_target.is_some() {
+            targeting_state.pending_target = None;
+            queue_state.queued_spell = None;
+        } else if popup_manager.close_top().is_none() {
             popup_manager.open(PopupId::GameMenu);
         }
     }

@@ -114,6 +114,7 @@ Each action can have multiple input sources:
 
 - If any window/modal is open, it closes the **topmost** one (LIFO). Pressing
   Escape repeatedly closes windows one at a time.
+- If a spell is waiting for a target, it cancels the target selection instead.
 - If nothing is open, it opens the game menu.
 
 Keyboard Escape is intercepted by the Slint `FocusScope` and routed through

@@ -183,6 +183,8 @@ pub enum UiToCore {
     },
     /// User requested to close the topmost popup/window (e.g. Escape).
     PopupCloseTop,
+    /// User requested to cancel spell target selection (e.g. Escape).
+    CancelSpellTargeting,
     SettingsChange {
         xray_size: u8,
     },
