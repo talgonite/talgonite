@@ -43,6 +43,11 @@ impl SquashfsAssetSink {
                 compression_level: 3,
             })),
         )?);
+        // backhand's duplicate-file elimination hashes only the first data
+        // block, so same-size files with an identical prefix (e.g. light maps
+        // sharing a ktx2 header and zero top rows) collapse onto the first
+        // file's content. Disable it; identical content is cheap to store.
+        writer.set_no_duplicate_files(false);
 
         let (spool, spool_path) = create_spool(output)?;
 
