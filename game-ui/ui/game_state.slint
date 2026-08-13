@@ -94,24 +94,13 @@ export enum SlotPanelType {
     world
 }
 
-// Central drag/drop state for cross-component dragging
+// Drag/drop bridge: sources build an opaque payload, drop targets hand it to the host.
 export global DragDropState {
+    // Mirrors the in-flight drag's source so Slint can reject same-slot drops.
     in-out property <SlotPanelType> source-panel: SlotPanelType.none;
     in-out property <int> source-index: -1;
-    callback action-drag-drop(SlotPanelType, int, SlotPanelType, int, length, length);
-    public function start-drag(panel: SlotPanelType, index: int) {
-        source-panel = panel;
-        source-index = index;
-    }
-    public function cancel-drag() {
-        source-panel = SlotPanelType.none;
-    }
-    public function maybe-drop(panel-id: SlotPanelType, slot-index: int, x: length, y: length) {
-        if source-panel != SlotPanelType.none && (source-panel != panel-id || source-index != slot-index) {
-            action-drag-drop(source-panel, source-index, panel-id, slot-index, x, y);
-            source-panel = SlotPanelType.none;
-        }
-    }
+    pure callback make-transfer(SlotPanelType, int) -> data-transfer;
+    callback dropped(data-transfer, SlotPanelType, int, length, length);
 }
 
 export struct WorldLabel {

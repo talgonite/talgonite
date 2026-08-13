@@ -21,6 +21,12 @@ fn slint_to_game_panel(panel: SlotPanelType) -> game_types::SlotPanelType {
     }
 }
 
+/// Payload attached to an in-app drag; read by the drop target's handler.
+struct DragSource {
+    panel: SlotPanelType,
+    index: i32,
+}
+
 /// Wire all game-related callbacks: world map, menu, chat, equipment, hotbar, drag-drop.
 pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
     let game_state = slint_app.global::<GameState>();
@@ -260,37 +266,48 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
         });
     }
 
-    // Drag-drop action
+    // Drag-drop: the UI builds an opaque payload per drag source; the drop target
+    // reports it back here together with the target slot and position.
     let dragdrop_state = slint_app.global::<DragDropState>();
     {
+        dragdrop_state.on_make_transfer(move |panel, index| {
+            let mut data = slint::DataTransfer::default();
+            data.set_user_data(std::rc::Rc::new(DragSource { panel, index }));
+            data
+        });
+    }
+    {
         let tx = tx.clone();
-        dragdrop_state.on_action_drag_drop(
-            move |src_panel, src_slot, dst_panel, dst_slot, x, y| {
-                tracing::info!(
-                    "DragDropAction from {:?} slot {} to {:?} slot {} at ({}, {})",
-                    src_panel,
-                    src_slot,
-                    dst_panel,
-                    dst_slot,
-                    x,
-                    y
-                );
+        dragdrop_state.on_dropped(move |data, dst_panel, dst_slot, x, y| {
+            let Some(src) = data.user_data().and_then(|rc| rc.downcast::<DragSource>().ok()) else {
+                tracing::warn!("Drag drop payload is missing the drag source");
+                return;
+            };
 
-                if tx
-                    .send(UiToCore::DragDropAction {
-                        src_category: slint_to_game_panel(src_panel),
-                        src_index: src_slot as usize,
-                        dst_category: slint_to_game_panel(dst_panel),
-                        dst_index: dst_slot as usize,
-                        x,
-                        y,
-                    })
-                    .is_err()
-                {
-                    tracing::error!("Failed to send DragDropAction message");
-                }
-            },
-        );
+            tracing::info!(
+                "DragDropAction from {:?} slot {} to {:?} slot {} at ({}, {})",
+                src.panel,
+                src.index,
+                dst_panel,
+                dst_slot,
+                x,
+                y
+            );
+
+            if tx
+                .send(UiToCore::DragDropAction {
+                    src_category: slint_to_game_panel(src.panel),
+                    src_index: src.index as usize,
+                    dst_category: slint_to_game_panel(dst_panel),
+                    dst_index: dst_slot as usize,
+                    x,
+                    y,
+                })
+                .is_err()
+            {
+                tracing::error!("Failed to send DragDropAction message");
+            }
+        });
     }
 
     // Social status callbacks

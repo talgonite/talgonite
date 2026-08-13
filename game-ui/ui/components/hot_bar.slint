@@ -1,13 +1,12 @@
 import {
     GameState,
-    DragDropState,
     SlotPanelType,
     InventoryItem,
     Skill,
     Spell,
     PopupState,
 } from "../game_state.slint";
-import { CancelDrag, DragDropItem } from "drag_drop.slint";
+import { DragDropItem } from "drag_drop.slint";
 import { Theme } from "../theme.slint";
 import { HorizontalBox, VerticalBox } from "std-widgets.slint";
 import { Icon } from "./icon.slint";
@@ -47,13 +46,8 @@ component HotBarSlotView inherits Rectangle {
             y: parent.height - self.height - 2px;
         }
         states [
-            dragging when slot-drag.pressed: {
-                x: slot-drag.offset-x;
-                y: slot-drag.offset-y;
-                background: Theme.surface-card;
-                border-radius: Theme.radius-small;
-                border-width: 2px;
-                border-color: Theme.accent;
+            dragging when slot-drag.dragging: {
+                opacity: 0.5;
             }
         ]
     }
@@ -70,6 +64,9 @@ component HotBarSlotView inherits Rectangle {
         draggable: slot > 0;
         slot-index: slot;
         panel-type: panel-type;
+        drag-image: icon;
+        drag-image-offset-x: icon.width / 2;
+        drag-image-offset-y: icon.height / 2;
         clicked => {
             if PlatformState.is-android && slot > 0 {
                 GameState.use-action(panel-type, slot);
@@ -83,11 +80,11 @@ component HotBarSlotView inherits Rectangle {
     }
 
     states [
-        hovered when slot-drag.has-hover && slot > 0 && !slot-drag.pressed: {
+        hovered when slot-drag.has-hover && slot > 0 && !slot-drag.dragging: {
             border-color: Theme.accent;
         }
     ]
-    property <bool> has-tooltip: slot-drag.has-hover && slot > 0 && !slot-drag.pressed;
+    property <bool> has-tooltip: slot-drag.has-hover && slot > 0 && !slot-drag.dragging;
     changed has-tooltip => {
         if (root.has-tooltip) {
             PopupState.show(name, self.absolute-position.x, self.absolute-position.y, root.width, root.height);
@@ -96,9 +93,12 @@ component HotBarSlotView inherits Rectangle {
         }
     }
     states [
-        hover when slot-drag.has-hover && !slot-drag.pressed: {
+        hover when slot-drag.has-hover && !slot-drag.dragging: {
             border-color: Theme.accent-muted;
             background: Theme.surface-secondary;
+        }
+        drop-hover when slot-drag.has-drag: {
+            border-color: Theme.accent;
         }
     ]
 }
@@ -292,8 +292,6 @@ export component HotBar inherits Rectangle {
         background: @linear-gradient(0deg, #00000025 0%, #00000012 10%, #00000040 20%, #00000040 80%, #00000025 90%, #00000000 100%);
         border-radius: 6px;
     }
-
-    CancelDrag { }
 
     if PlatformState.is-android: HorizontalBox {
         padding: 6px;

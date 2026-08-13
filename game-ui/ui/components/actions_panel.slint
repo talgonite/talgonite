@@ -1,6 +1,5 @@
 import {
     GameState,
-    DragDropState,
     SlotPanelType,
     Skill,
     Spell,
@@ -9,7 +8,7 @@ import {
 import { PopupManagerState, PopupId } from "../popup_manager.slint";
 import { Theme } from "../theme.slint";
 import { ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
-import { CancelDrag, DragDropItem } from "drag_drop.slint";
+import { DragDropItem } from "drag_drop.slint";
 import { Icon } from "./icon.slint";
 import { BasePanel } from "./base_panel.slint";
 
@@ -67,12 +66,8 @@ component SkillRow inherits Rectangle {
         }
 
         states [
-            dragging when skill-drag.pressed: {
-                background: Theme.surface-card;
-                x: skill-drag.offset-x;
-                y: skill-drag.offset-y;
-                border-width: 2px;
-                border-color: Theme.accent;
+            dragging when skill-drag.dragging: {
+                opacity: 0.5;
             }
         ]
     }
@@ -80,12 +75,15 @@ component SkillRow inherits Rectangle {
     skill-drag := DragDropItem {
         slot-index: skill.slot;
         panel-type: SlotPanelType.skill;
+        drag-image: skill.icon;
+        drag-image-offset-x: skill.icon.width / 2;
+        drag-image-offset-y: skill.icon.height / 2;
         double-clicked => {
             GameState.use-action(SlotPanelType.skill, skill.slot);
         }
     }
 
-    property <bool> has-tooltip: skill-drag.has-hover && !skill-drag.pressed;
+    property <bool> has-tooltip: skill-drag.has-hover && !skill-drag.dragging;
     changed has-tooltip => {
         if (root.has-tooltip) {
             PopupState.show(skill.name, self.absolute-position.x, self.absolute-position.y, root.width, root.height);
@@ -94,9 +92,12 @@ component SkillRow inherits Rectangle {
         }
     }
     states [
-        hover when skill-drag.has-hover && !skill-drag.pressed: {
+        hover when skill-drag.has-hover && !skill-drag.dragging: {
             border-color: Theme.accent-muted;
             background: Theme.surface-secondary;
+        }
+        drop-hover when skill-drag.has-drag: {
+            border-color: Theme.accent;
         }
     ]
 }
@@ -130,12 +131,8 @@ component SpellRow inherits Rectangle {
         }
 
         states [
-            dragging when spell-drag.pressed: {
-                background: Theme.surface-card;
-                x: spell-drag.offset-x;
-                y: spell-drag.offset-y;
-                border-width: 2px;
-                border-color: Theme.accent;
+            dragging when spell-drag.dragging: {
+                opacity: 0.5;
             }
         ]
     }
@@ -143,12 +140,15 @@ component SpellRow inherits Rectangle {
     spell-drag := DragDropItem {
         slot-index: spell.slot;
         panel-type: SlotPanelType.spell;
+        drag-image: spell.icon;
+        drag-image-offset-x: spell.icon.width / 2;
+        drag-image-offset-y: spell.icon.height / 2;
         double-clicked => {
             GameState.use-action(SlotPanelType.spell, spell.slot);
         }
     }
 
-    property <bool> has-tooltip: spell-drag.has-hover && !spell-drag.pressed;
+    property <bool> has-tooltip: spell-drag.has-hover && !spell-drag.dragging;
     changed has-tooltip => {
         if (root.has-tooltip) {
             PopupState.show(spell.name, self.absolute-position.x, self.absolute-position.y, root.width, root.height);
@@ -157,9 +157,12 @@ component SpellRow inherits Rectangle {
         }
     }
     states [
-        hover when spell-drag.has-hover && !spell-drag.pressed: {
+        hover when spell-drag.has-hover && !spell-drag.dragging: {
             border-color: Theme.accent-muted;
             background: Theme.surface-secondary;
+        }
+        drop-hover when spell-drag.has-drag: {
+            border-color: Theme.accent;
         }
     ]
 }
@@ -207,7 +210,6 @@ export component ActionsPanel inherits BasePanel {
                 width: 100%;
                 height: 100%;
                 viewport-width: self.visible-width;
-                CancelDrag { }
 
                 VerticalLayout {
                     padding: 4px;

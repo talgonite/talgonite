@@ -3,23 +3,56 @@ import {
     SlotPanelType,
 } from "../game_state.slint";
 
-export component DragDropItem inherits TouchArea {
+// Built-in DragArea/DropArea wrapper for slots that are both drag sources and drop targets.
+export component DragDropItem inherits Rectangle {
     in property <bool> draggable: true;
     in property <int> slot-index;
     in property <SlotPanelType> panel-type;
-    out property <length> offset-x: self.mouse-x - self.pressed-x;
-    out property <length> offset-y: self.mouse-y - self.pressed-y;
-    mouse-cursor: draggable ? self.pressed ? MouseCursor.grabbing : MouseCursor.pointer : MouseCursor.default;
-    pointer-event(event) => {
-        if draggable && event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
-            DragDropState.start-drag(panel-type, slot-index);
-        }
-        DragDropState.maybe-drop(panel-type, slot-index, self.mouse-x + self.absolute-position.x, self.mouse-y + self.absolute-position.y);
-    }
-}
+    in property <image> drag-image;
+    in property <int> drag-image-offset-x;
+    in property <int> drag-image-offset-y;
+    out property <bool> has-hover <=> touch.has-hover;
+    out property <bool> dragging <=> drag.dragging;
+    out property <bool> has-drag <=> drop.has-drag;
+    callback clicked;
+    callback double-clicked;
+    width: 100%;
+    height: 100%;
 
-export component CancelDrag inherits TouchArea {
-    pointer-event(event) => {
-        DragDropState.cancel-drag();
+    drag := DragArea {
+        enabled: root.draggable;
+        data: DragDropState.make-transfer(root.panel-type, root.slot-index);
+        allow-move: true;
+        drag-image: root.drag-image;
+        drag-image-offset-x: root.drag-image-offset-x;
+        drag-image-offset-y: root.drag-image-offset-y;
+        changed dragging => {
+            if self.dragging {
+                DragDropState.source-panel = root.panel-type;
+                DragDropState.source-index = root.slot-index;
+            }
+        }
+        drag-finished(action) => {
+            DragDropState.source-panel = SlotPanelType.none;
+            DragDropState.source-index = -1;
+        }
+        touch := TouchArea {
+            mouse-cursor: root.draggable ? MouseCursor.pointer : MouseCursor.default;
+            clicked => root.clicked();
+            double-clicked => root.double-clicked();
+        }
+    }
+
+    drop := DropArea {
+        can-drop(event) => {
+            if DragDropState.source-panel == root.panel-type && DragDropState.source-index == root.slot-index {
+                return DragAction.none;
+            }
+            return DragAction.move;
+        }
+        dropped(event) => {
+            DragDropState.dropped(event.data, root.panel-type, root.slot-index, event.position.x, event.position.y);
+            return event.proposed-action;
+        }
     }
 }

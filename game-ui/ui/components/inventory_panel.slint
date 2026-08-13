@@ -1,12 +1,11 @@
 import {
     GameState,
     SlotPanelType,
-    DragDropState,
     InventoryItem,
     PopupState,
 } from "../game_state.slint";
 import { PopupManagerState, PopupId } from "../popup_manager.slint";
-import { CancelDrag, DragDropItem } from "drag_drop.slint";
+import { DragDropItem } from "drag_drop.slint";
 import { Theme } from "../theme.slint";
 import { ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
 import { Icon } from "./icon.slint";
@@ -36,13 +35,8 @@ component InventorySlot inherits Rectangle {
             y: parent.height - self.height - 2px;
         }
         states [
-            dragging when slot-drag.pressed: {
-                x: slot-drag.offset-x;
-                y: slot-drag.offset-y;
-                background: Theme.surface-card;
-                border-radius: Theme.radius-small;
-                border-width: 2px;
-                border-color: Theme.accent;
+            dragging when slot-drag.dragging: {
+                opacity: 0.5;
             }
         ]
     }
@@ -50,6 +44,9 @@ component InventorySlot inherits Rectangle {
         draggable: has-item;
         slot-index: slot;
         panel-type: SlotPanelType.item;
+        drag-image: item.icon;
+        drag-image-offset-x: item.icon.width / 2;
+        drag-image-offset-y: item.icon.height / 2;
         double-clicked => {
             if has-item {
                 GameState.use-action(SlotPanelType.item, slot);
@@ -57,7 +54,7 @@ component InventorySlot inherits Rectangle {
         }
     }
 
-    property <bool> has-tooltip: slot-drag.has-hover && has-item && !slot-drag.pressed;
+    property <bool> has-tooltip: slot-drag.has-hover && has-item && !slot-drag.dragging;
     changed has-tooltip => {
         if (root.has-tooltip) {
             PopupState.show(item.name, self.absolute-position.x, self.absolute-position.y, root.width, root.height);
@@ -66,9 +63,12 @@ component InventorySlot inherits Rectangle {
         }
     }
     states [
-        hover when slot-drag.has-hover && !slot-drag.pressed: {
+        hover when slot-drag.has-hover && !slot-drag.dragging: {
             border-color: Theme.accent-muted;
             background: Theme.surface-secondary;
+        }
+        drop-hover when slot-drag.has-drag: {
+            border-color: Theme.accent;
         }
     ]
 }

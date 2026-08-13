@@ -49,17 +49,23 @@ export component GameScene inherits Rectangle {
         key-released(event) => InputBridge.key-released(event);
     }
 
-    TouchArea {
-        pointer-event(event) => {
-            InputBridge.pointer-event(event, self.mouse-x, self.mouse-y);
-            DragDropState.maybe-drop(SlotPanelType.world, 0, self.mouse-x, self.mouse-y);
+    world-drop := DropArea {
+        can-drop(event) => DragAction.move;
+        dropped(event) => {
+            DragDropState.dropped(event.data, SlotPanelType.world, 0, event.position.x, event.position.y);
+            return event.proposed-action;
         }
-        double-clicked => {
-            InputBridge.double-click(self.mouse-x, self.mouse-y);
-        }
-        scroll-event(event) => InputBridge.scroll-event(self.mouse-x, self.mouse-y, event.delta-x / 1px, event.delta-y / 1px);
-        clicked => {
-            focus-scope.focus();
+        TouchArea {
+            pointer-event(event) => {
+                InputBridge.pointer-event(event, self.mouse-x, self.mouse-y);
+            }
+            double-clicked => {
+                InputBridge.double-click(self.mouse-x, self.mouse-y);
+            }
+            scroll-event(event) => InputBridge.scroll-event(self.mouse-x, self.mouse-y, event.delta-x / 1px, event.delta-y / 1px);
+            clicked => {
+                focus-scope.focus();
+            }
         }
     }
 
