@@ -406,7 +406,12 @@ pub fn apply_core_to_slint(
             )));
         }
         let skills_state = game_state.get_skills();
-        let mut slint_skills = vec![crate::Skill::default(); 60];
+        let mut slint_skills: Vec<crate::Skill> = (1..=60)
+            .map(|i| crate::Skill {
+                slot: i,
+                ..Default::default()
+            })
+            .collect();
         for (s, icon) in ability.skills.iter().zip(skill_icons) {
             let cd = skill_cooldowns.cooldowns.get(&s.slot);
             let skill = crate::Skill {
@@ -444,7 +449,12 @@ pub fn apply_core_to_slint(
             )));
         }
         let spells_state = game_state.get_spells();
-        let mut slint_spells = vec![crate::Spell::default(); 60];
+        let mut slint_spells: Vec<crate::Spell> = (1..=60)
+            .map(|i| crate::Spell {
+                slot: i,
+                ..Default::default()
+            })
+            .collect();
         for (s, icon) in ability.spells.iter().zip(spell_icons) {
             let spell = crate::Spell {
                 name: slint::SharedString::from(s.display_name().as_str()),

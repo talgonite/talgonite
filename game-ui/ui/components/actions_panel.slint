@@ -73,17 +73,20 @@ component SkillRow inherits Rectangle {
     }
 
     skill-drag := DragDropItem {
+        draggable: skill.icon.width > 0;
         slot-index: skill.slot;
         panel-type: SlotPanelType.skill;
         drag-image: skill.icon;
         drag-image-offset-x: skill.icon.width / 2;
         drag-image-offset-y: skill.icon.height / 2;
         double-clicked => {
-            GameState.use-action(SlotPanelType.skill, skill.slot);
+            if skill.icon.width > 0 {
+                GameState.use-action(SlotPanelType.skill, skill.slot);
+            }
         }
     }
 
-    property <bool> has-tooltip: skill-drag.has-hover && !skill-drag.dragging;
+    property <bool> has-tooltip: skill-drag.has-hover && skill.icon.width > 0 && !skill-drag.dragging;
     changed has-tooltip => {
         if (root.has-tooltip) {
             PopupState.show(skill.name, self.absolute-position.x, self.absolute-position.y, root.width, root.height);
@@ -92,7 +95,7 @@ component SkillRow inherits Rectangle {
         }
     }
     states [
-        hover when skill-drag.has-hover && !skill-drag.dragging: {
+        hover when skill-drag.has-hover && skill.icon.width > 0 && !skill-drag.dragging: {
             border-color: Theme.accent-muted;
             background: Theme.surface-secondary;
         }
@@ -138,17 +141,20 @@ component SpellRow inherits Rectangle {
     }
 
     spell-drag := DragDropItem {
+        draggable: spell.icon.width > 0;
         slot-index: spell.slot;
         panel-type: SlotPanelType.spell;
         drag-image: spell.icon;
         drag-image-offset-x: spell.icon.width / 2;
         drag-image-offset-y: spell.icon.height / 2;
         double-clicked => {
-            GameState.use-action(SlotPanelType.spell, spell.slot);
+            if spell.icon.width > 0 {
+                GameState.use-action(SlotPanelType.spell, spell.slot);
+            }
         }
     }
 
-    property <bool> has-tooltip: spell-drag.has-hover && !spell-drag.dragging;
+    property <bool> has-tooltip: spell-drag.has-hover && spell.icon.width > 0 && !spell-drag.dragging;
     changed has-tooltip => {
         if (root.has-tooltip) {
             PopupState.show(spell.name, self.absolute-position.x, self.absolute-position.y, root.width, root.height);
@@ -157,7 +163,7 @@ component SpellRow inherits Rectangle {
         }
     }
     states [
-        hover when spell-drag.has-hover && !spell-drag.dragging: {
+        hover when spell-drag.has-hover && spell.icon.width > 0 && !spell-drag.dragging: {
             border-color: Theme.accent-muted;
             background: Theme.surface-secondary;
         }

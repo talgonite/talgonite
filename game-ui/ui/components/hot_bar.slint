@@ -61,30 +61,30 @@ component HotBarSlotView inherits Rectangle {
         y: 1px;
     }
     slot-drag := DragDropItem {
-        draggable: slot > 0;
+        draggable: icon.width > 0;
         slot-index: slot;
         panel-type: panel-type;
         drag-image: icon;
         drag-image-offset-x: icon.width / 2;
         drag-image-offset-y: icon.height / 2;
         clicked => {
-            if PlatformState.is-android && slot > 0 {
+            if PlatformState.is-android && icon.width > 0 {
                 GameState.use-action(panel-type, slot);
             }
         }
         double-clicked => {
-            if !PlatformState.is-android && slot > 0 {
+            if !PlatformState.is-android && icon.width > 0 {
                 GameState.use-action(panel-type, slot);
             }
         }
     }
 
     states [
-        hovered when slot-drag.has-hover && slot > 0 && !slot-drag.dragging: {
+        hovered when slot-drag.has-hover && icon.width > 0 && !slot-drag.dragging: {
             border-color: Theme.accent;
         }
     ]
-    property <bool> has-tooltip: slot-drag.has-hover && slot > 0 && !slot-drag.dragging;
+    property <bool> has-tooltip: slot-drag.has-hover && icon.width > 0 && !slot-drag.dragging;
     changed has-tooltip => {
         if (root.has-tooltip) {
             PopupState.show(name, self.absolute-position.x, self.absolute-position.y, root.width, root.height);
