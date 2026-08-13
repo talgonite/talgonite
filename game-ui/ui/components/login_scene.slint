@@ -55,7 +55,7 @@ export component LoginScene inherits Rectangle {
                     spacing: 6px;
                     Text {
                         text: LobbyState.current-server-name;
-                        font-size: 14px;
+                        font-size: Theme.font-size-body;
                         color: Theme.accent;
                         vertical-alignment: center;
                     }
@@ -76,7 +76,7 @@ export component LoginScene inherits Rectangle {
                             width: 100%;
                             height: 100%;
                             text: "\u{2699}";
-                            font-size: 16px;
+                            font-size: Theme.font-size-large;
                             color: server-btn.has-hover ? Theme.foreground : Theme.foreground-subtle;
                             horizontal-alignment: center;
                             vertical-alignment: center;
@@ -91,7 +91,7 @@ export component LoginScene inherits Rectangle {
                 // Subtitle
                 if has-saved-logins: Text {
                     text: "Select a character to continue";
-                    font-size: 14px;
+                    font-size: Theme.font-size-body;
                     color: Theme.foreground-subtle;
                     horizontal-alignment: center;
                 }
@@ -159,7 +159,7 @@ export component LoginScene inherits Rectangle {
                             spacing: 8px;
                             Text {
                                 text: "+";
-                                font-size: 18px;
+                                font-size: Theme.font-size-title;
                                 font-weight: 500;
                                 color: new-login-touch.has-hover ? Theme.accent : Theme.foreground-subtle;
                                 vertical-alignment: center;
@@ -167,7 +167,7 @@ export component LoginScene inherits Rectangle {
 
                             new-login-text := Text {
                                 text: "New Login";
-                                font-size: 14px;
+                                font-size: Theme.font-size-body;
                                 color: new-login-touch.has-hover ? Theme.accent : Theme.foreground-subtle;
                                 vertical-alignment: center;
                             }
@@ -191,7 +191,7 @@ export component LoginScene inherits Rectangle {
                             spacing: 8px;
                             Text {
                                 text: "+";
-                                font-size: 18px;
+                                font-size: Theme.font-size-title;
                                 font-weight: 500;
                                 color: create-char-touch.has-hover ? Theme.accent : Theme.foreground-subtle;
                                 vertical-alignment: center;
@@ -199,7 +199,7 @@ export component LoginScene inherits Rectangle {
 
                             create-char-text := Text {
                                 text: "Create Character";
-                                font-size: 14px;
+                                font-size: Theme.font-size-body;
                                 color: create-char-touch.has-hover ? Theme.accent : Theme.foreground-subtle;
                                 vertical-alignment: center;
                             }

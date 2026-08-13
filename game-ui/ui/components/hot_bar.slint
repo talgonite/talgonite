@@ -59,7 +59,7 @@ component HotBarSlotView inherits Rectangle {
     }
     if key-num >= 0 && key-num <= 11 && !PlatformState.is-android: Text {
         text: key-num < 9 ? key-num + 1 : (key-num == 9 ? "0" : (key-num == 10 ? "-" : "="));
-        font-size: 9px;
+        font-size: Theme.font-size-xsmall;
         color: #808080;
         stroke: #00000080;
         stroke-width: 2px;
@@ -117,7 +117,7 @@ component HotBarArrowButton inherits Rectangle {
     Text {
         text: label;
         color: enabled ? Theme.foreground-strong : #606060;
-        font-size: 11px;
+        font-size: Theme.font-size-caption;
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
     }
@@ -163,7 +163,7 @@ component InventorySlots inherits GridLayout {
     spacing: 4px;
     for idx in 12: HotBarSlotView {
         col: PlatformState.is-android ? Math.mod(idx, 6) : idx;
-        row: PlatformState.is-android ? idx / 6 : 0;
+        row: PlatformState.is-android ? Math.floor(idx / 6) : 0;
         key-num: idx;
         panel-type: SlotPanelType.item;
         slot: GameState.inventory[idx].slot;
@@ -177,7 +177,7 @@ component SpellSlots inherits GridLayout {
     spacing: 4px;
     for idx in 12: HotBarSlotView {
         col: PlatformState.is-android ? Math.mod(idx, 6) : idx;
-        row: PlatformState.is-android ? idx / 6 : 0;
+        row: PlatformState.is-android ? Math.floor(idx / 6) : 0;
         key-num: idx;
         panel-type: SlotPanelType.spell;
         slot: GameState.spells[idx].slot;
@@ -190,7 +190,7 @@ component SkillSlots inherits GridLayout {
     spacing: 4px;
     for idx in 12: HotBarSlotView {
         col: PlatformState.is-android ? Math.mod(idx, 6) : idx;
-        row: PlatformState.is-android ? idx / 6 : 0;
+        row: PlatformState.is-android ? Math.floor(idx / 6) : 0;
         key-num: idx;
         panel-type: SlotPanelType.skill;
         slot: GameState.skills[idx].slot;
@@ -206,7 +206,7 @@ component CustomHotBarSlots inherits GridLayout {
     spacing: 4px;
     for idx in 12: HotBarSlotView {
         col: PlatformState.is-android ? Math.mod(idx, 6) : idx;
-        row: PlatformState.is-android ? idx / 6 : 0;
+        row: PlatformState.is-android ? Math.floor(idx / 6) : 0;
         key-num: idx;
         panel-type: SlotPanelType.hotbar;
         slot: offset + idx;
@@ -218,11 +218,12 @@ component CustomHotBarSlots inherits GridLayout {
     }
 }
 
-component DesktopInventorySlotsOne inherits GridLayout {
+component DesktopItemSlots inherits GridLayout {
+    in property <int> rows: 1;
     spacing: 4px;
-
-    for idx in 12: HotBarSlotView {
-        row: 0;
+    for idx in rows * 12: HotBarSlotView {
+        col: Math.mod(idx, 12);
+        row: Math.floor(idx / 12);
         key-num: idx;
         panel-type: SlotPanelType.item;
         slot: GameState.inventory[idx].slot;
@@ -232,41 +233,12 @@ component DesktopInventorySlotsOne inherits GridLayout {
     }
 }
 
-component DesktopInventorySlotsThree inherits GridLayout {
+component DesktopSpellSlots inherits GridLayout {
+    in property <int> rows: 1;
     spacing: 4px;
-
-    for idx in 36: HotBarSlotView {
+    for idx in rows * 12: HotBarSlotView {
         col: Math.mod(idx, 12);
-        row: idx / 12;
-        key-num: idx;
-        panel-type: SlotPanelType.item;
-        slot: GameState.inventory[idx].slot;
-        quantity: GameState.inventory[idx].quantity;
-        icon: GameState.inventory[idx].icon;
-        name: GameState.inventory[idx].name;
-    }
-}
-
-component DesktopInventorySlotsFive inherits GridLayout {
-    spacing: 4px;
-
-    for idx in 60: HotBarSlotView {
-        col: Math.mod(idx, 12);
-        row: idx / 12;
-        key-num: idx;
-        panel-type: SlotPanelType.item;
-        slot: GameState.inventory[idx].slot;
-        quantity: GameState.inventory[idx].quantity;
-        icon: GameState.inventory[idx].icon;
-        name: GameState.inventory[idx].name;
-    }
-}
-
-component DesktopSpellSlotsOne inherits GridLayout {
-    spacing: 4px;
-
-    for idx in 12: HotBarSlotView {
-        row: 0;
+        row: Math.floor(idx / 12);
         key-num: idx;
         panel-type: SlotPanelType.spell;
         slot: GameState.spells[idx].slot;
@@ -275,39 +247,12 @@ component DesktopSpellSlotsOne inherits GridLayout {
     }
 }
 
-component DesktopSpellSlotsThree inherits GridLayout {
+component DesktopSkillSlots inherits GridLayout {
+    in property <int> rows: 1;
     spacing: 4px;
-
-    for idx in 36: HotBarSlotView {
+    for idx in rows * 12: HotBarSlotView {
         col: Math.mod(idx, 12);
-        row: idx / 12;
-        key-num: idx;
-        panel-type: SlotPanelType.spell;
-        slot: GameState.spells[idx].slot;
-        icon: GameState.spells[idx].icon;
-        name: GameState.spells[idx].name;
-    }
-}
-
-component DesktopSpellSlotsFive inherits GridLayout {
-    spacing: 4px;
-
-    for idx in 60: HotBarSlotView {
-        col: Math.mod(idx, 12);
-        row: idx / 12;
-        key-num: idx;
-        panel-type: SlotPanelType.spell;
-        slot: GameState.spells[idx].slot;
-        icon: GameState.spells[idx].icon;
-        name: GameState.spells[idx].name;
-    }
-}
-
-component DesktopSkillSlotsOne inherits GridLayout {
-    spacing: 4px;
-
-    for idx in 12: HotBarSlotView {
-        row: 0;
+        row: Math.floor(idx / 12);
         key-num: idx;
         panel-type: SlotPanelType.skill;
         slot: GameState.skills[idx].slot;
@@ -318,44 +263,13 @@ component DesktopSkillSlotsOne inherits GridLayout {
     }
 }
 
-component DesktopSkillSlotsThree inherits GridLayout {
-    spacing: 4px;
-
-    for idx in 36: HotBarSlotView {
-        col: Math.mod(idx, 12);
-        row: idx / 12;
-        key-num: idx;
-        panel-type: SlotPanelType.skill;
-        slot: GameState.skills[idx].slot;
-        icon: GameState.skills[idx].icon;
-        name: GameState.skills[idx].name;
-        cooldown-left: GameState.skills[idx].cooldown.time_left;
-        cooldown-total: GameState.skills[idx].cooldown.total;
-    }
-}
-
-component DesktopSkillSlotsFive inherits GridLayout {
-    spacing: 4px;
-
-    for idx in 60: HotBarSlotView {
-        col: Math.mod(idx, 12);
-        row: idx / 12;
-        key-num: idx;
-        panel-type: SlotPanelType.skill;
-        slot: GameState.skills[idx].slot;
-        icon: GameState.skills[idx].icon;
-        name: GameState.skills[idx].name;
-        cooldown-left: GameState.skills[idx].cooldown.time_left;
-        cooldown-total: GameState.skills[idx].cooldown.total;
-    }
-}
-
-component DesktopCollapsedCustomHotBarSlots inherits GridLayout {
+component DesktopCustomHotBarSlots inherits GridLayout {
+    in property <int> rows: 1;
     in property <int> offset: 0;
     spacing: 4px;
-
-    for idx in 12: HotBarSlotView {
-        row: 0;
+    for idx in rows * 12: HotBarSlotView {
+        col: Math.mod(idx, 12);
+        row: Math.floor(idx / 12);
         key-num: idx;
         panel-type: SlotPanelType.hotbar;
         slot: offset + idx;
@@ -364,40 +278,6 @@ component DesktopCollapsedCustomHotBarSlots inherits GridLayout {
         quantity: GameState.hotbar[offset + idx].quantity;
         cooldown-left: GameState.hotbar[offset + idx].cooldown.time_left;
         cooldown-total: GameState.hotbar[offset + idx].cooldown.total;
-    }
-}
-
-component DesktopExpandedCustomHotBarSlotsThree inherits GridLayout {
-    spacing: 4px;
-
-    for idx in 36: HotBarSlotView {
-        col: Math.mod(idx, 12);
-        row: idx / 12;
-        key-num: idx < 12 ? Math.mod(idx, 12) : -1;
-        panel-type: SlotPanelType.hotbar;
-        slot: idx;
-        icon: GameState.hotbar[idx].icon;
-        name: GameState.hotbar[idx].name;
-        quantity: GameState.hotbar[idx].quantity;
-        cooldown-left: GameState.hotbar[idx].cooldown.time_left;
-        cooldown-total: GameState.hotbar[idx].cooldown.total;
-    }
-}
-
-component DesktopExpandedCustomHotBarSlotsFive inherits GridLayout {
-    spacing: 4px;
-
-    for idx in 60: HotBarSlotView {
-        col: Math.mod(idx, 12);
-        row: idx / 12;
-        key-num: idx < 12 ? Math.mod(idx, 12) : -1;
-        panel-type: SlotPanelType.hotbar;
-        slot: idx;
-        icon: GameState.hotbar[idx].icon;
-        name: GameState.hotbar[idx].name;
-        quantity: GameState.hotbar[idx].quantity;
-        cooldown-left: GameState.hotbar[idx].cooldown.time_left;
-        cooldown-total: GameState.hotbar[idx].cooldown.total;
     }
 }
 
@@ -433,7 +313,7 @@ export component HotBar inherits Rectangle {
 
             if PlatformState.is-android: Text {
                 text: "\u{270E}";
-                font-size: 14px;
+                font-size: Theme.font-size-body;
                 color: #808080;
                 stroke: #00000080;
             }
@@ -483,29 +363,13 @@ export component HotBar inherits Rectangle {
             }
         }
 
-        if GameState.current-hotbar-panel == 0 && desktop-row-count == 1: DesktopInventorySlotsOne { }
-        if GameState.current-hotbar-panel == 0 && desktop-row-count == 3: DesktopInventorySlotsThree { }
-        if GameState.current-hotbar-panel == 0 && desktop-row-count == 5: DesktopInventorySlotsFive { }
-
-        if GameState.current-hotbar-panel == 1 && desktop-row-count == 1: DesktopSkillSlotsOne { }
-        if GameState.current-hotbar-panel == 1 && desktop-row-count == 3: DesktopSkillSlotsThree { }
-        if GameState.current-hotbar-panel == 1 && desktop-row-count == 5: DesktopSkillSlotsFive { }
-
-        if GameState.current-hotbar-panel == 2 && desktop-row-count == 1: DesktopSpellSlotsOne { }
-        if GameState.current-hotbar-panel == 2 && desktop-row-count == 3: DesktopSpellSlotsThree { }
-        if GameState.current-hotbar-panel == 2 && desktop-row-count == 5: DesktopSpellSlotsFive { }
-
-        if !desktop-expanded && GameState.current-hotbar-panel == 3: DesktopCollapsedCustomHotBarSlots {
-            offset: 0;
-        }
-        if !desktop-expanded && GameState.current-hotbar-panel == 4: DesktopCollapsedCustomHotBarSlots {
-            offset: 12;
-        }
-        if !desktop-expanded && GameState.current-hotbar-panel == 5: DesktopCollapsedCustomHotBarSlots {
-            offset: 24;
-        }
-        if desktop-expanded && GameState.current-hotbar-panel >= 3 && desktop-row-count == 3: DesktopExpandedCustomHotBarSlotsThree { }
-        if desktop-expanded && GameState.current-hotbar-panel >= 3 && desktop-row-count == 5: DesktopExpandedCustomHotBarSlotsFive { }
+        if GameState.current-hotbar-panel == 0: DesktopItemSlots { rows: desktop-row-count; }
+        if GameState.current-hotbar-panel == 1: DesktopSkillSlots { rows: desktop-row-count; }
+        if GameState.current-hotbar-panel == 2: DesktopSpellSlots { rows: desktop-row-count; }
+        if !desktop-expanded && GameState.current-hotbar-panel == 3: DesktopCustomHotBarSlots { rows: 1; offset: 0; }
+        if !desktop-expanded && GameState.current-hotbar-panel == 4: DesktopCustomHotBarSlots { rows: 1; offset: 12; }
+        if !desktop-expanded && GameState.current-hotbar-panel == 5: DesktopCustomHotBarSlots { rows: 1; offset: 24; }
+        if desktop-expanded && GameState.current-hotbar-panel >= 3: DesktopCustomHotBarSlots { rows: desktop-row-count; offset: 0; }
 
         VerticalLayout {
             spacing: 4px;

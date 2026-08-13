@@ -41,7 +41,7 @@ export component WorldContextMenuOverlay inherits Rectangle {
             for entry in ContextMenuState.items: Rectangle {
                 height: 34px;
                 border-radius: Theme.radius-small;
-                background: row-touch.pressed ? Theme.accent-subtle : row-touch.has-hover ? Theme.surface-secondary : #00000000;
+                background: row-touch.pressed ? Theme.accent-subtle : row-touch.has-hover ? Theme.surface-secondary : transparent;
 
                 Text {
                     x: 10px;

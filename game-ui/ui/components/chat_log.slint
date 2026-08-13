@@ -27,17 +27,11 @@ export component ChatLog inherits Rectangle {
     }
 
     property <bool> stick-to-bottom: true;
-    property <length> last-content-height: chat-box.height;
-
-    Timer {
-        interval: 50ms;
-        running: true;
-        triggered => {
-            if (stick-to-bottom && last-content-height != chat-box.height) {
-                // Snap to bottom
-                chat-scroll.viewport-y = -(chat-box.height - chat-scroll.visible-height);
-            }
-            last-content-height = chat-box.height;
+    property <length> content-height: chat-box.height;
+    changed content-height => {
+        if (stick-to-bottom) {
+            // Snap to bottom
+            chat-scroll.viewport-y = -(chat-box.height - chat-scroll.visible-height);
         }
     }
 
@@ -61,7 +55,7 @@ export component ChatLog inherits Rectangle {
                 for message in GameState.chat-messages: StyledText {
                     text: message.text;
                     default-color: message.color;
-                    default-font-size: 11px;
+                    default-font-size: Theme.font-size-caption;
                 }
             }
 
@@ -78,14 +72,14 @@ export component ChatLog inherits Rectangle {
                 Text {
                     text: "To " + target-name + ":";
                     color: Theme.accent;
-                    font-size: 11px;
+                    font-size: Theme.font-size-caption;
                     vertical-alignment: center;
                 }
             }
 
             input-field := LineEdit {
                 placeholder-text: is-whispering ? (is-selecting-target ? (GameState.last_whisper_target != "" ? "Whisper to " + GameState.last_whisper_target + "... (or type name)" : "Whisper to...") : "Enter message...") : "Type a message...";
-                font-size: 11px;
+                font-size: Theme.font-size-caption;
                 height: 24px;
                 accepted => {
                     if (is-whispering) {

@@ -74,7 +74,7 @@ export component GameScene inherits Rectangle {
         y: (parent.height - self.height) / 2 + 50px;
         width: 120px;
         height: 16px;
-        background: #00000088;
+        background: Theme.overlay-strong;
         border-radius: 11px;
         border-width: 1px;
         border-color: #ffffff44;
@@ -94,8 +94,8 @@ export component GameScene inherits Rectangle {
             width: parent.width;
             height: parent.height;
             text: GameState.casting-indicator.text;
-            color: white;
-            font-size: 10px;
+            color: Theme.foreground-strong;
+            font-size: Theme.font-size-small;
             font-weight: 600;
             horizontal-alignment: center;
             vertical-alignment: center;

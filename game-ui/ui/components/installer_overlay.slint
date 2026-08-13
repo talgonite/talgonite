@@ -20,7 +20,7 @@ export component InstallerOverlay inherits Rectangle {
         spacing: 16px;
         Text {
             text: "Installing Game Assets (" + round(InstallerState.progress * 100) + "%)";
-            font-size: 16px;
+            font-size: Theme.font-size-large;
             font-weight: 700;
             color: Theme.foreground-strong;
             horizontal-alignment: center;
@@ -49,7 +49,7 @@ export component InstallerOverlay inherits Rectangle {
 
         Text {
             text: InstallerState.message;
-            font-size: 13px;
+            font-size: Theme.font-size-label;
             color: Theme.foreground-muted;
             horizontal-alignment: center;
             overflow: elide;

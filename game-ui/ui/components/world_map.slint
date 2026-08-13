@@ -28,7 +28,7 @@ export component WorldMapNodeComponent inherits Rectangle {
         y: (parent.height - label.height) / 2;
         width: label.width + 4px;
         height: label.height + 2px;
-        background: #00000088;
+        background: Theme.overlay-strong;
         label := Text {
             text: node.text;
             color: area.has-hover ? #cd6017 : white;

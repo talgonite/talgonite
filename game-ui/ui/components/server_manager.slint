@@ -52,7 +52,7 @@ export component ServerList {
                                 text: current-server-id == s.id ? "●" : "○";
                                 color: current-server-id == s.id ? Theme.success : Theme.foreground;
                                 font-family: Theme.icon-font-family;
-                                font-size: 14px;
+                                font-size: Theme.font-size-body;
                                 vertical-alignment: center;
                             }
 
@@ -65,7 +65,7 @@ export component ServerList {
                                 Text {
                                     text: s.address;
                                     color: Theme.foreground-subtle;
-                                    font-size: 10px;
+                                    font-size: Theme.font-size-small;
                                 }
                             }
 
@@ -119,13 +119,13 @@ export component ServerEditor {
             vertical-stretch: 1.0;
             Text {
                 text: editing-server-id == -1 ? "Add Server" : "Edit Server";
-                font-size: 14px;
+                font-size: Theme.font-size-body;
             }
 
             Text {
                 text: "Name";
                 color: Theme.foreground;
-                font-size: 10px;
+                font-size: Theme.font-size-small;
             }
 
             LineEdit {
@@ -136,7 +136,7 @@ export component ServerEditor {
             Text {
                 text: "Address (host:port)";
                 color: Theme.foreground;
-                font-size: 10px;
+                font-size: Theme.font-size-small;
             }
 
             LineEdit {
@@ -151,6 +151,95 @@ export component ServerEditor {
     }
 }
 
+component ServerListPane inherits Rectangle {
+    in-out property <int> current-server-id: -1;
+    in-out property <int> editing-server-id: -2;
+    in-out property <int> selected-server-index: 0;
+    in-out property <bool> show-modal: false;
+    in-out property <string> server-form-name: "";
+    in-out property <string> server-form-address: "";
+    in property <[ServerItem]> servers: [];
+    callback select-server(id: int);
+    horizontal-stretch: 1.0;
+    vertical-stretch: 1.0;
+    ServerList {
+        width: 100%;
+        height: 100%;
+        servers: root.servers;
+        current-server-id <=> root.current-server-id;
+        editing-server-id <=> root.editing-server-id;
+        selected-server-index <=> root.selected-server-index;
+        show-modal <=> root.show-modal;
+        server-form-name <=> root.server-form-name;
+        server-form-address <=> root.server-form-address;
+        select-server(id) => {
+            root.select-server(id);
+        }
+    }
+}
+
+component ServerEditorPane inherits Rectangle {
+    in-out property <int> editing-server-id: -2;
+    in-out property <string> server-form-name: "";
+    in-out property <string> server-form-address: "";
+    callback add-server(name: string, address: string);
+    callback edit-server(id: int, name: string, address: string);
+    callback remove-server(id: int);
+    background: Theme.surface-muted;
+    border-radius: Theme.radius-small;
+    border-width: 1px;
+    border-color: Theme.border-subtle;
+    VerticalBox {
+        spacing: 8px;
+        vertical-stretch: 1.0;
+        ServerEditor {
+            horizontal-stretch: 1.0;
+            editing-server-id <=> root.editing-server-id;
+            server-form-name <=> root.server-form-name;
+            server-form-address <=> root.server-form-address;
+        }
+
+        HorizontalBox {
+            spacing: 8px;
+            preferred-height: 34px;
+            Rectangle {
+                horizontal-stretch: 1.0;
+            }
+
+            Button {
+                text: "Cancel";
+                preferred-height: 28px;
+                clicked => {
+                    root.editing-server-id = -2;
+                }
+            }
+
+            if (root.editing-server-id != -1): Button {
+                text: "Remove";
+                preferred-height: 28px;
+                clicked => {
+                    root.remove-server(root.editing-server-id);
+                    root.editing-server-id = -2;
+                }
+            }
+            Button {
+                text: root.editing-server-id == -1 ? "Add" : "Save";
+                preferred-height: 28px;
+                enabled: root.server-form-name != "" && root.server-form-address != "";
+                clicked => {
+                    if (root.editing-server-id == -1) {
+                        root.add-server(root.server-form-name, root.server-form-address);
+                    } else {
+                        root.edit-server(root.editing-server-id, root.server-form-name, root.server-form-address);
+                    }
+                    root.editing-server-id = -2;
+                    root.server-form-name = "";
+                    root.server-form-address = "";
+                }
+            }
+        }
+    }
+}
 export component ServerManagerModal {
     in property <[ServerItem]> servers: [];
     in-out property <int> current-server-id: -1;
@@ -201,7 +290,7 @@ export component ServerManagerModal {
                     preferred-height: 34px;
                     Text {
                         text: "Servers";
-                        font-size: 20px;
+                        font-size: Theme.font-size-xlarge;
                     }
 
                     Rectangle {
@@ -222,8 +311,7 @@ export component ServerManagerModal {
                 if (parent.width > 640px): HorizontalBox {
                     spacing: 14px;
                     vertical-stretch: 1.0;
-                    ServerList {
-                        horizontal-stretch: 1.0;
+                    ServerListPane {
                         servers: servers;
                         current-server-id <=> current-server-id;
                         editing-server-id <=> editing-server-id;
@@ -236,70 +324,26 @@ export component ServerManagerModal {
                         }
                     }
 
-                    if (editing-server-id != -2): Rectangle {
+                    if (editing-server-id != -2): ServerEditorPane {
                         preferred-width: 260px;
-                        vertical-stretch: 1.0;
-                        background: Theme.surface-muted;
-                        border-radius: Theme.radius-small;
-                        border-width: 1px;
-                        border-color: Theme.border-subtle;
-                        VerticalBox {
-                            spacing: 8px;
-                            vertical-stretch: 1.0;
-                            ServerEditor {
-                                horizontal-stretch: 1.0;
-                                editing-server-id <=> editing-server-id;
-                                server-form-name <=> server-form-name;
-                                server-form-address <=> server-form-address;
-                            }
-
-                            HorizontalBox {
-                                spacing: 8px;
-                                preferred-height: 34px;
-                                Rectangle {
-                                    horizontal-stretch: 1.0;
-                                }
-
-                                Button {
-                                    text: "Cancel";
-                                    preferred-height: 28px;
-                                    clicked => {
-                                        editing-server-id = -2;
-                                    }
-                                }
-
-                                if (editing-server-id != -1): Button {
-                                    text: "Remove";
-                                    preferred-height: 28px;
-                                    clicked => {
-                                        root.remove-server(editing-server-id);
-                                        editing-server-id = -2;
-                                    }
-                                }
-                                Button {
-                                    text: editing-server-id == -1 ? "Add" : "Save";
-                                    preferred-height: 28px;
-                                    enabled: server-form-name != "" && server-form-address != "";
-                                    clicked => {
-                                        if (editing-server-id == -1) {
-                                            root.add-server(server-form-name, server-form-address);
-                                        } else {
-                                            root.edit-server(editing-server-id, server-form-name, server-form-address);
-                                        }
-                                        editing-server-id = -2;
-                                        server-form-name = "";
-                                        server-form-address = "";
-                                    }
-                                }
-                            }
+                        editing-server-id <=> editing-server-id;
+                        server-form-name <=> server-form-name;
+                        server-form-address <=> server-form-address;
+                        add-server(name, address) => {
+                            root.add-server(name, address);
+                        }
+                        edit-server(id, name, address) => {
+                            root.edit-server(id, name, address);
+                        }
+                        remove-server(id) => {
+                            root.remove-server(id);
                         }
                     }
                 }
                 if (parent.width <= 640px): VerticalBox {
                     spacing: 14px;
                     vertical-stretch: 1.0;
-                    ServerList {
-                        horizontal-stretch: 1.0;
+                    ServerListPane {
                         servers: servers;
                         current-server-id <=> current-server-id;
                         editing-server-id <=> editing-server-id;
@@ -312,62 +356,20 @@ export component ServerManagerModal {
                         }
                     }
 
-                    if (editing-server-id != -2): Rectangle {
+                    if (editing-server-id != -2): ServerEditorPane {
                         horizontal-stretch: 1.0;
                         vertical-stretch: 1.0;
-                        background: Theme.surface-muted;
-                        border-radius: Theme.radius-small;
-                        border-width: 1px;
-                        border-color: Theme.border-subtle;
-                        VerticalBox {
-                            spacing: 8px;
-                            vertical-stretch: 1.0;
-                            ServerEditor {
-                                horizontal-stretch: 1.0;
-                                editing-server-id <=> editing-server-id;
-                                server-form-name <=> server-form-name;
-                                server-form-address <=> server-form-address;
-                            }
-
-                            HorizontalBox {
-                                spacing: 8px;
-                                preferred-height: 34px;
-                                Rectangle {
-                                    horizontal-stretch: 1.0;
-                                }
-
-                                Button {
-                                    text: "Cancel";
-                                    preferred-height: 28px;
-                                    clicked => {
-                                        editing-server-id = -2;
-                                    }
-                                }
-
-                                if (editing-server-id != -1): Button {
-                                    text: "Remove";
-                                    preferred-height: 28px;
-                                    clicked => {
-                                        root.remove-server(editing-server-id);
-                                        editing-server-id = -2;
-                                    }
-                                }
-                                Button {
-                                    text: editing-server-id == -1 ? "Add" : "Save";
-                                    preferred-height: 28px;
-                                    enabled: server-form-name != "" && server-form-address != "";
-                                    clicked => {
-                                        if (editing-server-id == -1) {
-                                            root.add-server(server-form-name, server-form-address);
-                                        } else {
-                                            root.edit-server(editing-server-id, server-form-name, server-form-address);
-                                        }
-                                        editing-server-id = -2;
-                                        server-form-name = "";
-                                        server-form-address = "";
-                                    }
-                                }
-                            }
+                        editing-server-id <=> editing-server-id;
+                        server-form-name <=> server-form-name;
+                        server-form-address <=> server-form-address;
+                        add-server(name, address) => {
+                            root.add-server(name, address);
+                        }
+                        edit-server(id, name, address) => {
+                            root.edit-server(id, name, address);
+                        }
+                        remove-server(id) => {
+                            root.remove-server(id);
                         }
                     }
                 }

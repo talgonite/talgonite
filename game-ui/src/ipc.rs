@@ -190,8 +190,8 @@ pub enum UiToCore {
         sfx: Option<f32>,
         music: Option<f32>,
     },
-    ScaleChange {
-        scale: f32,
+    ScaleInputChange {
+        progress: f32,
     },
     ModifierHotbarRowsTargetCustomOnlyChange {
         enabled: bool,
@@ -411,6 +411,7 @@ pub struct KeyBindingsUi {
     pub toggle_overview: [String; 2],
     pub basic_attack: [String; 2],
     pub auto_attack_toggle: [String; 2],
+    pub item_pickup_below: [String; 2],
     pub hotbar_slot_1: [String; 2],
     pub hotbar_slot_2: [String; 2],
     pub hotbar_slot_3: [String; 2],
@@ -482,6 +483,7 @@ impl From<&KeyBindings> for KeyBindingsUi {
             toggle_overview: kb.toggle_overview.0.clone(),
             basic_attack: kb.basic_attack.0.clone(),
             auto_attack_toggle: kb.auto_attack_toggle.0.clone(),
+            item_pickup_below: kb.item_pickup_below.0.clone(),
             hotbar_slot_1: kb.hotbar_slot_1.0.clone(),
             hotbar_slot_2: kb.hotbar_slot_2.0.clone(),
             hotbar_slot_3: kb.hotbar_slot_3.0.clone(),

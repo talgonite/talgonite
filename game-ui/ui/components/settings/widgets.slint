@@ -10,7 +10,7 @@ export component TabButton inherits Rectangle {
     background: transparent;
     Text {
         text: label;
-        font-size: 13px;
+        font-size: Theme.font-size-label;
         font-weight: active ? 700 : 500;
         color: {
             if active {
@@ -175,7 +175,7 @@ export component KeyBindingRow inherits Rectangle {
         spacing: 12px;
         Text {
             text: action-label;
-            font-size: 13px;
+            font-size: Theme.font-size-label;
             color: Theme.foreground;
             vertical-alignment: center;
             horizontal-stretch: 1;
@@ -191,7 +191,7 @@ export component KeyBindingRow inherits Rectangle {
             border-color: (is-rebinding && rebinding-index == 0) ? Theme.accent : Theme.border-muted;
             Text {
                 text: (is-rebinding && rebinding-index == 0) ? "Press key..." : (current-key == "" ? "---" : current-key);
-                font-size: 11px;
+                font-size: Theme.font-size-caption;
                 color: (is-rebinding && rebinding-index == 0) ? Theme.accent : (current-key == "" ? Theme.foreground-muted : Theme.foreground);
                 horizontal-alignment: center;
                 vertical-alignment: center;
@@ -219,7 +219,7 @@ export component KeyBindingRow inherits Rectangle {
             border-color: (is-rebinding && rebinding-index == 1) ? Theme.accent : Theme.border-muted;
             Text {
                 text: (is-rebinding && rebinding-index == 1) ? "Press key..." : (current-key-2 == "" ? "---" : current-key-2);
-                font-size: 11px;
+                font-size: Theme.font-size-caption;
                 color: (is-rebinding && rebinding-index == 1) ? Theme.accent : (current-key-2 == "" ? Theme.foreground-muted : Theme.foreground);
                 horizontal-alignment: center;
                 vertical-alignment: center;

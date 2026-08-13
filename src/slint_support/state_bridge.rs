@@ -226,6 +226,8 @@ fn reset_game_state_for_main_menu(window: &crate::MainWindow) {
     game_state.set_max_hp(0);
     game_state.set_current_mp(0);
     game_state.set_max_mp(0);
+    game_state.set_hp_fraction(0.0);
+    game_state.set_mp_fraction(0.0);
     game_state.set_player_id(-1);
     game_state.set_server_name(slint::SharedString::from(""));
     game_state.set_ping_ms(0);
@@ -898,88 +900,165 @@ pub fn apply_core_to_slint(
             } => {
                 let settings_state =
                     slint::ComponentHandle::global::<crate::SettingsState>(&strong);
-                macro_rules! set_keys {
-                   ($field:ident) => {
-                       paste::paste! {
-                           settings_state.[<set_key_ $field>](slint::SharedString::from(key_bindings.$field[0].as_str()));
-                           settings_state.[<set_key_ $field _2>](slint::SharedString::from(key_bindings.$field[1].as_str()));
-                       }
-                   };
-                }
-
                 settings_state.set_xray_size(*xray_size as i32);
                 settings_state.set_sfx_volume(*sfx_volume);
                 settings_state.set_music_volume(*music_volume);
                 settings_state.set_scale(*scale);
+                settings_state.set_scale_progress(
+                    crate::settings_types::GraphicsSettings::progress_from_scale(*scale),
+                );
+                settings_state.set_scale_text(slint::SharedString::from(
+                    crate::settings_types::GraphicsSettings::format_scale(*scale),
+                ));
                 settings_state.set_modifier_hotbar_rows_target_custom_only(
                     *modifier_hotbar_rows_target_custom_only,
                 );
 
-                set_keys!(move_up);
-                set_keys!(move_down);
-                set_keys!(move_left);
-                set_keys!(move_right);
-                set_keys!(inventory);
-                set_keys!(skills);
-                set_keys!(spells);
-                set_keys!(settings);
-                set_keys!(refresh);
-                set_keys!(basic_attack);
-                set_keys!(auto_attack_toggle);
-                set_keys!(hotbar_slot_1);
-                set_keys!(hotbar_slot_2);
-                set_keys!(hotbar_slot_3);
-                set_keys!(hotbar_slot_4);
-                set_keys!(hotbar_slot_5);
-                set_keys!(hotbar_slot_6);
-                set_keys!(hotbar_slot_7);
-                set_keys!(hotbar_slot_8);
-                set_keys!(hotbar_slot_9);
-                set_keys!(hotbar_slot_10);
-                set_keys!(hotbar_slot_11);
-                set_keys!(hotbar_slot_12);
-                set_keys!(hotbar_slot_13);
-                set_keys!(hotbar_slot_14);
-                set_keys!(hotbar_slot_15);
-                set_keys!(hotbar_slot_16);
-                set_keys!(hotbar_slot_17);
-                set_keys!(hotbar_slot_18);
-                set_keys!(hotbar_slot_19);
-                set_keys!(hotbar_slot_20);
-                set_keys!(hotbar_slot_21);
-                set_keys!(hotbar_slot_22);
-                set_keys!(hotbar_slot_23);
-                set_keys!(hotbar_slot_24);
-                set_keys!(hotbar_slot_25);
-                set_keys!(hotbar_slot_26);
-                set_keys!(hotbar_slot_27);
-                set_keys!(hotbar_slot_28);
-                set_keys!(hotbar_slot_29);
-                set_keys!(hotbar_slot_30);
-                set_keys!(hotbar_slot_31);
-                set_keys!(hotbar_slot_32);
-                set_keys!(hotbar_slot_33);
-                set_keys!(hotbar_slot_34);
-                set_keys!(hotbar_slot_35);
-                set_keys!(hotbar_slot_36);
-                set_keys!(hotbar_slot_37);
-                set_keys!(hotbar_slot_38);
-                set_keys!(hotbar_slot_39);
-                set_keys!(hotbar_slot_40);
-                set_keys!(hotbar_slot_41);
-                set_keys!(hotbar_slot_42);
-                set_keys!(hotbar_slot_43);
-                set_keys!(hotbar_slot_44);
-                set_keys!(hotbar_slot_45);
-                set_keys!(hotbar_slot_46);
-                set_keys!(hotbar_slot_47);
-                set_keys!(hotbar_slot_48);
-                set_keys!(switch_to_inventory);
-                set_keys!(switch_to_skills);
-                set_keys!(switch_to_spells);
-                set_keys!(switch_to_hotbar_1);
-                set_keys!(switch_to_hotbar_2);
-                set_keys!(switch_to_hotbar_3);
+                fn binding(id: &str, label: &str, kb: &[String; 2]) -> crate::KeyBinding {
+                    crate::KeyBinding {
+                        id: slint::SharedString::from(id),
+                        label: slint::SharedString::from(label),
+                        primary: slint::SharedString::from(kb[0].as_str()),
+                        secondary: slint::SharedString::from(kb[1].as_str()),
+                    }
+                }
+
+                let movement = vec![
+                    binding("move_up", "Move Up", &key_bindings.move_up),
+                    binding("move_down", "Move Down", &key_bindings.move_down),
+                    binding("move_left", "Move Left", &key_bindings.move_left),
+                    binding("move_right", "Move Right", &key_bindings.move_right),
+                ];
+                let world = vec![binding(
+                    "item_pickup_below",
+                    "Item Pickup",
+                    &key_bindings.item_pickup_below,
+                )];
+                let combat = vec![
+                    binding("basic_attack", "Basic Attack", &key_bindings.basic_attack),
+                    binding(
+                        "auto_attack_toggle",
+                        "Auto Attack Toggle",
+                        &key_bindings.auto_attack_toggle,
+                    ),
+                ];
+                let interface = vec![
+                    binding("inventory", "Inventory", &key_bindings.inventory),
+                    binding("skills", "Skills", &key_bindings.skills),
+                    binding("spells", "Spells", &key_bindings.spells),
+                    binding("settings", "Settings", &key_bindings.settings),
+                    binding("refresh", "Refresh", &key_bindings.refresh),
+                    binding(
+                        "toggle_overview",
+                        "Tab overview",
+                        &key_bindings.toggle_overview,
+                    ),
+                ];
+                macro_rules! hotbar_binding {
+                    ($n:literal) => {
+                        paste::paste! {
+                            binding(
+                                concat!("hotbar_slot_", stringify!($n)),
+                                concat!("Slot ", stringify!($n)),
+                                &key_bindings.[<hotbar_slot_ $n>],
+                            )
+                        }
+                    };
+                }
+                let hotbar = vec![
+                    hotbar_binding!(1),
+                    hotbar_binding!(2),
+                    hotbar_binding!(3),
+                    hotbar_binding!(4),
+                    hotbar_binding!(5),
+                    hotbar_binding!(6),
+                    hotbar_binding!(7),
+                    hotbar_binding!(8),
+                    hotbar_binding!(9),
+                    hotbar_binding!(10),
+                    hotbar_binding!(11),
+                    hotbar_binding!(12),
+                    hotbar_binding!(13),
+                    hotbar_binding!(14),
+                    hotbar_binding!(15),
+                    hotbar_binding!(16),
+                    hotbar_binding!(17),
+                    hotbar_binding!(18),
+                    hotbar_binding!(19),
+                    hotbar_binding!(20),
+                    hotbar_binding!(21),
+                    hotbar_binding!(22),
+                    hotbar_binding!(23),
+                    hotbar_binding!(24),
+                    hotbar_binding!(25),
+                    hotbar_binding!(26),
+                    hotbar_binding!(27),
+                    hotbar_binding!(28),
+                    hotbar_binding!(29),
+                    hotbar_binding!(30),
+                    hotbar_binding!(31),
+                    hotbar_binding!(32),
+                    hotbar_binding!(33),
+                    hotbar_binding!(34),
+                    hotbar_binding!(35),
+                    hotbar_binding!(36),
+                    hotbar_binding!(37),
+                    hotbar_binding!(38),
+                    hotbar_binding!(39),
+                    hotbar_binding!(40),
+                    hotbar_binding!(41),
+                    hotbar_binding!(42),
+                    hotbar_binding!(43),
+                    hotbar_binding!(44),
+                    hotbar_binding!(45),
+                    hotbar_binding!(46),
+                    hotbar_binding!(47),
+                    hotbar_binding!(48),
+                ];
+                let panels = vec![
+                    binding(
+                        "switch_to_inventory",
+                        "Inventory Panel",
+                        &key_bindings.switch_to_inventory,
+                    ),
+                    binding(
+                        "switch_to_skills",
+                        "Skills Panel",
+                        &key_bindings.switch_to_skills,
+                    ),
+                    binding(
+                        "switch_to_spells",
+                        "Spells Panel",
+                        &key_bindings.switch_to_spells,
+                    ),
+                    binding(
+                        "switch_to_hotbar_1",
+                        "Hotbar 1",
+                        &key_bindings.switch_to_hotbar_1,
+                    ),
+                    binding(
+                        "switch_to_hotbar_2",
+                        "Hotbar 2",
+                        &key_bindings.switch_to_hotbar_2,
+                    ),
+                    binding(
+                        "switch_to_hotbar_3",
+                        "Hotbar 3",
+                        &key_bindings.switch_to_hotbar_3,
+                    ),
+                ];
+                settings_state
+                    .set_bindings_movement(slint::ModelRc::new(slint::VecModel::from(movement)));
+                settings_state
+                    .set_bindings_world(slint::ModelRc::new(slint::VecModel::from(world)));
+                settings_state
+                    .set_bindings_combat(slint::ModelRc::new(slint::VecModel::from(combat)));
+                settings_state
+                    .set_bindings_interface(slint::ModelRc::new(slint::VecModel::from(interface)));
+                settings_state
+                    .set_bindings_hotbar(slint::ModelRc::new(slint::VecModel::from(hotbar)));
+                settings_state
+                    .set_bindings_panels(slint::ModelRc::new(slint::VecModel::from(panels)));
             }
         }
     }
@@ -1261,6 +1340,18 @@ pub fn sync_world_labels_to_slint(
     game_state.set_max_hp(player_attrs.max_hp as i32);
     game_state.set_current_mp(player_attrs.current_mp as i32);
     game_state.set_max_mp(player_attrs.max_mp as i32);
+    let hp_fraction = if player_attrs.max_hp > 0 {
+        player_attrs.current_hp as f32 / player_attrs.max_hp as f32
+    } else {
+        0.0
+    };
+    let mp_fraction = if player_attrs.max_mp > 0 {
+        player_attrs.current_mp as f32 / player_attrs.max_mp as f32
+    } else {
+        0.0
+    };
+    game_state.set_hp_fraction(hp_fraction.clamp(0.0, 1.0));
+    game_state.set_mp_fraction(mp_fraction.clamp(0.0, 1.0));
 
     // Update server name
     game_state.set_server_name(slint::SharedString::from(
@@ -1479,6 +1570,12 @@ pub fn sync_settings_to_slint(
     settings_state.set_music_volume(settings.audio.music_volume);
     settings_state.set_sfx_volume(settings.audio.sfx_volume);
     settings_state.set_scale(settings.graphics.scale);
+    settings_state.set_scale_progress(
+        crate::settings_types::GraphicsSettings::progress_from_scale(settings.graphics.scale),
+    );
+    settings_state.set_scale_text(slint::SharedString::from(
+        crate::settings_types::GraphicsSettings::format_scale(settings.graphics.scale),
+    ));
 }
 
 pub fn show_installer_ui(win: Res<SlintWindow>) {

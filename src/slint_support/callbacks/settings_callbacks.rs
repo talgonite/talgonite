@@ -45,8 +45,8 @@ pub fn wire_settings_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
     // Scale changed
     {
         let tx = tx.clone();
-        settings_state.on_scale_changed(move |scale| {
-            let _ = tx.send(UiToCore::ScaleChange { scale });
+        settings_state.on_scale_input_changed(move |progress| {
+            let _ = tx.send(UiToCore::ScaleInputChange { progress });
         });
     }
 

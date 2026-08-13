@@ -3,6 +3,38 @@ import { PopupManagerState, PopupId } from "../popup_manager.slint";
 import { Theme } from "../theme.slint";
 import { VerticalBox } from "std-widgets.slint";
 
+component SidebarButton inherits Rectangle {
+    in property <bool> active;
+    in property <image> icon;
+    callback clicked();
+    width: 48px;
+    height: 48px;
+    background: active ? Theme.accent-subtle : Theme.surface-muted;
+    border-radius: Theme.radius-small;
+    border-width: 1px;
+    border-color: active ? Theme.accent : Theme.border-muted;
+    Image {
+        source: icon;
+        width: 28px;
+        height: 28px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        colorize: active ? Theme.accent : Theme.foreground-muted;
+    }
+
+    states [
+        hover when touch.has-hover: {
+            background: Theme.surface-secondary;
+            border-color: Theme.accent-muted;
+        }
+    ]
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
 export component GameSidebar inherits Rectangle {
     width: 64px;
     height: 212px;
@@ -18,149 +50,65 @@ export component GameSidebar inherits Rectangle {
         padding-right: Theme.spacing-small;
         spacing: Theme.spacing-small;
         alignment: start;
-        inv-btn := Rectangle {
-            width: 48px;
-            height: 48px;
-            background: PopupManagerState.inventory-open ? Theme.accent-subtle : Theme.surface-muted;
-            border-radius: Theme.radius-small;
-            border-width: 1px;
-            border-color: PopupManagerState.inventory-open ? Theme.accent : Theme.border-muted;
-            Image {
-                source: @image-url("../icons/backpack.svg");
-                width: 28px;
-                height: 28px;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                colorize: PopupManagerState.inventory-open ? Theme.accent : Theme.foreground-muted;
-            }
-
-            states [
-                hover when inv-btn-touch.has-hover: {
-                    background: Theme.surface-secondary;
-                    border-color: Theme.accent-muted;
-                }
-            ]
-            inv-btn-touch := TouchArea {
-                clicked => {
-                    if (PopupManagerState.inventory-open) {
-                        PopupManagerState.close-request(PopupId.Inventory);
-                    } else {
-                        PopupManagerState.close-request(PopupId.Skills);
-                        PopupManagerState.close-request(PopupId.Spells);
-                        PopupManagerState.open-request(PopupId.Inventory);
-                    }
+        SidebarButton {
+            active: PopupManagerState.inventory-open;
+            icon: @image-url("../icons/backpack.svg");
+            clicked => {
+                if (PopupManagerState.inventory-open) {
+                    PopupManagerState.close-request(PopupId.Inventory);
+                } else {
+                    PopupManagerState.close-request(PopupId.Skills);
+                    PopupManagerState.close-request(PopupId.Spells);
+                    PopupManagerState.open-request(PopupId.Inventory);
                 }
             }
         }
 
-        actions-btn := Rectangle {
-            width: 48px;
-            height: 48px;
-            background: (PopupManagerState.skills-open || PopupManagerState.spells-open) ? Theme.accent-subtle : Theme.surface-muted;
-            border-radius: Theme.radius-small;
-            border-width: 1px;
-            border-color: (PopupManagerState.skills-open || PopupManagerState.spells-open) ? Theme.accent : Theme.border-muted;
-            Image {
-                source: @image-url("../icons/magic.svg");
-                width: 28px;
-                height: 28px;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                colorize: (PopupManagerState.skills-open || PopupManagerState.spells-open) ? Theme.accent : Theme.foreground-muted;
-            }
-
-            states [
-                hover when actions-btn-touch.has-hover: {
-                    background: Theme.surface-secondary;
-                    border-color: Theme.accent-muted;
-                }
-            ]
-            actions-btn-touch := TouchArea {
-                clicked => {
-                    if (PopupManagerState.skills-open || PopupManagerState.spells-open) {
-                        PopupManagerState.close-request(PopupId.Skills);
-                        PopupManagerState.close-request(PopupId.Spells);
-                    } else {
-                        PopupManagerState.close-request(PopupId.Inventory);
-                        PopupManagerState.close-request(PopupId.WorldList);
-                        PopupManagerState.open-request(PopupId.Skills);
-                    }
+        SidebarButton {
+            active: PopupManagerState.skills-open || PopupManagerState.spells-open;
+            icon: @image-url("../icons/magic.svg");
+            clicked => {
+                if (PopupManagerState.skills-open || PopupManagerState.spells-open) {
+                    PopupManagerState.close-request(PopupId.Skills);
+                    PopupManagerState.close-request(PopupId.Spells);
+                } else {
+                    PopupManagerState.close-request(PopupId.Inventory);
+                    PopupManagerState.close-request(PopupId.WorldList);
+                    PopupManagerState.open-request(PopupId.Skills);
                 }
             }
         }
 
-        world-btn := Rectangle {
-            width: 48px;
-            height: 48px;
-            background: PopupManagerState.world-list-open ? Theme.accent-subtle : Theme.surface-muted;
-            border-radius: Theme.radius-small;
-            border-width: 1px;
-            border-color: PopupManagerState.world-list-open ? Theme.accent : Theme.border-muted;
-            Image {
-                source: @image-url("../icons/sword.svg");
-                width: 28px;
-                height: 28px;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                colorize: PopupManagerState.world-list-open ? Theme.accent : Theme.foreground-muted;
-            }
-
-            states [
-                hover when world-btn-touch.has-hover: {
-                    background: Theme.surface-secondary;
-                    border-color: Theme.accent-muted;
-                }
-            ]
-            world-btn-touch := TouchArea {
-                clicked => {
-                    if (PopupManagerState.world-list-open) {
-                        PopupManagerState.close-request(PopupId.WorldList);
-                    } else {
-                        PopupManagerState.close-request(PopupId.Inventory);
-                        PopupManagerState.close-request(PopupId.Skills);
-                        PopupManagerState.close-request(PopupId.Spells);
-                        GameState.world-list-loading = true;
-                        PopupManagerState.open-request(PopupId.WorldList);
-                        GameState.refresh-world-list();
-                    }
+        SidebarButton {
+            active: PopupManagerState.world-list-open;
+            icon: @image-url("../icons/sword.svg");
+            clicked => {
+                if (PopupManagerState.world-list-open) {
+                    PopupManagerState.close-request(PopupId.WorldList);
+                } else {
+                    PopupManagerState.close-request(PopupId.Inventory);
+                    PopupManagerState.close-request(PopupId.Skills);
+                    PopupManagerState.close-request(PopupId.Spells);
+                    GameState.world-list-loading = true;
+                    PopupManagerState.open-request(PopupId.WorldList);
+                    GameState.refresh-world-list();
                 }
             }
         }
 
-        group-btn := Rectangle {
-            width: 48px;
-            height: 48px;
-            background: PopupManagerState.group-open ? Theme.accent-subtle : Theme.surface-muted;
-            border-radius: Theme.radius-small;
-            border-width: 1px;
-            border-color: PopupManagerState.group-open ? Theme.accent : Theme.border-muted;
-            Image {
-                source: @image-url("../icons/group.svg");
-                width: 28px;
-                height: 28px;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                colorize: PopupManagerState.group-open ? Theme.accent : Theme.foreground-muted;
-            }
-
-            states [
-                hover when group-btn-touch.has-hover: {
-                    background: Theme.surface-secondary;
-                    border-color: Theme.accent-muted;
-                }
-            ]
-            group-btn-touch := TouchArea {
-                clicked => {
-                    if (PopupManagerState.group-open) {
-                        PopupManagerState.close-request(PopupId.Group);
-                    } else {
-                        PopupManagerState.close-request(PopupId.Inventory);
-                        PopupManagerState.close-request(PopupId.Skills);
-                        PopupManagerState.close-request(PopupId.Spells);
-                        PopupManagerState.close-request(PopupId.WorldList);
-                        PopupManagerState.open-request(PopupId.Group);
-                        GameState.request-self-profile();
-                    }
+        SidebarButton {
+            active: PopupManagerState.group-open;
+            icon: @image-url("../icons/group.svg");
+            clicked => {
+                if (PopupManagerState.group-open) {
+                    PopupManagerState.close-request(PopupId.Group);
+                } else {
+                    PopupManagerState.close-request(PopupId.Inventory);
+                    PopupManagerState.close-request(PopupId.Skills);
+                    PopupManagerState.close-request(PopupId.Spells);
+                    PopupManagerState.close-request(PopupId.WorldList);
+                    PopupManagerState.open-request(PopupId.Group);
+                    GameState.request-self-profile();
                 }
             }
         }

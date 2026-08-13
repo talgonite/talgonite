@@ -88,7 +88,7 @@ export component WorldListPanel inherits BasePanel {
                     text: class-name;
                     primary: class-filter.current-value == class-name;
                     col: Math.mod(i, 4);
-                    row: i / 4;
+                    row: Math.floor(i / 4);
                     clicked => {
                         class-filter.current-value = class-name;
                         GameState.set-world-list-filter(class-name, master-toggle.checked, search-input.text);
@@ -130,7 +130,7 @@ export component WorldListPanel inherits BasePanel {
                                 Text {
                                     text: status-entry.icon;
                                     color: status-entry.color;
-                                    font-size: 12px;
+                                    font-size: Theme.font-size-medium;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
                                 }

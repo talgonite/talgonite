@@ -1,283 +1,69 @@
 import { Theme } from "../../theme.slint";
-import { SettingsState } from "../../settings_state.slint";
+import { SettingsState, KeyBinding } from "../../settings_state.slint";
 import { VerticalBox, ScrollView, HorizontalBox } from "std-widgets.slint";
 import { SectionHeader, KeyBindingRow } from "widgets.slint";
 
-component HotbarBindingRow inherits KeyBindingRow {
-    in property <string> binding-label;
-    in property <string> binding-id;
-    in property <string> binding-key;
-    in property <string> binding-key-2;
-    action-label: binding-label;
-    current-key: binding-key;
-    current-key-2: binding-key-2;
-    action-id: binding-id;
-    is-rebinding: SettingsState.rebinding-action == self.action-id;
-    rebinding-index: SettingsState.rebinding-index;
-    start-rebind(idx) => {
-        SettingsState.start-rebind(self.action-id, idx);
+component BindingSection inherits VerticalBox {
+    in property <string> title;
+    in property <[KeyBinding]> bindings;
+    spacing: Theme.spacing-xsmall;
+    alignment: start;
+    SectionHeader {
+        title: root.title;
     }
-    unbind-key(idx) => {
-        SettingsState.unbind-key(self.action-id, idx);
+
+    for b in root.bindings: KeyBindingRow {
+        action-label: b.label;
+        current-key: b.primary;
+        current-key-2: b.secondary;
+        action-id: b.id;
+        is-rebinding: SettingsState.rebinding-action == b.id;
+        rebinding-index: SettingsState.rebinding-index;
+        start-rebind(idx) => {
+            SettingsState.start-rebind(b.id, idx);
+        }
+        unbind-key(idx) => {
+            SettingsState.unbind-key(b.id, idx);
+        }
     }
 }
 
 export component ControlsTab inherits VerticalBox {
     spacing: Theme.spacing-small;
     padding: Theme.spacing-medium;
-    HorizontalBox {
-        spacing: 12px;
-        padding-left: 4px;
-        padding-right: 4px;
-        Text {
-            text: "Action";
-            horizontal-stretch: 1;
-            font-weight: 700;
-            color: Theme.foreground-muted;
-        }
-
-        Text {
-            text: "Primary";
-            width: 120px;
-            horizontal-alignment: center;
-            font-weight: 700;
-            color: Theme.foreground-muted;
-        }
-
-        Text {
-            text: "Secondary";
-            width: 120px;
-            horizontal-alignment: center;
-            font-weight: 700;
-            color: Theme.foreground-muted;
-        }
-    }
-
     VerticalBox {
         spacing: Theme.spacing-xsmall;
         alignment: start;
-        SectionHeader {
+        BindingSection {
             title: "Movement";
-        }
-
-        KeyBindingRow {
-            action-label: "Move Up";
-            current-key: SettingsState.key-move-up;
-            current-key-2: SettingsState.key-move-up-2;
-            action-id: "move_up";
-            is-rebinding: SettingsState.rebinding-action == self.action-id;
-            rebinding-index: SettingsState.rebinding-index;
-            start-rebind(idx) => {
-                SettingsState.start-rebind(self.action-id, idx);
-            }
-            unbind-key(idx) => {
-                SettingsState.unbind-key(self.action-id, idx);
-            }
-        }
-
-        KeyBindingRow {
-            action-label: "Move Down";
-            current-key: SettingsState.key-move-down;
-            current-key-2: SettingsState.key-move-down-2;
-            action-id: "move_down";
-            is-rebinding: SettingsState.rebinding-action == self.action-id;
-            rebinding-index: SettingsState.rebinding-index;
-            start-rebind(idx) => {
-                SettingsState.start-rebind(self.action-id, idx);
-            }
-            unbind-key(idx) => {
-                SettingsState.unbind-key(self.action-id, idx);
-            }
-        }
-
-        KeyBindingRow {
-            action-label: "Move Left";
-            current-key: SettingsState.key-move-left;
-            current-key-2: SettingsState.key-move-left-2;
-            action-id: "move_left";
-            is-rebinding: SettingsState.rebinding-action == self.action-id;
-            rebinding-index: SettingsState.rebinding-index;
-            start-rebind(idx) => {
-                SettingsState.start-rebind(self.action-id, idx);
-            }
-            unbind-key(idx) => {
-                SettingsState.unbind-key(self.action-id, idx);
-            }
-        }
-
-        KeyBindingRow {
-            action-label: "Move Right";
-            current-key: SettingsState.key-move-right;
-            current-key-2: SettingsState.key-move-right-2;
-            action-id: "move_right";
-            is-rebinding: SettingsState.rebinding-action == self.action-id;
-            rebinding-index: SettingsState.rebinding-index;
-            start-rebind(idx) => {
-                SettingsState.start-rebind(self.action-id, idx);
-            }
-            unbind-key(idx) => {
-                SettingsState.unbind-key(self.action-id, idx);
-            }
+            bindings: SettingsState.bindings-movement;
         }
 
         Rectangle {
             height: Theme.spacing-small;
         }
 
-        SectionHeader {
+        BindingSection {
             title: "World Interaction";
-        }
-
-        // picks up an item in front of or underneath you
-        KeyBindingRow {
-            action-label: "Item Pickup";
-            current-key: SettingsState.key-item-pickup-below;
-            current-key-2: SettingsState.key-item-pickup-below-2;
-            action-id: "item_pickup_below";
-            is-rebinding: SettingsState.rebinding-action == self.action-id;
-            rebinding-index: SettingsState.rebinding-index;
-            start-rebind(idx) => {
-                SettingsState.start-rebind(self.action-id, idx);
-            }
-            unbind-key(idx) => {
-                SettingsState.unbind-key(self.action-id, idx);
-            }
+            bindings: SettingsState.bindings-world;
         }
 
         Rectangle {
             height: Theme.spacing-small;
         }
 
-        SectionHeader {
+        BindingSection {
             title: "Combat";
-        }
-
-        KeyBindingRow {
-            action-label: "Basic Attack";
-            current-key: SettingsState.key-basic-attack;
-            current-key-2: SettingsState.key-basic-attack-2;
-            action-id: "basic_attack";
-            is-rebinding: SettingsState.rebinding-action == self.action-id;
-            rebinding-index: SettingsState.rebinding-index;
-            start-rebind(idx) => {
-                SettingsState.start-rebind(self.action-id, idx);
-            }
-            unbind-key(idx) => {
-                SettingsState.unbind-key(self.action-id, idx);
-            }
-        }
-
-        KeyBindingRow {
-            action-label: "Auto Attack Toggle";
-            current-key: SettingsState.key-auto-attack-toggle;
-            current-key-2: SettingsState.key-auto-attack-toggle-2;
-            action-id: "auto_attack_toggle";
-            is-rebinding: SettingsState.rebinding-action == self.action-id;
-            rebinding-index: SettingsState.rebinding-index;
-            start-rebind(idx) => {
-                SettingsState.start-rebind(self.action-id, idx);
-            }
-            unbind-key(idx) => {
-                SettingsState.unbind-key(self.action-id, idx);
-            }
+            bindings: SettingsState.bindings-combat;
         }
 
         Rectangle {
             height: Theme.spacing-small;
         }
 
-        SectionHeader {
+        BindingSection {
             title: "Interface";
-        }
-
-        KeyBindingRow {
-            action-label: "Inventory";
-            current-key: SettingsState.key-inventory;
-            current-key-2: SettingsState.key-inventory-2;
-            action-id: "inventory";
-            is-rebinding: SettingsState.rebinding-action == self.action-id;
-            rebinding-index: SettingsState.rebinding-index;
-            start-rebind(idx) => {
-                SettingsState.start-rebind(self.action-id, idx);
-            }
-            unbind-key(idx) => {
-                SettingsState.unbind-key(self.action-id, idx);
-            }
-        }
-
-        KeyBindingRow {
-            action-label: "Skills";
-            current-key: SettingsState.key-skills;
-            current-key-2: SettingsState.key-skills-2;
-            action-id: "skills";
-            is-rebinding: SettingsState.rebinding-action == self.action-id;
-            rebinding-index: SettingsState.rebinding-index;
-            start-rebind(idx) => {
-                SettingsState.start-rebind(self.action-id, idx);
-            }
-            unbind-key(idx) => {
-                SettingsState.unbind-key(self.action-id, idx);
-            }
-        }
-
-        KeyBindingRow {
-            action-label: "Spells";
-            current-key: SettingsState.key-spells;
-            current-key-2: SettingsState.key-spells-2;
-            action-id: "spells";
-            is-rebinding: SettingsState.rebinding-action == self.action-id;
-            rebinding-index: SettingsState.rebinding-index;
-            start-rebind(idx) => {
-                SettingsState.start-rebind(self.action-id, idx);
-            }
-            unbind-key(idx) => {
-                SettingsState.unbind-key(self.action-id, idx);
-            }
-        }
-
-        KeyBindingRow {
-            action-label: "Settings";
-            current-key: SettingsState.key-settings;
-            current-key-2: SettingsState.key-settings-2;
-            action-id: "settings";
-            is-rebinding: SettingsState.rebinding-action == self.action-id;
-            rebinding-index: SettingsState.rebinding-index;
-            start-rebind(idx) => {
-                SettingsState.start-rebind(self.action-id, idx);
-            }
-            unbind-key(idx) => {
-                SettingsState.unbind-key(self.action-id, idx);
-            }
-        }
-
-        KeyBindingRow {
-            action-label: "Refresh";
-            current-key: SettingsState.key-refresh;
-            current-key-2: SettingsState.key-refresh-2;
-            action-id: "refresh";
-            is-rebinding: SettingsState.rebinding-action == self.action-id;
-            rebinding-index: SettingsState.rebinding-index;
-            start-rebind(idx) => {
-                SettingsState.start-rebind(self.action-id, idx);
-            }
-            unbind-key(idx) => {
-                SettingsState.unbind-key(self.action-id, idx);
-            }
-        }
-
-        KeyBindingRow {
-            action-label: "Tab overview";
-            current-key: SettingsState.key-toggle-overview;
-            current-key-2: SettingsState.key-toggle-overview-2;
-            action-id: "toggle_overview";
-            is-rebinding: SettingsState.rebinding-action == self.action-id;
-            rebinding-index: SettingsState.rebinding-index;
-            start-rebind(idx) => {
-                SettingsState.start-rebind(self.action-id, idx);
-            }
-            unbind-key(idx) => {
-                SettingsState.unbind-key(self.action-id, idx);
-            }
+            bindings: SettingsState.bindings-interface;
         }
 
         Rectangle {
@@ -321,7 +107,7 @@ export component ControlsTab inherits VerticalBox {
 
                 Text {
                     text: "Modifier rows target custom hotbars only";
-                    font-size: 13px;
+                    font-size: Theme.font-size-label;
                     color: Theme.foreground;
                     vertical-alignment: center;
                     horizontal-stretch: 1;
@@ -330,7 +116,7 @@ export component ControlsTab inherits VerticalBox {
                 Text {
                     width: 40px;
                     text: SettingsState.modifier-hotbar-rows-target-custom-only ? "On" : "Off";
-                    font-size: 12px;
+                    font-size: Theme.font-size-medium;
                     color: Theme.foreground-muted;
                     vertical-alignment: center;
                     horizontal-alignment: right;
@@ -338,438 +124,28 @@ export component ControlsTab inherits VerticalBox {
             }
         }
 
-        HotbarBindingRow {
-            binding-label: "Slot 1";
-            binding-id: "hotbar_slot_1";
-            binding-key: SettingsState.key-hotbar-slot-1;
-            binding-key-2: SettingsState.key-hotbar-slot-1-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 2";
-            binding-id: "hotbar_slot_2";
-            binding-key: SettingsState.key-hotbar-slot-2;
-            binding-key-2: SettingsState.key-hotbar-slot-2-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 3";
-            binding-id: "hotbar_slot_3";
-            binding-key: SettingsState.key-hotbar-slot-3;
-            binding-key-2: SettingsState.key-hotbar-slot-3-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 4";
-            binding-id: "hotbar_slot_4";
-            binding-key: SettingsState.key-hotbar-slot-4;
-            binding-key-2: SettingsState.key-hotbar-slot-4-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 5";
-            binding-id: "hotbar_slot_5";
-            binding-key: SettingsState.key-hotbar-slot-5;
-            binding-key-2: SettingsState.key-hotbar-slot-5-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 6";
-            binding-id: "hotbar_slot_6";
-            binding-key: SettingsState.key-hotbar-slot-6;
-            binding-key-2: SettingsState.key-hotbar-slot-6-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 7";
-            binding-id: "hotbar_slot_7";
-            binding-key: SettingsState.key-hotbar-slot-7;
-            binding-key-2: SettingsState.key-hotbar-slot-7-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 8";
-            binding-id: "hotbar_slot_8";
-            binding-key: SettingsState.key-hotbar-slot-8;
-            binding-key-2: SettingsState.key-hotbar-slot-8-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 9";
-            binding-id: "hotbar_slot_9";
-            binding-key: SettingsState.key-hotbar-slot-9;
-            binding-key-2: SettingsState.key-hotbar-slot-9-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 10";
-            binding-id: "hotbar_slot_10";
-            binding-key: SettingsState.key-hotbar-slot-10;
-            binding-key-2: SettingsState.key-hotbar-slot-10-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 11";
-            binding-id: "hotbar_slot_11";
-            binding-key: SettingsState.key-hotbar-slot-11;
-            binding-key-2: SettingsState.key-hotbar-slot-11-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 12";
-            binding-id: "hotbar_slot_12";
-            binding-key: SettingsState.key-hotbar-slot-12;
-            binding-key-2: SettingsState.key-hotbar-slot-12-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 13";
-            binding-id: "hotbar_slot_13";
-            binding-key: SettingsState.key-hotbar-slot-13;
-            binding-key-2: SettingsState.key-hotbar-slot-13-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 14";
-            binding-id: "hotbar_slot_14";
-            binding-key: SettingsState.key-hotbar-slot-14;
-            binding-key-2: SettingsState.key-hotbar-slot-14-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 15";
-            binding-id: "hotbar_slot_15";
-            binding-key: SettingsState.key-hotbar-slot-15;
-            binding-key-2: SettingsState.key-hotbar-slot-15-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 16";
-            binding-id: "hotbar_slot_16";
-            binding-key: SettingsState.key-hotbar-slot-16;
-            binding-key-2: SettingsState.key-hotbar-slot-16-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 17";
-            binding-id: "hotbar_slot_17";
-            binding-key: SettingsState.key-hotbar-slot-17;
-            binding-key-2: SettingsState.key-hotbar-slot-17-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 18";
-            binding-id: "hotbar_slot_18";
-            binding-key: SettingsState.key-hotbar-slot-18;
-            binding-key-2: SettingsState.key-hotbar-slot-18-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 19";
-            binding-id: "hotbar_slot_19";
-            binding-key: SettingsState.key-hotbar-slot-19;
-            binding-key-2: SettingsState.key-hotbar-slot-19-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 20";
-            binding-id: "hotbar_slot_20";
-            binding-key: SettingsState.key-hotbar-slot-20;
-            binding-key-2: SettingsState.key-hotbar-slot-20-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 21";
-            binding-id: "hotbar_slot_21";
-            binding-key: SettingsState.key-hotbar-slot-21;
-            binding-key-2: SettingsState.key-hotbar-slot-21-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 22";
-            binding-id: "hotbar_slot_22";
-            binding-key: SettingsState.key-hotbar-slot-22;
-            binding-key-2: SettingsState.key-hotbar-slot-22-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 23";
-            binding-id: "hotbar_slot_23";
-            binding-key: SettingsState.key-hotbar-slot-23;
-            binding-key-2: SettingsState.key-hotbar-slot-23-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 24";
-            binding-id: "hotbar_slot_24";
-            binding-key: SettingsState.key-hotbar-slot-24;
-            binding-key-2: SettingsState.key-hotbar-slot-24-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 25";
-            binding-id: "hotbar_slot_25";
-            binding-key: SettingsState.key-hotbar-slot-25;
-            binding-key-2: SettingsState.key-hotbar-slot-25-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 26";
-            binding-id: "hotbar_slot_26";
-            binding-key: SettingsState.key-hotbar-slot-26;
-            binding-key-2: SettingsState.key-hotbar-slot-26-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 27";
-            binding-id: "hotbar_slot_27";
-            binding-key: SettingsState.key-hotbar-slot-27;
-            binding-key-2: SettingsState.key-hotbar-slot-27-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 28";
-            binding-id: "hotbar_slot_28";
-            binding-key: SettingsState.key-hotbar-slot-28;
-            binding-key-2: SettingsState.key-hotbar-slot-28-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 29";
-            binding-id: "hotbar_slot_29";
-            binding-key: SettingsState.key-hotbar-slot-29;
-            binding-key-2: SettingsState.key-hotbar-slot-29-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 30";
-            binding-id: "hotbar_slot_30";
-            binding-key: SettingsState.key-hotbar-slot-30;
-            binding-key-2: SettingsState.key-hotbar-slot-30-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 31";
-            binding-id: "hotbar_slot_31";
-            binding-key: SettingsState.key-hotbar-slot-31;
-            binding-key-2: SettingsState.key-hotbar-slot-31-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 32";
-            binding-id: "hotbar_slot_32";
-            binding-key: SettingsState.key-hotbar-slot-32;
-            binding-key-2: SettingsState.key-hotbar-slot-32-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 33";
-            binding-id: "hotbar_slot_33";
-            binding-key: SettingsState.key-hotbar-slot-33;
-            binding-key-2: SettingsState.key-hotbar-slot-33-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 34";
-            binding-id: "hotbar_slot_34";
-            binding-key: SettingsState.key-hotbar-slot-34;
-            binding-key-2: SettingsState.key-hotbar-slot-34-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 35";
-            binding-id: "hotbar_slot_35";
-            binding-key: SettingsState.key-hotbar-slot-35;
-            binding-key-2: SettingsState.key-hotbar-slot-35-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 36";
-            binding-id: "hotbar_slot_36";
-            binding-key: SettingsState.key-hotbar-slot-36;
-            binding-key-2: SettingsState.key-hotbar-slot-36-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 37";
-            binding-id: "hotbar_slot_37";
-            binding-key: SettingsState.key-hotbar-slot-37;
-            binding-key-2: SettingsState.key-hotbar-slot-37-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 38";
-            binding-id: "hotbar_slot_38";
-            binding-key: SettingsState.key-hotbar-slot-38;
-            binding-key-2: SettingsState.key-hotbar-slot-38-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 39";
-            binding-id: "hotbar_slot_39";
-            binding-key: SettingsState.key-hotbar-slot-39;
-            binding-key-2: SettingsState.key-hotbar-slot-39-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 40";
-            binding-id: "hotbar_slot_40";
-            binding-key: SettingsState.key-hotbar-slot-40;
-            binding-key-2: SettingsState.key-hotbar-slot-40-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 41";
-            binding-id: "hotbar_slot_41";
-            binding-key: SettingsState.key-hotbar-slot-41;
-            binding-key-2: SettingsState.key-hotbar-slot-41-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 42";
-            binding-id: "hotbar_slot_42";
-            binding-key: SettingsState.key-hotbar-slot-42;
-            binding-key-2: SettingsState.key-hotbar-slot-42-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 43";
-            binding-id: "hotbar_slot_43";
-            binding-key: SettingsState.key-hotbar-slot-43;
-            binding-key-2: SettingsState.key-hotbar-slot-43-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 44";
-            binding-id: "hotbar_slot_44";
-            binding-key: SettingsState.key-hotbar-slot-44;
-            binding-key-2: SettingsState.key-hotbar-slot-44-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 45";
-            binding-id: "hotbar_slot_45";
-            binding-key: SettingsState.key-hotbar-slot-45;
-            binding-key-2: SettingsState.key-hotbar-slot-45-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 46";
-            binding-id: "hotbar_slot_46";
-            binding-key: SettingsState.key-hotbar-slot-46;
-            binding-key-2: SettingsState.key-hotbar-slot-46-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 47";
-            binding-id: "hotbar_slot_47";
-            binding-key: SettingsState.key-hotbar-slot-47;
-            binding-key-2: SettingsState.key-hotbar-slot-47-2;
-        }
-
-        HotbarBindingRow {
-            binding-label: "Slot 48";
-            binding-id: "hotbar_slot_48";
-            binding-key: SettingsState.key-hotbar-slot-48;
-            binding-key-2: SettingsState.key-hotbar-slot-48-2;
+        for b in SettingsState.bindings-hotbar: KeyBindingRow {
+            action-label: b.label;
+            current-key: b.primary;
+            current-key-2: b.secondary;
+            action-id: b.id;
+            is-rebinding: SettingsState.rebinding-action == b.id;
+            rebinding-index: SettingsState.rebinding-index;
+            start-rebind(idx) => {
+                SettingsState.start-rebind(b.id, idx);
+            }
+            unbind-key(idx) => {
+                SettingsState.unbind-key(b.id, idx);
+            }
         }
 
         Rectangle {
             height: Theme.spacing-small;
         }
 
-        SectionHeader {
+        BindingSection {
             title: "Panel Switching";
-        }
-
-        KeyBindingRow {
-            action-label: "Inventory Panel";
-            current-key: SettingsState.key-switch-to-inventory;
-            current-key-2: SettingsState.key-switch-to-inventory-2;
-            action-id: "switch_to_inventory";
-            is-rebinding: SettingsState.rebinding-action == self.action-id;
-            rebinding-index: SettingsState.rebinding-index;
-            start-rebind(idx) => {
-                SettingsState.start-rebind(self.action-id, idx);
-            }
-            unbind-key(idx) => {
-                SettingsState.unbind-key(self.action-id, idx);
-            }
-        }
-
-        KeyBindingRow {
-            action-label: "Skills Panel";
-            current-key: SettingsState.key-switch-to-skills;
-            current-key-2: SettingsState.key-switch-to-skills-2;
-            action-id: "switch_to_skills";
-            is-rebinding: SettingsState.rebinding-action == self.action-id;
-            rebinding-index: SettingsState.rebinding-index;
-            start-rebind(idx) => {
-                SettingsState.start-rebind(self.action-id, idx);
-            }
-            unbind-key(idx) => {
-                SettingsState.unbind-key(self.action-id, idx);
-            }
-        }
-
-        KeyBindingRow {
-            action-label: "Spells Panel";
-            current-key: SettingsState.key-switch-to-spells;
-            current-key-2: SettingsState.key-switch-to-spells-2;
-            action-id: "switch_to_spells";
-            is-rebinding: SettingsState.rebinding-action == self.action-id;
-            rebinding-index: SettingsState.rebinding-index;
-            start-rebind(idx) => {
-                SettingsState.start-rebind(self.action-id, idx);
-            }
-            unbind-key(idx) => {
-                SettingsState.unbind-key(self.action-id, idx);
-            }
-        }
-
-        KeyBindingRow {
-            action-label: "Hotbar 1";
-            current-key: SettingsState.key-switch-to-hotbar-1;
-            current-key-2: SettingsState.key-switch-to-hotbar-1-2;
-            action-id: "switch_to_hotbar_1";
-            is-rebinding: SettingsState.rebinding-action == self.action-id;
-            rebinding-index: SettingsState.rebinding-index;
-            start-rebind(idx) => {
-                SettingsState.start-rebind(self.action-id, idx);
-            }
-            unbind-key(idx) => {
-                SettingsState.unbind-key(self.action-id, idx);
-            }
-        }
-
-        KeyBindingRow {
-            action-label: "Hotbar 2";
-            current-key: SettingsState.key-switch-to-hotbar-2;
-            current-key-2: SettingsState.key-switch-to-hotbar-2-2;
-            action-id: "switch_to_hotbar_2";
-            is-rebinding: SettingsState.rebinding-action == self.action-id;
-            rebinding-index: SettingsState.rebinding-index;
-            start-rebind(idx) => {
-                SettingsState.start-rebind(self.action-id, idx);
-            }
-            unbind-key(idx) => {
-                SettingsState.unbind-key(self.action-id, idx);
-            }
-        }
-
-        KeyBindingRow {
-            action-label: "Hotbar 3";
-            current-key: SettingsState.key-switch-to-hotbar-3;
-            current-key-2: SettingsState.key-switch-to-hotbar-3-2;
-            action-id: "switch_to_hotbar_3";
-            is-rebinding: SettingsState.rebinding-action == self.action-id;
-            rebinding-index: SettingsState.rebinding-index;
-            start-rebind(idx) => {
-                SettingsState.start-rebind(self.action-id, idx);
-            }
-            unbind-key(idx) => {
-                SettingsState.unbind-key(self.action-id, idx);
-            }
+            bindings: SettingsState.bindings-panels;
         }
     }
 }

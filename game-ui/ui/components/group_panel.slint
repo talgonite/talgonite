@@ -20,16 +20,16 @@ export component GroupPanel inherits BasePanel {
         // Toggle groupable button
         groupable-btn := Rectangle {
             height: 32px;
-            background: GameState.is-groupable ? (groupable-touch.has-hover ? #1d4ed8 : #2563eb) : (groupable-touch.has-hover ? #4b5563 : #374151);
+            background: GameState.is-groupable ? (groupable-touch.has-hover ? Theme.fill-info-hover : Theme.fill-info) : (groupable-touch.has-hover ? Theme.fill-muted-hover : Theme.fill-muted);
             border-radius: 6px;
             border-width: 1px;
-            border-color: GameState.is-groupable ? #60a5fa : #4b5563;
+            border-color: GameState.is-groupable ? Theme.info-border : Theme.fill-muted-hover;
             animate background { duration: 80ms; }
             Text {
                 text: GameState.is-groupable ? "Accepting Invites" : "Not Accepting Invites";
-                font-size: 11px;
+                font-size: Theme.font-size-caption;
                 font-weight: 600;
-                color: GameState.is-groupable ? #ffffff : #9ca3af;
+                color: GameState.is-groupable ? Theme.foreground-strong : Theme.neutral-faint;
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
@@ -50,8 +50,8 @@ export component GroupPanel inherits BasePanel {
         // Count line (e.g. "2 Group members"); backend filters out "Group members" / "Total N" from list.
         if GameState.group-members.length > 0: Text {
             text: GameState.group-members.length + " Group members";
-            font-size: 12px;
-            color: #9ca3af;
+            font-size: Theme.font-size-medium;
+            color: Theme.neutral-faint;
         }
 
         // Member list area
@@ -64,15 +64,15 @@ export component GroupPanel inherits BasePanel {
                 spacing: 6px;
                 Text {
                     text: "Not in a group";
-                    font-size: 13px;
-                    color: #6b7280;
+                    font-size: Theme.font-size-label;
+                    color: Theme.neutral;
                     horizontal-alignment: center;
                 }
 
                 Text {
                     text: "Request from another player's profile.";
-                    font-size: 11px;
-                    color: #4b5563;
+                    font-size: Theme.font-size-caption;
+                    color: Theme.fill-muted-hover;
                     horizontal-alignment: center;
                     wrap: word-wrap;
                 }
@@ -85,7 +85,7 @@ export component GroupPanel inherits BasePanel {
                     alignment: start;
                     for member in GameState.group-members: Rectangle {
                         height: 38px;
-                        background: member.is-leader ? #1e3a5f : #1e293b;
+                        background: member.is-leader ? Theme.surface-leader : Theme.surface-row;
                         border-radius: 4px;
                         border-width: 1px;
                         border-color: member.is-leader ? #3b82f680 : #ffffff08;
@@ -98,14 +98,14 @@ export component GroupPanel inherits BasePanel {
                                 width: 8px;
                                 height: 8px;
                                 y: (parent.height - self.height) / 2;
-                                background: member.is-leader ? #3b82f6 : #22c55e;
+                                background: member.is-leader ? Theme.info : Theme.status-online;
                                 border-radius: 4px;
                             }
 
                             Text {
                                 text: member.name + (member.is-leader ? " ★" : "");
-                                font-size: 12px;
-                                color: member.is-leader ? #93c5fd : #d1d5db;
+                                font-size: Theme.font-size-medium;
+                                color: member.is-leader ? Theme.info-soft : Theme.neutral-strong;
                                 vertical-alignment: center;
                                 overflow: elide;
                             }
@@ -116,15 +116,15 @@ export component GroupPanel inherits BasePanel {
                                 width: member.is-leader ? 50px : 44px;
                                 height: 22px;
                                 y: (parent.height - self.height) / 2;
-                                background: action-touch.has-hover ? #ef4444 : #99000050;
+                                background: action-touch.has-hover ? Theme.status-busy : #99000050;
                                 border-radius: 3px;
                                 border-width: 1px;
                                 border-color: #ef444480;
                                 animate background { duration: 80ms; }
                                 Text {
                                     text: member.is-leader ? "Leave" : "Kick";
-                                    font-size: 10px;
-                                    color: #fca5a5;
+                                    font-size: Theme.font-size-small;
+                                    color: Theme.danger-soft;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
                                 }

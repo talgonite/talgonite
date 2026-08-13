@@ -24,7 +24,7 @@ export component SubmittingOverlay inherits Rectangle {
                 border-width: 2px;
                 border-color: Theme.accent-muted;
                 drop-shadow-blur: 24px;
-                drop-shadow-color: #00000066;
+                drop-shadow-color: Theme.surface-hud;
                 drop-shadow-offset-y: 8px;
                 VerticalBox {
                     padding: 24px;
@@ -33,7 +33,7 @@ export component SubmittingOverlay inherits Rectangle {
                     Text {
                         text: "Connecting...";
                         color: Theme.accent;
-                        font-size: 18px;
+                        font-size: Theme.font-size-title;
                         font-weight: 600;
                         horizontal-alignment: center;
                     }
@@ -41,7 +41,7 @@ export component SubmittingOverlay inherits Rectangle {
                     Text {
                         text: "Please wait";
                         color: Theme.foreground-subtle;
-                        font-size: 13px;
+                        font-size: Theme.font-size-label;
                         horizontal-alignment: center;
                     }
                 }

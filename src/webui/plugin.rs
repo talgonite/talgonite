@@ -511,9 +511,10 @@ fn handle_ui_inbound_ingame(
                     settings.audio.music_volume = *music_vol;
                 }
             }
-            UiToCore::ScaleChange { scale } => {
-                settings.graphics.scale = *scale;
-                zoom_state.set_zoom(*scale);
+            UiToCore::ScaleInputChange { progress } => {
+                let scale = crate::settings_types::GraphicsSettings::scale_from_progress(*progress);
+                settings.graphics.scale = scale;
+                zoom_state.set_zoom(scale);
             }
             UiToCore::ModifierHotbarRowsTargetCustomOnlyChange { enabled } => {
                 settings.gameplay.modifier_hotbar_rows_target_custom_only = *enabled;
@@ -1545,8 +1546,9 @@ fn handle_ui_inbound_login(
                     settings.audio.music_volume = *music_vol;
                 }
             }
-            UiToCore::ScaleChange { scale } => {
-                settings.graphics.scale = *scale;
+            UiToCore::ScaleInputChange { progress } => {
+                settings.graphics.scale =
+                    crate::settings_types::GraphicsSettings::scale_from_progress(*progress);
             }
             UiToCore::ModifierHotbarRowsTargetCustomOnlyChange { enabled } => {
                 settings.gameplay.modifier_hotbar_rows_target_custom_only = *enabled;

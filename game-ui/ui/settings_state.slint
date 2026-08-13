@@ -1,3 +1,10 @@
+export struct KeyBinding {
+    id: string,
+    label: string,
+    primary: string,
+    secondary: string,
+}
+
 export global SettingsState {
     // NOTE: Open/close of the settings and game menu windows is owned by the
     // popup stack (`PopupManagerState`); there are no `show-*` booleans here.
@@ -5,143 +12,17 @@ export global SettingsState {
     in-out property <float> sfx-volume: 1.0;  // 0.0 to 1.0
     in-out property <float> music-volume: 1.0;  // 0.0 to 1.0
     in-out property <float> scale: 1.0;  // 1.0 to 5.0
+    in-out property <float> scale-progress: (1.0 - 0.5) / 4.5;
+    in-out property <string> scale-text: "1x";
     in-out property <bool> modifier-hotbar-rows-target-custom-only: true;
 
-    // Key bindings (Primary and Secondary)
-    in-out property <string> key-move-up: "ArrowUp";
-    in-out property <string> key-move-up-2: "";
-    in-out property <string> key-move-down: "ArrowDown";
-    in-out property <string> key-move-left: "ArrowLeft";
-    in-out property <string> key-move-right: "ArrowRight";
-    in-out property <string> key-move-down-2: "";
-    in-out property <string> key-move-left-2: "";
-    in-out property <string> key-move-right-2: "";
-    in-out property <string> key-inventory: "KeyI";
-    in-out property <string> key-inventory-2: "";
-    in-out property <string> key-skills: "KeyK";
-    in-out property <string> key-skills-2: "";
-    in-out property <string> key-spells: "KeyP";
-    in-out property <string> key-spells-2: "";
-    in-out property <string> key-settings: "Escape";
-    in-out property <string> key-settings-2: "";
-    in-out property <string> key-refresh: "F5";
-    in-out property <string> key-refresh-2: "";
-    in-out property <string> key-toggle-overview: "Tab";
-    in-out property <string> key-toggle-overview-2: "";
-    in-out property <string> key-item-pickup-below: "KeyB";
-    in-out property <string> key-item-pickup-below-2: "";
-    in-out property <string> key-basic-attack: "Space";
-    in-out property <string> key-basic-attack-2: "";
-    in-out property <string> key-auto-attack-toggle: "KeyT";
-    in-out property <string> key-auto-attack-toggle-2: "";
-    in-out property <string> key-hotbar-slot-1: "Digit1";
-    in-out property <string> key-hotbar-slot-1-2: "";
-    in-out property <string> key-hotbar-slot-2: "Digit2";
-    in-out property <string> key-hotbar-slot-2-2: "";
-    in-out property <string> key-hotbar-slot-3: "Digit3";
-    in-out property <string> key-hotbar-slot-3-2: "";
-    in-out property <string> key-hotbar-slot-4: "Digit4";
-    in-out property <string> key-hotbar-slot-4-2: "";
-    in-out property <string> key-hotbar-slot-5: "Digit5";
-    in-out property <string> key-hotbar-slot-5-2: "";
-    in-out property <string> key-hotbar-slot-6: "Digit6";
-    in-out property <string> key-hotbar-slot-6-2: "";
-    in-out property <string> key-hotbar-slot-7: "Digit7";
-    in-out property <string> key-hotbar-slot-7-2: "";
-    in-out property <string> key-hotbar-slot-8: "Digit8";
-    in-out property <string> key-hotbar-slot-8-2: "";
-    in-out property <string> key-hotbar-slot-9: "Digit9";
-    in-out property <string> key-hotbar-slot-9-2: "";
-    in-out property <string> key-hotbar-slot-10: "Digit0";
-    in-out property <string> key-hotbar-slot-10-2: "";
-    in-out property <string> key-hotbar-slot-11: "Minus";
-    in-out property <string> key-hotbar-slot-11-2: "";
-    in-out property <string> key-hotbar-slot-12: "Equal";
-    in-out property <string> key-hotbar-slot-12-2: "";
-    in-out property <string> key-hotbar-slot-13: "Ctrl+Digit1";
-    in-out property <string> key-hotbar-slot-13-2: "";
-    in-out property <string> key-hotbar-slot-14: "Ctrl+Digit2";
-    in-out property <string> key-hotbar-slot-14-2: "";
-    in-out property <string> key-hotbar-slot-15: "Ctrl+Digit3";
-    in-out property <string> key-hotbar-slot-15-2: "";
-    in-out property <string> key-hotbar-slot-16: "Ctrl+Digit4";
-    in-out property <string> key-hotbar-slot-16-2: "";
-    in-out property <string> key-hotbar-slot-17: "Ctrl+Digit5";
-    in-out property <string> key-hotbar-slot-17-2: "";
-    in-out property <string> key-hotbar-slot-18: "Ctrl+Digit6";
-    in-out property <string> key-hotbar-slot-18-2: "";
-    in-out property <string> key-hotbar-slot-19: "Ctrl+Digit7";
-    in-out property <string> key-hotbar-slot-19-2: "";
-    in-out property <string> key-hotbar-slot-20: "Ctrl+Digit8";
-    in-out property <string> key-hotbar-slot-20-2: "";
-    in-out property <string> key-hotbar-slot-21: "Ctrl+Digit9";
-    in-out property <string> key-hotbar-slot-21-2: "";
-    in-out property <string> key-hotbar-slot-22: "Ctrl+Digit0";
-    in-out property <string> key-hotbar-slot-22-2: "";
-    in-out property <string> key-hotbar-slot-23: "Ctrl+Minus";
-    in-out property <string> key-hotbar-slot-23-2: "";
-    in-out property <string> key-hotbar-slot-24: "Ctrl+Equal";
-    in-out property <string> key-hotbar-slot-24-2: "";
-    in-out property <string> key-hotbar-slot-25: "Alt+Digit1";
-    in-out property <string> key-hotbar-slot-25-2: "";
-    in-out property <string> key-hotbar-slot-26: "Alt+Digit2";
-    in-out property <string> key-hotbar-slot-26-2: "";
-    in-out property <string> key-hotbar-slot-27: "Alt+Digit3";
-    in-out property <string> key-hotbar-slot-27-2: "";
-    in-out property <string> key-hotbar-slot-28: "Alt+Digit4";
-    in-out property <string> key-hotbar-slot-28-2: "";
-    in-out property <string> key-hotbar-slot-29: "Alt+Digit5";
-    in-out property <string> key-hotbar-slot-29-2: "";
-    in-out property <string> key-hotbar-slot-30: "Alt+Digit6";
-    in-out property <string> key-hotbar-slot-30-2: "";
-    in-out property <string> key-hotbar-slot-31: "Alt+Digit7";
-    in-out property <string> key-hotbar-slot-31-2: "";
-    in-out property <string> key-hotbar-slot-32: "Alt+Digit8";
-    in-out property <string> key-hotbar-slot-32-2: "";
-    in-out property <string> key-hotbar-slot-33: "Alt+Digit9";
-    in-out property <string> key-hotbar-slot-33-2: "";
-    in-out property <string> key-hotbar-slot-34: "Alt+Digit0";
-    in-out property <string> key-hotbar-slot-34-2: "";
-    in-out property <string> key-hotbar-slot-35: "Alt+Minus";
-    in-out property <string> key-hotbar-slot-35-2: "";
-    in-out property <string> key-hotbar-slot-36: "Alt+Equal";
-    in-out property <string> key-hotbar-slot-36-2: "";
-    in-out property <string> key-hotbar-slot-37: "Ctrl+Alt+Digit1";
-    in-out property <string> key-hotbar-slot-37-2: "";
-    in-out property <string> key-hotbar-slot-38: "Ctrl+Alt+Digit2";
-    in-out property <string> key-hotbar-slot-38-2: "";
-    in-out property <string> key-hotbar-slot-39: "Ctrl+Alt+Digit3";
-    in-out property <string> key-hotbar-slot-39-2: "";
-    in-out property <string> key-hotbar-slot-40: "Ctrl+Alt+Digit4";
-    in-out property <string> key-hotbar-slot-40-2: "";
-    in-out property <string> key-hotbar-slot-41: "Ctrl+Alt+Digit5";
-    in-out property <string> key-hotbar-slot-41-2: "";
-    in-out property <string> key-hotbar-slot-42: "Ctrl+Alt+Digit6";
-    in-out property <string> key-hotbar-slot-42-2: "";
-    in-out property <string> key-hotbar-slot-43: "Ctrl+Alt+Digit7";
-    in-out property <string> key-hotbar-slot-43-2: "";
-    in-out property <string> key-hotbar-slot-44: "Ctrl+Alt+Digit8";
-    in-out property <string> key-hotbar-slot-44-2: "";
-    in-out property <string> key-hotbar-slot-45: "Ctrl+Alt+Digit9";
-    in-out property <string> key-hotbar-slot-45-2: "";
-    in-out property <string> key-hotbar-slot-46: "Ctrl+Alt+Digit0";
-    in-out property <string> key-hotbar-slot-46-2: "";
-    in-out property <string> key-hotbar-slot-47: "Ctrl+Alt+Minus";
-    in-out property <string> key-hotbar-slot-47-2: "";
-    in-out property <string> key-hotbar-slot-48: "Ctrl+Alt+Equal";
-    in-out property <string> key-hotbar-slot-48-2: "";
-    in-out property <string> key-switch-to-inventory: "KeyA";
-    in-out property <string> key-switch-to-inventory-2: "";
-    in-out property <string> key-switch-to-skills: "KeyS";
-    in-out property <string> key-switch-to-skills-2: "";
-    in-out property <string> key-switch-to-spells: "KeyD";
-    in-out property <string> key-switch-to-spells-2: "";
-    in-out property <string> key-switch-to-hotbar-1: "KeyF";
-    in-out property <string> key-switch-to-hotbar-1-2: "";
-    in-out property <string> key-switch-to-hotbar-2: "KeyG";
-    in-out property <string> key-switch-to-hotbar-2-2: "";
-    in-out property <string> key-switch-to-hotbar-3: "KeyH";
-    in-out property <string> key-switch-to-hotbar-3-2: "";
+    // Key bindings, grouped by settings section; synced from Rust.
+    in-out property <[KeyBinding]> bindings-movement: [];
+    in-out property <[KeyBinding]> bindings-world: [];
+    in-out property <[KeyBinding]> bindings-combat: [];
+    in-out property <[KeyBinding]> bindings-interface: [];
+    in-out property <[KeyBinding]> bindings-hotbar: [];
+    in-out property <[KeyBinding]> bindings-panels: [];
 
     // Rebinding state
     in-out property <string> rebinding-action: "";
@@ -150,7 +31,7 @@ export global SettingsState {
     callback xray-size-changed(int);
     callback sfx-volume-changed(float);
     callback music-volume-changed(float);
-    callback scale-changed(float);
+    callback scale-input-changed(float);
     callback modifier-hotbar-rows-target-custom-only-changed(bool);
     callback start-rebind(string, int);
     callback rebind-key(string);

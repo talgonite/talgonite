@@ -1,12 +1,13 @@
 import { GameState } from "../game_state.slint";
+import { Theme } from "../theme.slint";
 
 export component GroupInvitePopup inherits Rectangle {
     width: 320px;
     height: 150px;
-    background: #1a2535;
+    background: Theme.surface-invite;
     border-radius: 8px;
     border-width: 2px;
-    border-color: #3b82f6;
+    border-color: Theme.info;
     drop-shadow-blur: 20px;
     drop-shadow-color: #00000090;
 
@@ -16,15 +17,15 @@ export component GroupInvitePopup inherits Rectangle {
 
         Text {
             text: "Group Invite";
-            font-size: 13px;
+            font-size: Theme.font-size-label;
             font-weight: 700;
-            color: #60a5fa;
+            color: Theme.info-border;
         }
 
         Text {
             text: GameState.group-invite.source-name + " invites you to join their group.";
-            font-size: 12px;
-            color: #d1d5db;
+            font-size: Theme.font-size-medium;
+            color: Theme.neutral-strong;
             wrap: word-wrap;
         }
 
@@ -35,16 +36,16 @@ export component GroupInvitePopup inherits Rectangle {
             accept-btn := Rectangle {
                 width: 110px;
                 height: 30px;
-                background: accept-touch.has-hover ? #16a34a : #15803d;
+                background: accept-touch.has-hover ? Theme.fill-success-hover : Theme.fill-success;
                 border-radius: 5px;
                 border-width: 1px;
-                border-color: #22c55e.with-alpha(0.6);
+                border-color: Theme.status-online.with-alpha(0.6);
                 animate background { duration: 80ms; }
                 Text {
                     text: "Accept";
-                    font-size: 12px;
+                    font-size: Theme.font-size-medium;
                     font-weight: 600;
-                    color: #ffffff;
+                    color: Theme.foreground-strong;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
@@ -59,16 +60,16 @@ export component GroupInvitePopup inherits Rectangle {
             decline-btn := Rectangle {
                 width: 110px;
                 height: 30px;
-                background: decline-touch.has-hover ? #ef4444 : #b91c1c;
+                background: decline-touch.has-hover ? Theme.status-busy : Theme.fill-danger;
                 border-radius: 5px;
                 border-width: 1px;
-                border-color: #ef4444.with-alpha(0.6);
+                border-color: Theme.status-busy.with-alpha(0.6);
                 animate background { duration: 80ms; }
                 Text {
                     text: "Decline";
-                    font-size: 12px;
+                    font-size: Theme.font-size-medium;
                     font-weight: 600;
-                    color: #ffffff;
+                    color: Theme.foreground-strong;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }

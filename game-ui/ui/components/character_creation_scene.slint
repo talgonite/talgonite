@@ -52,7 +52,7 @@ export component CharacterCreationScene inherits Rectangle {
 
                 Text {
                     text: "Create";
-                    font-size: 18px;
+                    font-size: Theme.font-size-title;
                     font-weight: 700;
                     color: #E8C77F;
                     horizontal-stretch: 1;
@@ -95,7 +95,7 @@ export component CharacterCreationScene inherits Rectangle {
                 if (CharacterCreationState.error-message != ""): Text {
                     text: CharacterCreationState.error-message;
                     color: Theme.danger-foreground;
-                    font-size: 13px;
+                    font-size: Theme.font-size-label;
                     wrap: word-wrap;
                 }
 
@@ -163,7 +163,7 @@ export component CharacterCreationScene inherits Rectangle {
                     // Preview Area
                     Rectangle {
                         height: 128px;
-                        background: #00000040;
+                        background: Theme.surface-card;
                         border-radius: Theme.radius-small;
 
                         Icon {
@@ -205,7 +205,7 @@ export component CharacterCreationScene inherits Rectangle {
 
                             for color-opt[i] in root.hair-colors: Rectangle {
                                 col: Math.mod(i, 7);
-                                row: i / 7;
+                                row: Math.floor(i / 7);
                                 width: 18px;
                                 height: 18px;
                                 border-width: 1px;

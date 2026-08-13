@@ -3,7 +3,7 @@ use bevy::prelude::*;
 pub use game_ui::slint_types::{
     CastingIndicator, ChatMessage, ContextMenuEntry, ContextMenuState, Cooldown, DragDropState,
     EquipmentSlotData, GameState, GroupInviteNotification, GroupMember, HotbarEntry, InputBridge,
-    InstallerState, InventoryItem, LegendMarkData, LobbyState, LoginBridge, LoginState,
+    InstallerState, InventoryItem, KeyBinding, LegendMarkData, LobbyState, LoginBridge, LoginState,
     MailBoardPost, MailBoardState, MainWindow, MenuEntry, NetworkState, NpcDialogData,
     NpcDialogState, PlatformState, PopupId, PopupManagerState, ProfileData, SavedLoginItem,
     ServerItem, SettingsState, Skill, SlotPanelType, SocialStatus, SocialStatusEntry,

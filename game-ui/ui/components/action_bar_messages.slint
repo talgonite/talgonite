@@ -39,8 +39,8 @@ export component ActionBarMessages inherits Rectangle {
 
         for message in GameState.action-bar-messages: Text {
             text: message;
-            color: #ffffff;
-            font-size: 11px;
+            color: Theme.foreground-strong;
+            font-size: Theme.font-size-caption;
             font-weight: 500;
             wrap: word-wrap;
         }

@@ -35,6 +35,39 @@ pub struct GraphicsSettings {
     pub high_quality_scaling: bool,
 }
 
+impl GraphicsSettings {
+    pub fn scale_from_progress(ratio: f32) -> f32 {
+        if ratio < 0.0625 {
+            0.5
+        } else if ratio < 0.1875 {
+            1.0
+        } else if ratio < 0.3125 {
+            1.5
+        } else if ratio < 0.4375 {
+            2.0
+        } else if ratio < 0.5625 {
+            2.5
+        } else if ratio < 0.6875 {
+            3.0
+        } else if ratio < 0.8125 {
+            4.0
+        } else {
+            5.0
+        }
+    }
+
+    pub fn progress_from_scale(scale: f32) -> f32 {
+        (scale - 0.5) / 4.5
+    }
+
+    pub fn format_scale(scale: f32) -> String {
+        if (scale.round() - scale).abs() < 1e-3 {
+            format!("{}x", scale.round() as i32)
+        } else {
+            format!("{scale:.1}x")
+        }
+    }
+}
 fn default_true() -> bool {
     true
 }

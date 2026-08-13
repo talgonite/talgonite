@@ -29,7 +29,7 @@ component InventorySlot inherits Rectangle {
 
         if item.quantity > 1: Text {
             text: item.quantity;
-            font-size: 11px;
+            font-size: Theme.font-size-caption;
             font-weight: 700;
             color: Theme.foreground-strong;
             x: parent.width - self.width - 4px;
@@ -87,7 +87,7 @@ export component InventoryPanel inherits BasePanel {
             padding: Theme.spacing-small;
             spacing: Theme.spacing-small;
             for slot[i] in GameState.inventory: Rectangle {
-                row: i / 6;
+                row: Math.floor(i / 6);
                 col: Math.mod(i, 6);
                 width: 44px;
                 height: 44px;

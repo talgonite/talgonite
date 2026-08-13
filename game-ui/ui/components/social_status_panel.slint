@@ -15,56 +15,56 @@ global SocialStatusOptions {
             name: "Online",
             description: "Available for interaction",
             icon: "●",
-            color: #22c55e
+            color: Theme.status-online
         },
         {
             status: SocialStatus.DoNotDisturb,
             name: "Do Not Disturb",
             description: "Busy - please don't message",
             icon: "⊘",
-            color: #ef4444
+            color: Theme.status-busy
         },
         {
             status: SocialStatus.DayDreaming,
             name: "Day Dreaming",
             description: "Away from keyboard",
             icon: "☽",
-            color: #eab308
+            color: Theme.status-away
         },
         {
             status: SocialStatus.NeedGroup,
             name: "Need Group",
             description: "Looking for a group",
             icon: "⚑",
-            color: #3b82f6
+            color: Theme.info
         },
         {
             status: SocialStatus.Grouped,
             name: "Grouped",
             description: "Already in a group",
             icon: "⚐",
-            color: #8b5cf6
+            color: Theme.status-grouped
         },
         {
             status: SocialStatus.LoneHunter,
             name: "Lone Hunter",
             description: "Hunting solo",
             icon: "◆",
-            color: #6366f1
+            color: Theme.status-lone
         },
         {
             status: SocialStatus.GroupHunting,
             name: "Group Hunting",
             description: "Hunting with group",
             icon: "◇",
-            color: #ec4899
+            color: Theme.status-group-hunting
         },
         {
             status: SocialStatus.NeedHelp,
             name: "Need Help",
             description: "Requesting assistance",
             icon: "?",
-            color: #f97316
+            color: Theme.status-need-help
         },
     ];
 
@@ -111,7 +111,7 @@ global SocialStatusOptions {
 }
 
 component StatusDot inherits Rectangle {
-    in property <color> status-color: #22c55e;
+    in property <color> status-color: Theme.status-online;
     in property <bool> pulsing: false;
 
     width: 10px;
@@ -259,7 +259,7 @@ export component SocialStatusDropdown inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border-panel;
     drop-shadow-blur: 8px;
-    drop-shadow-color: #00000040;
+    drop-shadow-color: Theme.surface-card;
     drop-shadow-offset-y: 4px;
 
     VerticalLayout {

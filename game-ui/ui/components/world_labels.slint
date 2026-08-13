@@ -49,7 +49,7 @@ component LabelItem inherits BaseWorldLabel {
             y: parent.border-width;
             width: (parent.width - 2 * parent.border-width) * min(100, max(0, label.health_percent)) / 100;
             height: parent.height - 2 * parent.border-width;
-            background: label.health_percent > 50 ? #2ecc71 : (label.health_percent > 25 ? #f1c40f : #e74c3c);
+            background: label.health_percent > 50 ? Theme.health-good : (label.health_percent > 25 ? Theme.health-mid : Theme.health-low);
         }
     }
 
@@ -59,7 +59,7 @@ component LabelItem inherits BaseWorldLabel {
         width: self.preferred-width;
         text: label.text;
         color: label.color;
-        font-size: 11px;
+        font-size: Theme.font-size-caption;
         font-weight: 600;
         horizontal-alignment: center;
         stroke: #00000080;
@@ -82,15 +82,15 @@ component SpeechBubbleItem inherits BaseWorldLabel {
     border-width: 1px;
     border-color: #ffffffdd;
     drop-shadow-blur: 4px;
-    drop-shadow-color: #00000088;
+    drop-shadow-color: Theme.overlay-strong;
 
     txt := StyledText {
         x: root.label_padding;
         y: root.label_padding;
         width: min(self.preferred-width, root.max_text_width);
         text: label.text;
-        default-color: white;
-        default-font-size: 11px;
+        default-color: Theme.foreground-strong;
+        default-font-size: Theme.font-size-caption;
         horizontal-alignment: center;
     }
 }

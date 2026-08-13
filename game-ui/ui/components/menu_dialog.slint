@@ -87,7 +87,7 @@ export component NpcDialog inherits Rectangle {
                                             padding-right: self.padding-left;
                                             portrait-npc-name := Text {
                                                 font-family: "Lato";
-                                                font-size: 20px;
+                                                font-size: Theme.font-size-xlarge;
                                                 text: NpcDialogState.data.npc_name;
                                                 vertical-alignment: center;
                                                 font-weight: 500;
@@ -124,7 +124,7 @@ export component NpcDialog inherits Rectangle {
                                             border-color: #FFC04030;
                                             Text {
                                                 text: NpcDialogState.data.text_entry_args;
-                                                font-size: 13px;
+                                                font-size: Theme.font-size-label;
                                                 font-weight: 500;
                                                 color: Theme.accent;
                                                 horizontal-alignment: center;
@@ -161,7 +161,7 @@ export component NpcDialog inherits Rectangle {
 
                                             Text {
                                                 text: "Submit";
-                                                font-size: 13px;
+                                                font-size: Theme.font-size-label;
                                                 font-weight: 500;
                                                 color: Theme.accent;
                                                 horizontal-alignment: center;
@@ -187,7 +187,7 @@ export component NpcDialog inherits Rectangle {
                                                 padding-bottom: self.padding-top;
                                                 StyledText {
                                                     text: entry.styled_text;
-                                                    default-font-size: 14px;
+                                                    default-font-size: Theme.font-size-body;
                                                     default-font-family: "Lato";
                                                     default-color: Theme.foreground;
                                                 }
@@ -233,7 +233,7 @@ export component NpcDialog inherits Rectangle {
                                                         width: 28px;
                                                         height: 28px;
                                                         y: (parent.height - self.height) / 2;
-                                                        background: #00000040;
+                                                        background: Theme.surface-card;
                                                         border-radius: 3px;
                                                         Icon {
                                                             icon: entry.icon;
@@ -247,15 +247,15 @@ export component NpcDialog inherits Rectangle {
                                                         spacing: 1px;
                                                         Text {
                                                             text: entry.text;
-                                                            font-size: 11px;
-                                                            color: #e0e0e0;
+                                                            font-size: Theme.font-size-caption;
+                                                            color: Theme.foreground;
                                                             overflow: elide;
                                                         }
 
                                                         if entry.cost > 0: Text {
                                                             text: entry.cost;
-                                                            font-size: 9px;
-                                                            color: #ffc040;
+                                                            font-size: Theme.font-size-xsmall;
+                                                            color: Theme.accent;
                                                         }
                                                     }
                                                 }
@@ -300,7 +300,7 @@ export component NpcDialog inherits Rectangle {
                             width: 100%;
                             text: NpcDialogState.data.dialog_text;
                             default-font-family: "Lato";
-                            default-font-size: 16px;
+                            default-font-size: Theme.font-size-large;
                             default-color: #28210F;
                         }
                     }

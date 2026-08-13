@@ -66,7 +66,7 @@ export component PlayerHUD inherits Rectangle {
                 Text {
                     text: GameState.player_name;
                     color: Theme.foreground;
-                    font-size: 14px;
+                    font-size: Theme.font-size-body;
                     font-weight: 700;
                     vertical-alignment: center;
                 }
@@ -117,32 +117,13 @@ export component PlayerHUD inherits Rectangle {
                     border-width: 1px;
                     border-color: menu-open ? #ff4444 : Theme.border-muted;
                     
-                    // Simple "Power" icon manually drawn
-                    Rectangle {
-                        width: 10px;
-                        height: 10px;
-                        border-radius: 5px;
-                        border-width: 1.5px;
-                        border-color: menu-open ? #ffffff : Theme.foreground-muted;
+                    Image {
+                        source: @image-url("../icons/power.svg");
+                        width: 14px;
+                        height: 14px;
                         x: (parent.width - self.width) / 2;
                         y: (parent.height - self.height) / 2;
-                        
-                        // Break in the top of the circle
-                        Rectangle {
-                            width: 4px;
-                            height: 3px;
-                            background: menu-open ? #552222 : #1a1a2a; // Match approximate background
-                            x: (parent.width - self.width) / 2;
-                            y: -1px;
-                        }
-                    }
-
-                    Rectangle {
-                        width: 1.5px;
-                        height: 5px;
-                        background: menu-open ? #ffffff : Theme.foreground-muted;
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2 - 2px;
+                        colorize: menu-open ? Theme.foreground-strong : Theme.foreground-muted;
                     }
 
                     states [
@@ -170,7 +151,7 @@ export component PlayerHUD inherits Rectangle {
                 spacing: 6px;
                 Rectangle {
                     width: 140px;
-                    background: #00000040;
+                    background: Theme.surface-card;
                     border-radius: 3px;
                     border-width: 1px;
                     border-color: #00000060;
@@ -179,7 +160,7 @@ export component PlayerHUD inherits Rectangle {
                     Rectangle {
                         x: 1px;
                         y: 1px;
-                        width: max(0px, (parent.width - 2px) * max(0.0, min(1.0, GameState.current_hp / max(1, GameState.max_hp))));
+                        width: (parent.width - 2px) * GameState.hp-fraction;
                         height: parent.height - 2px;
                         background: @linear-gradient(90deg, #b91c1c 0%, #dc2626 50%, #ef4444 100%);
                         border-radius: 2px;
@@ -199,7 +180,7 @@ export component PlayerHUD inherits Rectangle {
                 Text {
                     text: GameState.current_hp;
                     color: #ff6b6b;
-                    font-size: 11px;
+                    font-size: Theme.font-size-caption;
                     font-weight: 700;
                     vertical-alignment: center;
                     min-width: 40px;
@@ -213,7 +194,7 @@ export component PlayerHUD inherits Rectangle {
                 spacing: 6px;
                 Rectangle {
                     width: 140px;
-                    background: #00000040;
+                    background: Theme.surface-card;
                     border-radius: 3px;
                     border-width: 1px;
                     border-color: #00000060;
@@ -222,7 +203,7 @@ export component PlayerHUD inherits Rectangle {
                     Rectangle {
                         x: 1px;
                         y: 1px;
-                        width: max(0px, (parent.width - 2px) * max(0.0, min(1.0, GameState.current_mp / max(1, GameState.max_mp))));
+                        width: (parent.width - 2px) * GameState.mp-fraction;
                         height: parent.height - 2px;
                         background: @linear-gradient(90deg, #1e40af 0%, #2563eb 50%, #3b82f6 100%);
                         border-radius: 2px;
@@ -241,8 +222,8 @@ export component PlayerHUD inherits Rectangle {
 
                 Text {
                     text: GameState.current_mp;
-                    color: #60a5fa;
-                    font-size: 11px;
+                    color: Theme.info-border;
+                    font-size: Theme.font-size-caption;
                     font-weight: 700;
                     vertical-alignment: center;
                     min-width: 40px;
@@ -257,7 +238,7 @@ export component PlayerHUD inherits Rectangle {
                 Text {
                     text: GameState.map_name;
                     color: #8a8a8a;
-                    font-size: 9px;
+                    font-size: Theme.font-size-xsmall;
                     vertical-alignment: center;
                 }
 
