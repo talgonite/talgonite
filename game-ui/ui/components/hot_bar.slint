@@ -20,6 +20,7 @@ component HotBarSlotView inherits Rectangle {
     in property <int> quantity;
     in property <duration> cooldown-left;
     in property <duration> cooldown-total;
+    in property <float> cast-progress: 0.0;
     in property <string> name;
     in property <string> description;
     width: 44px;
@@ -27,13 +28,14 @@ component HotBarSlotView inherits Rectangle {
     background: Theme.surface-muted;
     border-radius: Theme.radius-small;
     border-width: 1px;
-    border-color: Theme.border-muted;
+    border-color: cast-progress > 0 ? Theme.accent : Theme.border-muted;
     clip: false;
     if icon.width > 0: Rectangle {
         Icon {
             icon: icon;
             cooldown-left: cooldown-left;
             cooldown-total: cooldown-total;
+            cast-progress: cast-progress;
         }
 
         // Quantity for items
@@ -183,6 +185,7 @@ component SpellSlots inherits GridLayout {
         slot: GameState.spells[idx].slot;
         icon: GameState.spells[idx].icon;
         name: GameState.spells[idx].name;
+        cast-progress: GameState.spells[idx].cast-progress;
     }
 }
 
@@ -215,6 +218,7 @@ component CustomHotBarSlots inherits GridLayout {
         quantity: GameState.hotbar[offset + idx].quantity;
         cooldown-left: GameState.hotbar[offset + idx].cooldown.time_left;
         cooldown-total: GameState.hotbar[offset + idx].cooldown.total;
+        cast-progress: GameState.hotbar[offset + idx].cast-progress;
     }
 }
 
@@ -244,6 +248,7 @@ component DesktopSpellSlots inherits GridLayout {
         slot: GameState.spells[idx].slot;
         icon: GameState.spells[idx].icon;
         name: GameState.spells[idx].name;
+        cast-progress: GameState.spells[idx].cast-progress;
     }
 }
 
@@ -278,6 +283,7 @@ component DesktopCustomHotBarSlots inherits GridLayout {
         quantity: GameState.hotbar[offset + idx].quantity;
         cooldown-left: GameState.hotbar[offset + idx].cooldown.time_left;
         cooldown-total: GameState.hotbar[offset + idx].cooldown.total;
+        cast-progress: GameState.hotbar[offset + idx].cast-progress;
     }
 }
 

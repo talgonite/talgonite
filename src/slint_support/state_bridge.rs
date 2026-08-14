@@ -469,6 +469,7 @@ pub fn apply_core_to_slint(
                 icon: icon.clone().unwrap_or_default(),
                 slot: s.slot as i32,
                 prompt: slint::SharedString::from(s.prompt.as_str()),
+                cast_progress: 0.0,
             };
 
             let index = s.slot.saturating_sub(1) as usize;
@@ -1184,6 +1185,7 @@ pub fn apply_core_to_slint(
                             },
                             None => crate::Cooldown::default(),
                         },
+                        cast_progress: 0.0,
                     }
                 };
 
@@ -1304,6 +1306,146 @@ pub fn sync_skill_cooldowns_to_slint(
     }
 }
 
+pub fn sync_spell_casting_to_slint(
+    win: Res<SlintWindow>,
+    spell_casting: Res<crate::ecs::spell_casting::SpellCastingState>,
+    ability: Option<Res<crate::webui::plugin::AbilityState>>,
+    hotbar: Res<crate::ecs::hotbar::HotbarState>,
+    time: Res<Time>,
+    mut timer: Local<Timer>,
+    mut last_cast_info: Local<Option<(u8, ActionId)>>,
+) {
+    let has_active_cast = spell_casting
+        .active_cast
+        .as_ref()
+        .map(|c| c.total_cast_lines > 0)
+        .unwrap_or(false);
+
+    if !has_active_cast && last_cast_info.is_none() {
+        return;
+    }
+
+    if timer.duration().is_zero() {
+        *timer = Timer::from_seconds(0.1, TimerMode::Repeating);
+    }
+
+    let is_new_cast = has_active_cast && last_cast_info.is_none();
+    let tick_finished = timer.tick(time.delta()).just_finished();
+
+    if !is_new_cast && has_active_cast && !tick_finished {
+        return;
+    }
+
+    let Some(strong) = win.0.upgrade() else {
+        return;
+    };
+    let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
+
+    if let Some(cast) = spell_casting.active_cast.as_ref() {
+        if cast.total_cast_lines > 0 {
+            let completed = cast.current_line.saturating_sub(1) as f32;
+            let progress = ((completed + cast.time_since_last_chant.min(1.0))
+                / cast.total_cast_lines as f32)
+                .clamp(0.0, 1.0);
+
+            if let Some(ref ability) = ability {
+                if let Some(spell) = ability.spells.iter().find(|s| s.id == cast.spell_id) {
+                    if let Some((prev_slot, ref prev_id)) = *last_cast_info {
+                        if prev_slot != spell.slot {
+                            let spells_state = game_state.get_spells();
+                            let prev_idx = prev_slot.saturating_sub(1) as usize;
+                            if let Some(mut row) = spells_state.row_data(prev_idx) {
+                                if row.cast_progress != 0.0 {
+                                    row.cast_progress = 0.0;
+                                    spells_state.set_row_data(prev_idx, row);
+                                }
+                            }
+                            let hotbar_state = game_state.get_hotbar();
+                            let mut entry_idx = 0usize;
+                            for bar in &hotbar.config.bars {
+                                for slot_cfg in bar {
+                                    if !slot_cfg.action_id.is_empty() {
+                                        let action_id = ActionId::from_str(&slot_cfg.action_id);
+                                        if action_id == *prev_id {
+                                            if let Some(mut row) = hotbar_state.row_data(entry_idx) {
+                                                if row.cast_progress != 0.0 {
+                                                    row.cast_progress = 0.0;
+                                                    hotbar_state.set_row_data(entry_idx, row);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    entry_idx += 1;
+                                }
+                            }
+                        }
+                    }
+
+                    let spells_state = game_state.get_spells();
+                    let spell_idx = spell.slot.saturating_sub(1) as usize;
+                    if let Some(mut row) = spells_state.row_data(spell_idx) {
+                        if (row.cast_progress - progress).abs() > 0.001 {
+                            row.cast_progress = progress;
+                            spells_state.set_row_data(spell_idx, row);
+                        }
+                    }
+
+                    let hotbar_state = game_state.get_hotbar();
+                    let mut entry_idx = 0usize;
+                    for bar in &hotbar.config.bars {
+                        for slot_cfg in bar {
+                            if !slot_cfg.action_id.is_empty() {
+                                let action_id = ActionId::from_str(&slot_cfg.action_id);
+                                if action_id == cast.spell_id {
+                                    if let Some(mut row) = hotbar_state.row_data(entry_idx) {
+                                        if (row.cast_progress - progress).abs() > 0.001 {
+                                            row.cast_progress = progress;
+                                            hotbar_state.set_row_data(entry_idx, row);
+                                        }
+                                    }
+                                }
+                            }
+                            entry_idx += 1;
+                        }
+                    }
+
+                    *last_cast_info = Some((spell.slot, cast.spell_id.clone()));
+                    return;
+                }
+            }
+        }
+    }
+
+    if let Some((prev_slot, prev_id)) = last_cast_info.take() {
+        let spells_state = game_state.get_spells();
+        let prev_idx = prev_slot.saturating_sub(1) as usize;
+        if let Some(mut row) = spells_state.row_data(prev_idx) {
+            if row.cast_progress != 0.0 {
+                row.cast_progress = 0.0;
+                spells_state.set_row_data(prev_idx, row);
+            }
+        }
+        let hotbar_state = game_state.get_hotbar();
+        let mut entry_idx = 0usize;
+        for bar in &hotbar.config.bars {
+            for slot_cfg in bar {
+                if !slot_cfg.action_id.is_empty() {
+                    let action_id = ActionId::from_str(&slot_cfg.action_id);
+                    if action_id == prev_id {
+                        if let Some(mut row) = hotbar_state.row_data(entry_idx) {
+                            if row.cast_progress != 0.0 {
+                                row.cast_progress = 0.0;
+                                hotbar_state.set_row_data(entry_idx, row);
+                            }
+                        }
+                    }
+                }
+                entry_idx += 1;
+            }
+        }
+    }
+}
+
 #[derive(Resource, Clone)]
 pub struct SlintUiChannels {
     pub tx: crossbeam_channel::Sender<crate::webui::ipc::UiToCore>,
@@ -1381,7 +1523,6 @@ pub fn sync_world_labels_to_slint(
         ),
         With<crate::ecs::components::LocalPlayer>,
     >,
-    spell_casting: Res<crate::ecs::spell_casting::SpellCastingState>,
     spell_targeting: Res<crate::ecs::spell_casting::SpellTargetingState>,
     entities_query: Query<(
         Entity,
@@ -1502,18 +1643,6 @@ pub fn sync_world_labels_to_slint(
     };
 
     casting_indicator.targeting = spell_targeting.pending_target.is_some();
-
-    if let Some(cast) = spell_casting.active_cast.as_ref() {
-        if cast.total_cast_lines > 0 {
-            let completed = cast.current_line.saturating_sub(1) as f32;
-            let progress = ((completed + cast.time_since_last_chant.min(1.0))
-                / cast.total_cast_lines as f32)
-                .clamp(0.0, 1.0);
-
-            casting_indicator.visible = true;
-            casting_indicator.progress = progress;
-        }
-    }
 
     set_if_changed(&mut last_sent.casting, casting_indicator, &mut metrics, |v| {
         game_state.set_casting_indicator(v);

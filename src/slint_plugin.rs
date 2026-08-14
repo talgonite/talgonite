@@ -16,7 +16,7 @@ use crate::slint_support::state_bridge::{
     LastWorldLabelState, SlintUiChannels, apply_core_to_slint, drain_slint_inbound,
     reset_label_sync_cache, sync_group_to_slint, sync_installer_to_slint, sync_map_name_to_slint,
     sync_popup_to_slint, sync_settings_to_slint, sync_skill_cooldowns_to_slint,
-    sync_world_labels_to_slint,
+    sync_spell_casting_to_slint, sync_world_labels_to_slint,
 };
 use crate::slint_support::{handle_show_self_profile, sync_profile_to_slint};
 
@@ -77,6 +77,9 @@ impl Plugin for SlintBridgePlugin {
                         .run_if(resource_exists::<crate::slint_support::state_bridge::SlintWindow>)
                         .run_if(in_state(AppState::InGame)),
                     sync_skill_cooldowns_to_slint
+                        .run_if(resource_exists::<crate::slint_support::state_bridge::SlintWindow>)
+                        .run_if(in_state(AppState::InGame)),
+                    sync_spell_casting_to_slint
                         .run_if(resource_exists::<crate::slint_support::state_bridge::SlintWindow>)
                         .run_if(in_state(AppState::InGame)),
                 ),

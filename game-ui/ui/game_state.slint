@@ -69,6 +69,7 @@ export struct HotbarEntry {
     quantity: int,
     enabled: bool,
     cooldown: Cooldown,
+    cast-progress: float,
 }
 
 export struct Skill {
@@ -83,6 +84,7 @@ export struct Spell {
     icon: image,
     slot: int,
     prompt: string,
+    cast-progress: float,
 }
 
 export enum SlotPanelType {

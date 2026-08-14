@@ -77,41 +77,6 @@ export component GameScene inherits Rectangle {
         height: 100%;
     }
 
-    if (GameState.casting-indicator.visible): Rectangle {
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2 + 50px;
-        width: 120px;
-        height: 16px;
-        background: Theme.overlay-strong;
-        border-radius: 11px;
-        border-width: 1px;
-        border-color: #ffffff44;
-
-        fill := Rectangle {
-            x: 1px;
-            y: 1px;
-            width: (parent.width - 2px) * Math.clamp(GameState.casting-indicator.progress, 0.0, 1.0);
-            height: parent.height - 2px;
-            background: Theme.accent;
-            border-radius: 4px;
-        }
-
-        txt := Text {
-            x: 0px;
-            y: 0px;
-            width: parent.width;
-            height: parent.height;
-            text: GameState.casting-indicator.text;
-            color: Theme.foreground-strong;
-            font-size: Theme.font-size-small;
-            font-weight: 600;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-            stroke: #000000aa;
-            stroke-width: 1px;
-        }
-    }
-
     player-hud := PlayerHUD {
         x: 20px;
         y: 20px;

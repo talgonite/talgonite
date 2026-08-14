@@ -111,7 +111,7 @@ component SpellRow inherits Rectangle {
     background: Theme.surface-muted;
     border-radius: Theme.radius-small;
     border-width: 1px;
-    border-color: Theme.border-muted;
+    border-color: spell.cast-progress > 0 ? Theme.accent : Theme.border-muted;
 
     // Draggable container
     Rectangle {
@@ -123,11 +123,12 @@ component SpellRow inherits Rectangle {
             spacing: Theme.spacing-small;
             Icon {
                 icon: spell.icon;
+                cast-progress: spell.cast-progress;
             }
 
             Text {
                 text: spell.name;
-                color: Theme.foreground;
+                color: spell.cast-progress > 0 ? Theme.accent : Theme.foreground;
                 vertical-alignment: center;
                 font-size: Theme.font-size-small;
             }

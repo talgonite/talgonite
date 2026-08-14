@@ -5,18 +5,20 @@ export component Icon inherits Rectangle {
     height: icon.height * scale * 1px;
     in property <duration> cooldown-total;
     in property <duration> cooldown-left;
+    in property <float> cast-progress: 0.0;
     property <float> cooldown-percent: cooldown-total > 0ms ? cooldown-left / cooldown-total : 0.0;
+    property <float> clamped-cast-progress: Math.clamp(cast-progress, 0.0, 1.0);
 
-    if cooldown-percent > 0: Image {
+    if cooldown-percent > 0 || clamped-cast-progress > 0: Image {
         image-rendering: pixelated;
         source: icon;
         image-fit: fill;
         width: parent.width;
         height: parent.height;
-        opacity: 0.5;
+        opacity: clamped-cast-progress > 0 ? 0.4 : 0.5;
     }
 
-    Image {
+    if cooldown-percent > 0 && clamped-cast-progress <= 0: Image {
         image-rendering: pixelated;
         source: icon;
         image-fit: fill;
@@ -24,5 +26,41 @@ export component Icon inherits Rectangle {
         height: Math.floor(parent.height * (1.0 - cooldown-percent) / 1px) * 1px;
         y: 0;
         source-clip-height: Math.floor(icon.height * (1.0 - cooldown-percent));
+    }
+
+    if clamped-cast-progress > 0: Image {
+        image-rendering: pixelated;
+        source: icon;
+        image-fit: fill;
+        x: 0;
+        y: Math.floor(parent.height * (1.0 - clamped-cast-progress) / 1px) * 1px;
+        width: parent.width;
+        height: parent.height - self.y;
+        source-clip-y: Math.floor(icon.height * (1.0 - clamped-cast-progress));
+        source-clip-height: icon.height - self.source-clip-y;
+    }
+
+    if clamped-cast-progress > 0: Rectangle {
+        x: 0;
+        y: Math.floor(parent.height * (1.0 - clamped-cast-progress) / 1px) * 1px;
+        width: parent.width;
+        height: parent.height - self.y;
+        background: @linear-gradient(180deg, #FFC04055 0%, #FF902025 100%);
+    }
+
+    if clamped-cast-progress > 0 && clamped-cast-progress < 1.0: Rectangle {
+        x: 0;
+        y: Math.max(0px, Math.floor(parent.height * (1.0 - clamped-cast-progress) / 1px) * 1px - 1px);
+        width: parent.width;
+        height: 2px;
+        background: #FFF090;
+    }
+
+    if cooldown-percent <= 0 && clamped-cast-progress <= 0: Image {
+        image-rendering: pixelated;
+        source: icon;
+        image-fit: fill;
+        width: parent.width;
+        height: parent.height;
     }
 }
