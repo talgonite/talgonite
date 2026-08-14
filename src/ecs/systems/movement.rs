@@ -191,19 +191,18 @@ fn handle_walk_request(
     if uses_creature_sprite {
         if let Some(instance) = creature_instance {
             if let Some(walk) = instance.instance.get_animation(MpfAnimationType::Walk) {
-                if let Some(standing) = instance.instance.get_animation(MpfAnimationType::Standing)
-                {
-                    entity_commands.insert(AnimationBundle::new(
-                        AnimationMode::OneShotThenLoop {
-                            loop_anim: AnimationType::Creature(MpfAnimationType::Standing),
-                            loop_frame_count: standing.frame_count as usize,
-                            loop_frame_duration: 0.5,
-                        },
-                        AnimationType::Creature(MpfAnimationType::Walk),
-                        0.125,
-                        walk.frame_count as usize,
-                    ));
-                }
+                let frame_count = (walk.frame_count as usize).max(1);
+                let idle_anim = super::entities::creature_idle_animation(&instance.instance);
+                let mode = match idle_anim {
+                    Some(idle) => AnimationMode::OneShotThen(Box::new(idle)),
+                    None => AnimationMode::OneShot,
+                };
+                entity_commands.insert(AnimationBundle::new(
+                    mode,
+                    AnimationType::Creature(MpfAnimationType::Walk),
+                    WALK_STEP_DURATION / frame_count as f32,
+                    frame_count,
+                ));
             }
         }
     } else {
@@ -267,22 +266,19 @@ pub fn entity_motion_system(
                             if let Some(walk) =
                                 instance.instance.get_animation(MpfAnimationType::Walk)
                             {
-                                if let Some(standing) =
-                                    instance.instance.get_animation(MpfAnimationType::Standing)
-                                {
-                                    commands.entity(entity).insert(AnimationBundle::new(
-                                        AnimationMode::OneShotThenLoop {
-                                            loop_anim: AnimationType::Creature(
-                                                MpfAnimationType::Standing,
-                                            ),
-                                            loop_frame_count: standing.frame_count as usize,
-                                            loop_frame_duration: 0.5,
-                                        },
-                                        AnimationType::Creature(MpfAnimationType::Walk),
-                                        0.125,
-                                        walk.frame_count as usize,
-                                    ));
-                                }
+                                let frame_count = (walk.frame_count as usize).max(1);
+                                let idle_anim =
+                                    super::entities::creature_idle_animation(&instance.instance);
+                                let mode = match idle_anim {
+                                    Some(idle) => AnimationMode::OneShotThen(Box::new(idle)),
+                                    None => AnimationMode::OneShot,
+                                };
+                                commands.entity(entity).insert(AnimationBundle::new(
+                                    mode,
+                                    AnimationType::Creature(MpfAnimationType::Walk),
+                                    WALK_STEP_DURATION / frame_count as f32,
+                                    frame_count,
+                                ));
                             }
                         }
                     } else if let Some(_player) = player {
@@ -493,19 +489,16 @@ pub fn player_animation_start_system(
                 }
             };
 
-            let idle_anim = instance.instance.get_animation(MpfAnimationType::Standing);
+            let idle_anim = super::entities::creature_idle_animation(&instance.instance);
+            let mode = match idle_anim {
+                Some(idle) => AnimationMode::OneShotThen(Box::new(idle)),
+                None => AnimationMode::OneShot,
+            };
             commands.entity(entity).insert(AnimationBundle::new(
-                match idle_anim {
-                    Some(idle) => AnimationMode::OneShotThenLoop {
-                        loop_anim: AnimationType::Creature(MpfAnimationType::Standing),
-                        loop_frame_count: idle.frame_count as usize,
-                        loop_frame_duration: 0.5,
-                    },
-                    _ => AnimationMode::OneShot,
-                },
+                mode,
                 AnimationType::Creature(anim_type),
                 5.0 / anim.animation_speed as f32 * anim_speed,
-                frame_count,
+                frame_count.max(1),
             ));
         }
     }
@@ -671,6 +664,134 @@ pub fn player_reconciliation_system(
                 }
             }
             _ => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ecs::animation::Animation;
+    use formats::mpf::MpfAnimation;
+    use rendering::scene::creatures::{AddCreatureResult, CreateInstanceHandle};
+
+    #[test]
+    fn creature_walk_duration_scales_with_frame_count() {
+        let mut app = App::new();
+        app.add_plugins(bevy::time::TimePlugin::default());
+        app.add_message::<PlayerAction>();
+        app.add_systems(Update, player_movement_system);
+
+        app.world_mut().spawn(GameMap {
+            map_id: 1,
+            width: 10,
+            height: 10,
+            name: "Test".to_string(),
+        });
+
+        let creature_instance = CreatureInstance {
+            instance: AddCreatureResult {
+                handle: CreateInstanceHandle {
+                    index: 0,
+                    sprite_id: 1,
+                },
+                animations: vec![
+                    MpfAnimation::new(MpfAnimationType::Walk, 0, 2, true),
+                    MpfAnimation::new(MpfAnimationType::Standing, 4, 1, true),
+                ],
+            },
+        };
+
+        let entity = app
+            .world_mut()
+            .spawn((
+                LocalPlayer,
+                Position { x: 5.0, y: 5.0 },
+                Direction::Down,
+                UnconfirmedWalks::default(),
+                UnconfirmedTurns::default(),
+                CreatureSprite { id: 1 },
+                creature_instance,
+            ))
+            .id();
+
+        app.world_mut()
+            .resource_mut::<Messages<PlayerAction>>()
+            .write(PlayerAction::Walk {
+                direction: Direction::Down,
+                source: crate::events::InputSource::Manual,
+            });
+
+        app.update();
+
+        let anim = app.world().get::<Animation>(entity).unwrap();
+        assert_eq!(anim.anim_type, AnimationType::Creature(MpfAnimationType::Walk));
+        assert_eq!(anim.end_index, 1);
+        assert!((anim.frame_duration - (WALK_STEP_DURATION / 2.0)).abs() < f32::EPSILON);
+        match &anim.mode {
+            AnimationMode::OneShotThen(next) => {
+                assert_eq!(
+                    next.anim_type,
+                    AnimationType::Creature(MpfAnimationType::Standing)
+                );
+            }
+            _ => panic!("Expected OneShotThen animation mode"),
+        }
+    }
+
+    #[test]
+    fn remote_creature_walk_duration_scales_with_frame_count() {
+        let mut app = App::new();
+        app.add_plugins(bevy::time::TimePlugin::default());
+        app.add_message::<EntityEvent>();
+        app.add_systems(Update, entity_motion_system);
+
+        let creature_instance = CreatureInstance {
+            instance: AddCreatureResult {
+                handle: CreateInstanceHandle {
+                    index: 0,
+                    sprite_id: 2,
+                },
+                animations: vec![
+                    MpfAnimation::new(MpfAnimationType::Walk, 0, 4, true),
+                    MpfAnimation::new(MpfAnimationType::Standing, 8, 1, true),
+                ],
+            },
+        };
+
+        let entity = app
+            .world_mut()
+            .spawn((
+                EntityId { id: 42 },
+                Position { x: 3.0, y: 3.0 },
+                Direction::Right,
+                CreatureSprite { id: 2 },
+                creature_instance,
+            ))
+            .id();
+
+        app.world_mut()
+            .resource_mut::<Messages<EntityEvent>>()
+            .write(EntityEvent::Walk(packets::server::CreatureWalk {
+                source_id: 42,
+                old_point: (3, 3),
+                direction: 1,
+            }));
+
+        app.update();
+
+        let anim = app.world().get::<Animation>(entity).unwrap();
+        assert_eq!(anim.anim_type, AnimationType::Creature(MpfAnimationType::Walk));
+        assert_eq!(anim.end_index, 3);
+        assert!((anim.frame_duration - (WALK_STEP_DURATION / 4.0)).abs() < f32::EPSILON);
+        match &anim.mode {
+            AnimationMode::OneShotThen(next) => {
+                assert_eq!(
+                    next.anim_type,
+                    AnimationType::Creature(MpfAnimationType::Standing)
+                );
+            }
+            _ => panic!("Expected OneShotThen animation mode"),
         }
     }
 }

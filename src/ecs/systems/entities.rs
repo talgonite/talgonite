@@ -592,6 +592,40 @@ pub fn queue_creatures_for_loading(
     }
 }
 
+pub fn creature_idle_animation(result: &rendering::scene::creatures::AddCreatureResult) -> Option<Animation> {
+    let standing_anim = result.get_animation(MpfAnimationType::Standing)?;
+    if standing_anim.frame_count == 0 {
+        return None;
+    }
+
+    let mut idle_animation = Some(Animation::new(
+        AnimationMode::LoopStandard,
+        AnimationType::Creature(MpfAnimationType::Standing),
+        0.5,
+        standing_anim.frame_count as usize,
+    ));
+
+    idle_animation = idle_animation.map(|anim| {
+        result.animations.iter().fold(anim, |acc, anim_info| {
+            match anim_info.animation_type {
+                MpfAnimationType::Extra(ratio) if anim_info.frame_count > 0 => Animation::new(
+                    AnimationMode::LoopExtra {
+                        ratio: ratio as f32 / 100.0,
+                        standard_end: acc.end_index,
+                        extra_end: anim_info.frame_count as usize - 1,
+                    },
+                    AnimationType::Creature(MpfAnimationType::Extra(ratio)),
+                    0.5,
+                    anim_info.frame_count as usize,
+                ),
+                _ => acc,
+            }
+        })
+    });
+
+    idle_animation
+}
+
 /// Loads creature sprites from game files onto the GPU.
 /// Processes a limited batch per frame to avoid stalls.
 pub fn creature_load_system(
@@ -645,40 +679,10 @@ pub fn creature_load_system(
 
         match result {
             Ok(result) => {
-                let mut idle_animation =
-                    if let Some(standing_anim) = result.get_animation(MpfAnimationType::Standing) {
-                        Some(Animation::new(
-                            AnimationMode::LoopStandard,
-                            AnimationType::Creature(MpfAnimationType::Standing),
-                            0.5,
-                            standing_anim.frame_count as usize,
-                        ))
-                    } else {
-                        None
-                    };
-
-                idle_animation = idle_animation.map(|anim| {
-                    result.animations.iter().fold(anim, |acc, anim_info| {
-                        match anim_info.animation_type {
-                            MpfAnimationType::Extra(ratio) => Animation::new(
-                                AnimationMode::LoopExtra {
-                                    ratio: ratio as f32 / 100.0,
-                                    standard_end: acc.end_index,
-                                    extra_end: anim_info.frame_count as usize - 1,
-                                },
-                                AnimationType::Creature(MpfAnimationType::Extra(ratio)),
-                                0.5,
-                                anim_info.frame_count as usize,
-                            ),
-                            _ => acc,
-                        }
-                    })
-                });
-
-                if let Some(extra_anim) = idle_animation {
+                if let Some(idle_anim) = creature_idle_animation(&result) {
                     commands
                         .entity(entity)
-                        .insert(AnimationBundle::from_animation(extra_anim));
+                        .insert(AnimationBundle::from_animation(idle_anim));
                 }
 
                 commands

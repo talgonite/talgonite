@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use formats::{epf::EpfAnimationType, mpf::MpfAnimationType};
 
 
-#[derive(Component)]
+#[derive(Component, Clone, Debug, PartialEq)]
 pub struct Animation {
     pub mode: AnimationMode,
     pub anim_type: AnimationType,
@@ -27,6 +27,7 @@ impl Animation {
         frame_duration: f32,
         frame_count: usize,
     ) -> Animation {
+        let frame_count = frame_count.max(1);
         Animation {
             mode,
             anim_type,
@@ -62,14 +63,10 @@ pub enum AnimationType {
     Player(EpfAnimationType),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum AnimationMode {
     OneShot,
-    OneShotThenLoop {
-        loop_anim: AnimationType,
-        loop_frame_count: usize,
-        loop_frame_duration: f32,
-    },
+    OneShotThen(Box<Animation>),
     LoopStandard,
     LoopExtra {
         ratio: f32,
@@ -115,28 +112,62 @@ pub fn animation_system(
                     AnimationMode::OneShot => {
                         animation.current_frame = 0;
                         animation.mode = AnimationMode::Finished;
-                        // Keep component but stop ticking; will be detected as Finished (Idle)
                     }
-                    AnimationMode::OneShotThenLoop {
-                        loop_anim,
-                        loop_frame_count,
-                        loop_frame_duration,
-                    } => {
-                        animation.current_frame = 0;
-                        animation.end_index = loop_frame_count - 1;
-                        animation.anim_type = loop_anim;
-                        timer.0 = Timer::from_seconds(loop_frame_duration, TimerMode::Repeating);
-
-                        animation.mode = AnimationMode::LoopStandard;
+                    AnimationMode::OneShotThen(ref next) => {
+                        let next_anim = (**next).clone();
+                        timer.0 = Timer::from_seconds(next_anim.frame_duration, TimerMode::Repeating);
+                        *animation = next_anim;
                     }
-                    AnimationMode::Finished => {
-                        // Unreachable due to top-level skip
-                    }
+                    AnimationMode::Finished => {}
                 }
             }
         } else {
-            // Prevent triggering change detection unless the frame actually advanced
             animation.bypass_change_detection();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::time::TimeUpdateStrategy;
+    use std::time::Duration;
+
+    #[test]
+    fn one_shot_then_transitions_to_next_animation() {
+        let mut app = App::new();
+        app.add_plugins(bevy::time::TimePlugin::default());
+        app.add_systems(Update, animation_system);
+
+        let idle_anim = Animation::new(
+            AnimationMode::LoopStandard,
+            AnimationType::Creature(MpfAnimationType::Standing),
+            0.5,
+            2,
+        );
+        let walk_bundle = AnimationBundle::new(
+            AnimationMode::OneShotThen(Box::new(idle_anim.clone())),
+            AnimationType::Creature(MpfAnimationType::Walk),
+            0.25,
+            2,
+        );
+
+        let entity = app.world_mut().spawn(walk_bundle).id();
+        app.update();
+
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(250)));
+        app.update();
+
+        let anim = app.world().get::<Animation>(entity).unwrap();
+        assert_eq!(anim.current_frame, 1);
+        assert_eq!(anim.anim_type, AnimationType::Creature(MpfAnimationType::Walk));
+
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(250)));
+        app.update();
+
+        let anim = app.world().get::<Animation>(entity).unwrap();
+        assert_eq!(anim.current_frame, 0);
+        assert_eq!(anim.anim_type, AnimationType::Creature(MpfAnimationType::Standing));
+        assert_eq!(anim.mode, AnimationMode::LoopStandard);
     }
 }
