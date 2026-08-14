@@ -600,18 +600,36 @@ pub fn creature_load_system(
     game_files: Res<GameFiles>,
     mut scene: ResMut<crate::SpriteSceneState>,
     sprite_batch: Res<crate::UnifiedSpriteBatchState>,
+    settings: Res<crate::settings_types::Settings>,
     mut to_load: Query<
-        (Entity, &Position, &CreatureSprite, &Direction),
+        (
+            Entity,
+            &Position,
+            &CreatureSprite,
+            &Direction,
+            Option<&PlayerRenderState>,
+            Option<&LocalPlayer>,
+            Option<&TargetingHover>,
+        ),
         With<CreatureLoadRequested>,
     >,
 ) {
     const MAX_LOADS_PER_FRAME: usize = 8;
 
     let mut processed = 0usize;
-    for (entity, position, sprite, direction) in to_load.iter_mut() {
+    for (entity, position, sprite, direction, render_state, local_player, targeting_hover) in
+        to_load.iter_mut()
+    {
         if processed >= MAX_LOADS_PER_FRAME {
             break;
         }
+
+        let tint = super::rendering::resolve_hover_tint(targeting_hover);
+        let flags = super::rendering::player_instance_state(
+            render_state,
+            local_player.is_some(),
+            &settings,
+        );
 
         let result = sprite_batch.batch.add_creature(
             &shared_state.queue,
@@ -621,6 +639,8 @@ pub fn creature_load_system(
             *direction as u8,
             position.x,
             position.y,
+            flags,
+            tint,
         );
 
         match result {

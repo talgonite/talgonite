@@ -395,6 +395,8 @@ impl UnifiedSpriteBatch {
         direction: u8,
         x: f32,
         y: f32,
+        flags: InstanceFlag,
+        tint: Vec3,
     ) -> anyhow::Result<AddCreatureResult> {
         scene.ensure_creature(sprite_id, queue, archive)?;
         let loaded_sprite = scene
@@ -412,13 +414,15 @@ impl UnifiedSpriteBatch {
                 anyhow::anyhow!("No standing animation found for sprite {}", sprite_id)
             })?;
         let frame_index = anim.frame_index_for_direction(anim_dir);
-        let instance = get_creature_instance_for_frame(
+        let mut instance = get_creature_instance_for_frame(
             loaded_sprite,
             frame_index as usize,
             Vec2::new(x, y),
             flip,
             scene.atlas.palette_rows(),
+            flags,
         )?;
+        instance.tint = tint;
 
         let instance_index = self
             .instances
@@ -445,6 +449,7 @@ impl UnifiedSpriteBatch {
         anim: &MpfAnimation,
         anim_frame: usize,
         direction: u8,
+        flags: InstanceFlag,
         tint: Vec3,
     ) -> bool {
         if let Some(loaded_sprite) = scene.creatures.loaded_sprites.get(&handle.sprite_id) {
@@ -456,6 +461,7 @@ impl UnifiedSpriteBatch {
                 Vec2::new(x, y),
                 flip,
                 scene.atlas.palette_rows(),
+                flags,
             ) {
                 instance.tint = tint;
                 self.instances.update(handle.index, instance);

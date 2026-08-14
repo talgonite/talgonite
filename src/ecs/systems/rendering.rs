@@ -22,12 +22,13 @@ use rendering::{
     },
 };
 
-fn player_instance_state(
-    render_state: &PlayerRenderState,
+pub(crate) fn player_instance_state(
+    render_state: Option<&PlayerRenderState>,
     is_local_player: bool,
     settings: &Settings,
 ) -> InstanceFlag {
-    match (render_state.translucent, is_local_player) {
+    let is_translucent = render_state.map(|r| r.translucent).unwrap_or(false);
+    match (is_translucent, is_local_player) {
         // Invisible local player: translucent, always pops through walls.
         (true, true) => InstanceFlag::TranslucentOverlay,
         (true, false) => InstanceFlag::Translucent,
@@ -40,7 +41,7 @@ fn player_instance_state(
 }
 
 /// The hover tint applied to an entity while it is being targeted, or zero.
-fn resolve_hover_tint(targeting_hover: Option<&TargetingHover>) -> Vec3 {
+pub(crate) fn resolve_hover_tint(targeting_hover: Option<&TargetingHover>) -> Vec3 {
     targeting_hover.map(|t| t.tint).unwrap_or(Vec3::ZERO)
 }
 
@@ -608,7 +609,7 @@ pub fn sync_players_to_renderer(
         };
 
         let tint = resolve_hover_tint(targeting_hover);
-        let flags = player_instance_state(render_state, local_player.is_some(), &settings);
+        let flags = player_instance_state(Some(render_state), local_player.is_some(), &settings);
         let result = sprite_batch.batch.add_player(
             &shared_state.queue,
             &mut sprite_scene.scene,
@@ -700,7 +701,7 @@ pub fn update_player_sprites(
             resolve_player_animation_state(animation, animation_timer, time.elapsed_secs());
 
         let tint = resolve_hover_tint(targeting_hover);
-        let flags = player_instance_state(render_state, local_player.is_some(), &settings);
+        let flags = player_instance_state(Some(render_state), local_player.is_some(), &settings);
 
         let is_towards = matches!(*direction, Direction::Right | Direction::Down);
         let direction = *direction as u8;
@@ -790,10 +791,13 @@ pub fn update_player_sprites(
 /// Syncs creature positions and animations to the GPU.
 pub fn creature_movement_sync(
     query: Query<(
+        Entity,
         &CreatureInstance,
         &Position,
         &Direction,
         &Animation,
+        Option<&PlayerRenderState>,
+        Option<&LocalPlayer>,
         Option<&TargetingHover>,
         &EntityId,
     )>,
@@ -803,42 +807,51 @@ pub fn creature_movement_sync(
             Changed<Position>,
             Changed<Direction>,
             Changed<Animation>,
+            Changed<PlayerRenderState>,
+            Added<TargetingHover>,
             Changed<TargetingHover>,
         )>,
     >,
     mut removed_hovers: RemovedComponents<TargetingHover>,
     sprite_scene: Res<SpriteSceneState>,
     sprite_batch: Res<UnifiedSpriteBatchState>,
+    settings: Res<Settings>,
 ) {
     use formats::mpf::MpfAnimationType;
+    let settings_changed = settings.is_changed();
     let to_update = collect_dirty_entities(changed_query.iter(), &mut removed_hovers);
 
-    for entity in to_update {
-        if let Ok((creature, pos, dir, anim, targeting_hover, _entity_id)) = query.get(entity) {
-            let (actual_anim_type, actual_frame) = if anim.mode == AnimationMode::Finished {
-                (MpfAnimationType::Standing, 0)
-            } else if let AnimationType::Creature(at) = anim.anim_type {
-                (at, anim.current_frame)
-            } else {
-                (MpfAnimationType::Standing, 0)
-            };
+    for (entity, creature, pos, dir, anim, render_state, local_player, targeting_hover, _entity_id) in
+        query.iter()
+    {
+        if !settings_changed && !to_update.contains(&entity) {
+            continue;
+        }
 
-            if let Some(mpf_anim) = creature.instance.get_animation(actual_anim_type) {
-                let tint = resolve_hover_tint(targeting_hover);
-                sprite_batch.batch.update_creature(
-                    &sprite_scene.scene,
-                    &creature.instance.handle,
-                    pos.x,
-                    pos.y,
-                    mpf_anim,
-                    actual_frame,
-                    *dir as u8,
-                    tint,
-                );
-            }
+        let (actual_anim_type, actual_frame) = if anim.mode == AnimationMode::Finished {
+            (MpfAnimationType::Standing, 0)
+        } else if let AnimationType::Creature(at) = anim.anim_type {
+            (at, anim.current_frame)
+        } else {
+            (MpfAnimationType::Standing, 0)
+        };
+
+        if let Some(mpf_anim) = creature.instance.get_animation(actual_anim_type) {
+            let tint = resolve_hover_tint(targeting_hover);
+            let flags = player_instance_state(render_state, local_player.is_some(), &settings);
+            sprite_batch.batch.update_creature(
+                &sprite_scene.scene,
+                &creature.instance.handle,
+                pos.x,
+                pos.y,
+                mpf_anim,
+                actual_frame,
+                *dir as u8,
+                flags,
+                tint,
+            );
         }
     }
-
 }
 
 /// Syncs the local player's appearance to the portrait texture.
@@ -1269,27 +1282,62 @@ mod tests {
         let opaque = PlayerRenderState::from_translucent(false);
 
         assert_eq!(
-            player_instance_state(&translucent, true, &xray_off),
+            player_instance_state(Some(&translucent), true, &xray_off),
             InstanceFlag::TranslucentOverlay
         );
         assert_eq!(
-            player_instance_state(&translucent, true, &xray_on),
+            player_instance_state(Some(&translucent), true, &xray_on),
             InstanceFlag::TranslucentOverlay
         );
         assert_eq!(
-            player_instance_state(&translucent, false, &xray_off),
+            player_instance_state(Some(&translucent), false, &xray_off),
             InstanceFlag::Translucent
         );
         assert_eq!(
-            player_instance_state(&opaque, true, &xray_off),
+            player_instance_state(Some(&opaque), true, &xray_off),
             InstanceFlag::XRay
         );
         assert_eq!(
-            player_instance_state(&opaque, true, &xray_on),
+            player_instance_state(Some(&opaque), true, &xray_on),
             InstanceFlag::None
         );
         assert_eq!(
-            player_instance_state(&opaque, false, &xray_off),
+            player_instance_state(Some(&opaque), false, &xray_off),
+            InstanceFlag::None
+        );
+        assert_eq!(
+            player_instance_state(None, true, &xray_off),
+            InstanceFlag::XRay
+        );
+        assert_eq!(
+            player_instance_state(None, false, &xray_off),
+            InstanceFlag::None
+        );
+    }
+
+    #[test]
+    fn local_player_creature_form_uses_xray_flags() {
+        let xray_off = settings_with_xray(crate::settings_types::XRaySize::Off);
+        let xray_on = settings_with_xray(crate::settings_types::XRaySize::Small);
+
+        assert_eq!(
+            player_instance_state(Some(&PlayerRenderState::from_translucent(false)), true, &xray_off),
+            InstanceFlag::XRay
+        );
+        assert_eq!(
+            player_instance_state(Some(&PlayerRenderState::from_translucent(false)), true, &xray_on),
+            InstanceFlag::None
+        );
+        assert_eq!(
+            player_instance_state(Some(&PlayerRenderState::from_translucent(true)), true, &xray_off),
+            InstanceFlag::TranslucentOverlay
+        );
+        assert_eq!(
+            player_instance_state(None, true, &xray_off),
+            InstanceFlag::XRay
+        );
+        assert_eq!(
+            player_instance_state(None, false, &xray_off),
             InstanceFlag::None
         );
     }

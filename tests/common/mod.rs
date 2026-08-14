@@ -254,13 +254,13 @@ impl TestScene {
 
     pub fn center_camera_on_tile(&mut self, x: f32, y: f32) {
         let mut camera = self.app.world_mut().resource_mut::<Camera>();
-        camera.camera.set_position(&self.queue, x, y);
+        camera.camera.set_position(x, y);
     }
 
     #[allow(dead_code)]
     pub fn set_light_tint(&mut self, r: f32, g: f32, b: f32) {
         let mut camera = self.app.world_mut().resource_mut::<Camera>();
-        camera.camera.set_tint(&self.queue, r, g, b);
+        camera.camera.set_tint(r, g, b);
     }
 
     pub fn set_light_level(&mut self, kind: packets::server::LightLevelKind) {
@@ -273,7 +273,7 @@ impl TestScene {
             let mut camera = self.app.world_mut().resource_mut::<Camera>();
             camera
                 .camera
-                .resize(&self.queue, UVec2::new(width, height), 1.0);
+                .resize(UVec2::new(width, height), 1.0);
         }
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Test Output Texture"),

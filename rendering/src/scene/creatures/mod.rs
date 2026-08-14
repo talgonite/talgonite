@@ -172,6 +172,7 @@ pub(crate) fn get_instance_for_frame(
     position: Vec2,
     flip: bool,
     rows: &PaletteRows,
+    flags: InstanceFlag,
 ) -> anyhow::Result<Instance> {
     let Some(frame) = loaded_sprite
         .meta
@@ -227,6 +228,6 @@ pub(crate) fn get_instance_for_frame(
         -1.,
         flip,
         false,
-        InstanceFlag::None,
+        flags,
     ))
 }
