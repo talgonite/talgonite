@@ -1,7 +1,7 @@
 //! Camera systems
 
 use super::super::components::*;
-use crate::{Camera, RendererState};
+use crate::Camera;
 use bevy::prelude::*;
 use rendering::camera::DEFAULT_FOG_DESATURATION;
 use tracing::debug;
@@ -30,13 +30,11 @@ pub fn camera_follow_system(
     // Only follow if there's exactly one target
     if let (Some(target_pos), None) = (first, second) {
         if let Ok(mut camera_pos) = camera_query.single_mut() {
-            let before = (camera_pos.x, camera_pos.y);
-            camera_pos.x = target_pos.x;
-            camera_pos.y = target_pos.y;
-
-            if (before.0 - camera_pos.x).abs() > f32::EPSILON
-                || (before.1 - camera_pos.y).abs() > f32::EPSILON
+            if (camera_pos.x - target_pos.x).abs() > f32::EPSILON
+                || (camera_pos.y - target_pos.y).abs() > f32::EPSILON
             {
+                camera_pos.x = target_pos.x;
+                camera_pos.y = target_pos.y;
                 debug!(
                     cam_x = camera_pos.x,
                     cam_y = camera_pos.y,
@@ -50,29 +48,26 @@ pub fn camera_follow_system(
 /// Syncs the ECS camera position to the GPU camera uniform.
 pub fn camera_position_sync(
     mut camera: ResMut<Camera>,
-    renderer: Res<RendererState>,
     camera_query: Query<&Position, (Changed<Position>, With<GameCamera>)>,
 ) {
     for position in camera_query.iter() {
         camera
             .camera
-            .set_position(&renderer.queue, position.x, position.y);
+            .set_position(position.x, position.y);
     }
 }
 
 /// Syncs the X-ray size setting to the camera shader.
 pub fn camera_xray_sync(
     mut camera: ResMut<Camera>,
-    renderer: Res<RendererState>,
     settings: Res<crate::settings_types::Settings>,
 ) {
     if settings.is_changed() {
         camera
             .camera
-            .set_fog_desaturation(&renderer.queue, DEFAULT_FOG_DESATURATION);
-        camera.camera.set_xray_size(
-            &renderer.queue,
-            settings.graphics.xray_size.to_shader_multiplier(),
-        );
+            .set_fog_desaturation(DEFAULT_FOG_DESATURATION);
+        camera
+            .camera
+            .set_xray_size(settings.graphics.xray_size.to_shader_multiplier());
     }
 }

@@ -16,6 +16,129 @@ pub struct PlayerAttributes {
     pub max_mp: u32,
 }
 
+/// Per-frame counters for the debug console. Systems bump the `acc_*` fields
+/// or write `last_*` directly; `finish_frame_metrics` folds accumulators and
+/// GPU-batch deltas into the `last_*` snapshot consumed by the console.
+#[derive(Resource, Default)]
+pub struct FrameMetrics {
+    pub frame_count: u64,
+    pub last_fps: f32,
+    pub last_update_us: u64,
+    pub last_draw_us: u64,
+    pub last_draw_passes: u32,
+    pub last_queue_submits: u32,
+    pub last_map_instances: u32,
+    pub last_sprite_instances: u32,
+    pub last_effect_instances: u32,
+    pub last_weather_instances: u32,
+    pub last_minimap_tiles: u32,
+    pub last_minimap_markers: u32,
+    pub last_texture_handoffs: u64,
+    pub last_repaints: u64,
+    pub last_instance_updates: u64,
+    pub last_instance_writes: u64,
+    pub last_instance_dedup_skips: u64,
+    pub last_instance_adds: u64,
+    pub last_instance_removes: u64,
+    pub last_slint_sets_attempted: u64,
+    pub last_slint_sets_sent: u64,
+    pub last_slint_model_rebuilds: u64,
+    pub last_slint_core_syncs: u64,
+    pub last_top_systems: Vec<(String, u64)>,
+    pub acc_slint_sets_attempted: u64,
+    pub acc_slint_sets_sent: u64,
+    pub acc_slint_model_rebuilds: u64,
+    pub acc_slint_core_syncs: u64,
+    pub acc_repaints: u64,
+    prev_instance_updates: u64,
+    prev_instance_writes: u64,
+    prev_instance_dedup_skips: u64,
+    prev_instance_adds: u64,
+    prev_instance_removes: u64,
+}
+
+/// Pending log lines for the debug console window.
+#[derive(Resource, Default)]
+pub struct DebugLog {
+    pending: std::collections::VecDeque<String>,
+}
+
+impl DebugLog {
+    pub fn push(&mut self, line: impl Into<String>) {
+        self.pending.push_back(line.into());
+    }
+
+    pub fn drain(&mut self) -> Vec<String> {
+        self.pending.drain(..).collect()
+    }
+}
+
+/// Folds per-frame accumulators and GPU-batch deltas into the `last_*` fields
+/// the debug console displays. Runs at the end of every Bevy update.
+pub fn finish_frame_metrics(
+    mut metrics: ResMut<FrameMetrics>,
+    sprite_batch: Option<Res<UnifiedSpriteBatchState>>,
+    effect_manager: Option<Res<EffectManagerState>>,
+    minimap: Option<Res<MinimapRendererState>>,
+) {
+    metrics.frame_count += 1;
+
+    let mut combined = rendering::instance::InstanceBatchStatsSnapshot::default();
+    if let Some(batch) = sprite_batch {
+        let snap = batch.batch.stats();
+        combined.updates += snap.updates;
+        combined.writes += snap.writes;
+        combined.dedup_skips += snap.dedup_skips;
+        combined.adds += snap.adds;
+        combined.removes += snap.removes;
+    }
+    if let Some(effects) = effect_manager {
+        let snap = effects.effect_manager.stats();
+        combined.updates += snap.updates;
+        combined.writes += snap.writes;
+        combined.dedup_skips += snap.dedup_skips;
+        combined.adds += snap.adds;
+        combined.removes += snap.removes;
+    }
+    if let Some(minimap) = minimap {
+        let snap = minimap.renderer.marker_stats();
+        combined.updates += snap.updates;
+        combined.writes += snap.writes;
+        combined.dedup_skips += snap.dedup_skips;
+        combined.adds += snap.adds;
+        combined.removes += snap.removes;
+    }
+
+    metrics.last_instance_updates = combined.updates.saturating_sub(metrics.prev_instance_updates);
+    metrics.last_instance_writes = combined.writes.saturating_sub(metrics.prev_instance_writes);
+    metrics.last_instance_dedup_skips = combined
+        .dedup_skips
+        .saturating_sub(metrics.prev_instance_dedup_skips);
+    metrics.last_instance_adds = combined.adds.saturating_sub(metrics.prev_instance_adds);
+    metrics.last_instance_removes = combined.removes.saturating_sub(metrics.prev_instance_removes);
+    metrics.prev_instance_updates = combined.updates;
+    metrics.prev_instance_writes = combined.writes;
+    metrics.prev_instance_dedup_skips = combined.dedup_skips;
+    metrics.prev_instance_adds = combined.adds;
+    metrics.prev_instance_removes = combined.removes;
+
+    metrics.last_fps = if metrics.last_update_us > 0 {
+        1_000_000.0 / metrics.last_update_us as f32
+    } else {
+        0.0
+    };
+    metrics.last_slint_sets_attempted = metrics.acc_slint_sets_attempted;
+    metrics.last_slint_sets_sent = metrics.acc_slint_sets_sent;
+    metrics.last_slint_model_rebuilds = metrics.acc_slint_model_rebuilds;
+    metrics.last_slint_core_syncs = metrics.acc_slint_core_syncs;
+    metrics.last_repaints = metrics.acc_repaints;
+    metrics.acc_slint_sets_attempted = 0;
+    metrics.acc_slint_sets_sent = 0;
+    metrics.acc_slint_model_rebuilds = 0;
+    metrics.acc_slint_core_syncs = 0;
+    metrics.acc_repaints = 0;
+}
+
 #[derive(Resource)]
 pub struct SpriteSceneState {
     pub scene: SpriteScene,
@@ -170,12 +293,11 @@ impl MinimapRendererState {
             assets.marker_icon_height,
             config.layout,
         )?;
-        let mut camera = CameraState::new(
+        let camera = CameraState::new(
             UVec2::new(width, height),
             &renderer_state.device,
             config.zoom,
         );
-        camera.set_screen_offset(&renderer_state.queue, 0.0, 0.0);
 
         Ok(Self {
             renderer,
@@ -184,6 +306,21 @@ impl MinimapRendererState {
             assets,
             visible: false,
         })
+    }
+
+    pub fn flush_pending(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        self.renderer.flush_pending(encoder);
+        self.camera.flush_pending(encoder);
+    }
+
+    pub fn finish_uploads(&mut self) {
+        self.renderer.finish_uploads();
+        self.camera.finish_uploads();
+    }
+
+    pub fn recall_uploads(&mut self) {
+        self.renderer.recall_uploads();
+        self.camera.recall_uploads();
     }
 }
 
@@ -264,9 +401,12 @@ impl PortraitRenderTarget {
             size,
             &depth_label,
         );
-        let mut camera =
-            rendering::scene::CameraState::new(UVec2::new(size, size), &renderer.device, 1.0);
-        camera.set_screen_offset(&renderer.queue, 0.0, camera_offset_y);
+        let camera = rendering::scene::CameraState::new_with_screen_offset(
+            UVec2::new(size, size),
+            &renderer.device,
+            1.0,
+            Vec2::new(0.0, camera_offset_y),
+        );
 
         Self {
             texture: texture.texture,
@@ -305,12 +445,12 @@ impl LobbyPortraitRenderer {
             portrait_size,
             "lobby_portrait_depth",
         );
-        let mut camera = rendering::scene::CameraState::new(
+        let camera = rendering::scene::CameraState::new_with_screen_offset(
             UVec2::new(portrait_size, portrait_size),
             &renderer.device,
             1.0,
+            Vec2::new(0.0, -42.0),
         );
-        camera.set_screen_offset(&renderer.queue, 0.0, -42.0);
 
         Self {
             batch: players::PlayerBatch::new(&renderer.device, scene),

@@ -86,6 +86,18 @@ impl<K> SpriteBatch<K> {
         self.len() == 0
     }
 
+    pub fn flush_pending(&self, encoder: &mut wgpu::CommandEncoder) {
+        self.instances.flush_pending(encoder);
+    }
+
+    pub fn finish_uploads(&self) {
+        self.instances.finish_uploads();
+    }
+
+    pub fn recall_uploads(&self) {
+        self.instances.recall_uploads();
+    }
+
     pub fn clear(&self) {
         self.instances.clear();
         self.handles.clear();
@@ -101,18 +113,18 @@ impl<K> SpriteBatch<K> {
     }
 
     /// Allocate a new instance slot and write the instance to the GPU.
-    pub fn add_instance(&self, queue: &wgpu::Queue, instance: Instance) -> Option<usize> {
-        self.instances.add(queue, instance)
+    pub fn add_instance(&self, instance: Instance) -> Option<usize> {
+        self.instances.add(instance)
     }
 
-    pub fn update_instance(&self, queue: &wgpu::Queue, index: usize, instance: Instance) {
-        self.instances.update(queue, index, instance);
+    pub fn update_instance(&self, index: usize, instance: Instance) {
+        self.instances.update(index, instance);
     }
 
     /// Remove the instance (and its handle map entry), returning the tracked
     /// sprite key so the caller can release its asset reference.
-    pub fn remove_instance(&self, queue: &wgpu::Queue, index: usize) -> Option<K> {
-        self.instances.remove(queue, index);
+    pub fn remove_instance(&self, index: usize) -> Option<K> {
+        self.instances.remove(index);
         self.handles.remove(index)
     }
 

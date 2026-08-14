@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 
 pub use game_ui::slint_types::{
-    CastingIndicator, ChatMessage, ContextMenuEntry, ContextMenuState, Cooldown, DragDropState,
+    CastingIndicator, ChatMessage, ContextMenuEntry, ContextMenuState, Cooldown, DebugConsole,
+    DebugMetric, DragDropState,
     EquipmentSlotData, GameState, GroupInviteNotification, GroupMember, HotbarEntry, InputBridge,
     InstallerState, InventoryItem, KeyBinding, LegendMarkData, LobbyState, LoginBridge, LoginState,
     MailBoardPost, MailBoardState, MainWindow, MenuEntry, NetworkState, NpcDialogData,
@@ -35,6 +36,7 @@ pub mod settings;
 pub mod settings_types;
 pub mod slint_plugin;
 pub mod slint_support;
+pub mod sys_timing;
 pub mod weather;
 pub mod webui;
 
@@ -108,14 +110,15 @@ impl Plugin for CorePlugin {
 pub fn main_with_storage(storage_root: std::path::PathBuf) {
     // Keep the guard alive for the whole process: dropping it is what finishes
     // writing the Chrome trace file (see init()).
-    let trace_guard = init();
+    let trace_init = init();
 
     // A single top-level span covering the whole session, so the trace has a
     // clear time ruler and load/decode/entity spans nest under it.
     let _app_span = tracing::info_span!("talgonite.app_run").entered();
 
     let mut app = App::new();
-    app.insert_resource(resources::StorageConfig::new(storage_root))
+    app.insert_resource(trace_init.sys_timing)
+        .insert_resource(resources::StorageConfig::new(storage_root))
         .add_message::<webui::plugin::UiOutbound>()
         .add_plugins(MinimalPlugins)
         .add_plugins(bevy::input::InputPlugin)
@@ -141,7 +144,7 @@ pub fn main_with_storage(storage_root: std::path::PathBuf) {
     // by ensuring TaskPool threads are joined before the process termination begins.
     drop(slint_app);
 
-    if let Some(guard) = trace_guard.as_ref() {
+    if let Some(guard) = trace_init.flush_guard.as_ref() {
         tracing::info!("Flushing Chrome trace to disk");
         guard.flush();
     }
@@ -149,7 +152,13 @@ pub fn main_with_storage(storage_root: std::path::PathBuf) {
     result.unwrap();
 }
 
-fn init() -> Option<tracing_chrome::FlushGuard> {
+pub struct TraceInit {
+    pub flush_guard: Option<tracing_chrome::FlushGuard>,
+    pub sys_timing: crate::sys_timing::SystemTimingShare,
+}
+
+fn init() -> TraceInit {
+    let sys_timing = crate::sys_timing::SystemTimingShare::default();
     #[cfg(target_os = "windows")]
     unsafe {
         use windows_sys::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
@@ -184,8 +193,15 @@ fn init() -> Option<tracing_chrome::FlushGuard> {
     #[cfg(all(not(target_os = "android"), debug_assertions))]
     let (subscriber, chrome_guard, trace_file) = {
         let base = tracing_subscriber::registry().with(filter).with(fmt_layer);
+        #[cfg(feature = "debug")]
+        let base = base.with(crate::sys_timing::layer(sys_timing.clone()));
         match std::env::var_os("TALGONITE_TRACE") {
-            Some(path) => {
+            Some(path)
+                if path != "0"
+                    && path
+                        .to_str()
+                        .map_or(true, |p| !p.eq_ignore_ascii_case("false")) =>
+            {
                 let file = if path.is_empty() || path == "1" {
                     std::path::PathBuf::from("talgonite-trace.json")
                 } else {
@@ -202,7 +218,7 @@ fn init() -> Option<tracing_chrome::FlushGuard> {
                     trace_file,
                 )
             }
-            None => (
+            _ => (
                 Box::new(base) as Box<dyn tracing::Subscriber + Send + Sync>,
                 None,
                 None,
@@ -236,11 +252,11 @@ fn init() -> Option<tracing_chrome::FlushGuard> {
                 "Chrome trace recording enabled - exit the app to flush"
             );
         }
-        return chrome_guard;
+        return TraceInit { flush_guard: chrome_guard, sys_timing };
     }
 
     #[cfg(any(target_os = "android", not(debug_assertions)))]
-    None
+    TraceInit { flush_guard: None, sys_timing }
 }
 
 #[cfg(target_os = "android")]

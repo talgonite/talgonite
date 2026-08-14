@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use formats::{epf::EpfAnimationType, mpf::MpfAnimationType};
 
+
 #[derive(Component)]
 pub struct Animation {
     pub mode: AnimationMode,
@@ -78,7 +79,10 @@ pub enum AnimationMode {
     Finished,
 }
 
-pub fn animation_system(time: Res<Time>, mut query: Query<(&mut Animation, &mut AnimationTimer)>) {
+pub fn animation_system(
+    time: Res<Time>,
+    mut query: Query<(&mut Animation, &mut AnimationTimer)>,
+) {
     for (mut animation, mut timer) in query.iter_mut() {
         if animation.mode == AnimationMode::Finished {
             animation.bypass_change_detection();

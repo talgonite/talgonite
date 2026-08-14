@@ -231,7 +231,6 @@ impl MinimapRenderer {
     pub fn rebuild_tiles(
         &mut self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
         tiles: impl IntoIterator<Item = MinimapTile>,
     ) {
         let instances = tiles
@@ -241,7 +240,7 @@ impl MinimapRenderer {
 
         if let Some(batch) = &mut self.tile_batch {
             if batch.buffer_capacity >= instances.len() {
-                batch.replace_all(queue, instances);
+                batch.replace_all(instances);
                 return;
             }
         }
@@ -258,28 +257,61 @@ impl MinimapRenderer {
         self.tile_batch = None;
     }
 
+    pub fn tile_count(&self) -> usize {
+        self.tile_batch
+            .as_ref()
+            .map_or(0, |batch| batch.instances.len())
+    }
+
+    pub fn marker_count(&self) -> usize {
+        self.markers.live_len()
+    }
+
+    pub fn marker_stats(&self) -> crate::instance::InstanceBatchStatsSnapshot {
+        self.markers.stats()
+    }
+
+    pub fn flush_pending(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        self.markers.flush_pending(encoder);
+        if let Some(tile_batch) = &mut self.tile_batch {
+            tile_batch.flush_pending(encoder);
+        }
+    }
+
+    pub fn finish_uploads(&mut self) {
+        self.markers.finish_uploads();
+        if let Some(tile_batch) = &mut self.tile_batch {
+            tile_batch.finish_uploads();
+        }
+    }
+
+    pub fn recall_uploads(&mut self) {
+        self.markers.recall_uploads();
+        if let Some(tile_batch) = &mut self.tile_batch {
+            tile_batch.recall_uploads();
+        }
+    }
+
     pub fn add_marker(
         &self,
-        queue: &wgpu::Queue,
         marker: MinimapMarker,
     ) -> Option<MinimapMarkerHandle> {
-        let index = self.markers.add(queue, self.marker_instance(marker))?;
+        let index = self.markers.add(self.marker_instance(marker))?;
 
         Some(MinimapMarkerHandle { index })
     }
 
     pub fn update_marker(
         &self,
-        queue: &wgpu::Queue,
         handle: MinimapMarkerHandle,
         marker: MinimapMarker,
     ) {
         self.markers
-            .update(queue, handle.index, self.marker_instance(marker));
+            .update(handle.index, self.marker_instance(marker));
     }
 
-    pub fn remove_marker(&self, queue: &wgpu::Queue, handle: MinimapMarkerHandle) {
-        self.markers.remove(queue, handle.index);
+    pub fn remove_marker(&self, handle: MinimapMarkerHandle) {
+        self.markers.remove(handle.index);
     }
 
     pub fn render<'a>(

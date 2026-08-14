@@ -98,6 +98,9 @@ pub struct WeatherRenderer {
     instance_buffer: wgpu::Buffer,
     instances: Vec<WeatherInstanceRaw>,
     bind_group: Option<wgpu::BindGroup>,
+    uniform_dirty: bool,
+    instances_dirty: bool,
+    belt: wgpu::util::StagingBelt,
 
     snow_frames: Vec<Vec<SnowFrame>>,
     rain_size: (u32, u32),
@@ -189,6 +192,9 @@ impl WeatherRenderer {
             instance_buffer,
             instances: Vec::with_capacity(MAX_WEATHER_INSTANCES),
             bind_group: None,
+            uniform_dirty: false,
+            instances_dirty: false,
+            belt: wgpu::util::StagingBelt::new(device.clone(), 1024 * 1024),
             snow_frames: assets.snow_frames.clone(),
             rain_size: (assets.rain.width, assets.rain.height),
             snow_particles: Vec::new(),
@@ -213,7 +219,7 @@ impl WeatherRenderer {
     }
 
     /// Advances weather and rebuilds the instance buffer.
-    pub fn update(&mut self, queue: &wgpu::Queue, dt: f32, viewport: [f32; 2]) {
+    pub fn update(&mut self, dt: f32, viewport: [f32; 2]) {
         self.instances.clear();
 
         if self.mode == WeatherMode::None {
@@ -235,21 +241,49 @@ impl WeatherRenderer {
             WeatherMode::None => {}
         }
 
-        queue.write_buffer(
-            &self.uniform_buffer,
-            0,
-            bytemuck::cast_slice(&[WeatherUniformRaw {
-                viewport,
-                pad: [0.0; 2],
-            }]),
-        );
+        self.uniform_dirty = true;
         if !self.instances.is_empty() {
-            queue.write_buffer(
+            self.instances_dirty = true;
+        }
+    }
+
+    /// Copies pending uniform/instance writes into the staging belt on
+    /// `encoder`; call before the weather pass.
+    pub fn flush_pending(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        if self.uniform_dirty {
+            let uniform = WeatherUniformRaw {
+                viewport: self.viewport,
+                pad: [0.0; 2],
+            };
+            let size = std::mem::size_of::<WeatherUniformRaw>() as u64;
+            let mut view = self.belt.write_buffer(
+                encoder,
+                &self.uniform_buffer,
+                0,
+                wgpu::BufferSize::new(size).expect("weather uniform size is nonzero"),
+            );
+            view.copy_from_slice(bytemuck::bytes_of(&uniform));
+            self.uniform_dirty = false;
+        }
+        if self.instances_dirty && !self.instances.is_empty() {
+            let bytes = bytemuck::cast_slice(&self.instances);
+            let mut view = self.belt.write_buffer(
+                encoder,
                 &self.instance_buffer,
                 0,
-                bytemuck::cast_slice(&self.instances),
+                wgpu::BufferSize::new(bytes.len() as u64).expect("weather instances nonempty"),
             );
+            view.copy_from_slice(bytes);
+            self.instances_dirty = false;
         }
+    }
+
+    pub fn finish_uploads(&mut self) {
+        self.belt.finish();
+    }
+
+    pub fn recall_uploads(&mut self) {
+        self.belt.recall();
     }
 
     pub fn instance_count(&self) -> u32 {

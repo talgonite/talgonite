@@ -264,7 +264,7 @@ impl EffectManager {
         let frame_interval_ms = loaded.frame_interval_ms;
         let instance = self.create_instance(loaded, first_frame, x, y, z_offset)?;
 
-        let instance_index = self.instances.add(queue, instance)?;
+        let instance_index = self.instances.add(instance)?;
         if let Some(loaded) = self.loaded_effects.get_mut(&effect_id) {
             loaded.ref_count += 1;
         }
@@ -582,7 +582,6 @@ impl EffectManager {
 
     pub fn update_effect(
         &self,
-        queue: &wgpu::Queue,
         handle: &EffectHandle,
         x: f32,
         y: f32,
@@ -601,18 +600,38 @@ impl EffectManager {
 
         if let Some(instance) = self.create_instance(loaded, frame_index, x, y, z_offset) {
             self.instances
-                .update(queue, handle.instance_index, instance);
+                .update(handle.instance_index, instance);
             true
         } else {
             false
         }
     }
 
-    pub fn remove_effect(&mut self, queue: &wgpu::Queue, handle: &EffectHandle) {
-        self.instances.remove(queue, handle.instance_index);
+    pub fn remove_effect(&mut self, handle: &EffectHandle) {
+        self.instances.remove(handle.instance_index);
         if let Some(loaded) = self.loaded_effects.get_mut(&handle.effect_id) {
             loaded.ref_count = loaded.ref_count.saturating_sub(1);
         }
+    }
+
+    pub fn instance_count(&self) -> usize {
+        self.instances.live_len()
+    }
+
+    pub fn stats(&self) -> crate::instance::InstanceBatchStatsSnapshot {
+        self.instances.stats()
+    }
+
+    pub fn flush_pending(&self, encoder: &mut wgpu::CommandEncoder) {
+        self.instances.flush_pending(encoder);
+    }
+
+    pub fn finish_uploads(&self) {
+        self.instances.finish_uploads();
+    }
+
+    pub fn recall_uploads(&self) {
+        self.instances.recall_uploads();
     }
 
     pub fn render<'a>(

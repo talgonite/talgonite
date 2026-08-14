@@ -3,8 +3,8 @@
 use super::super::animation::{Animation, AnimationMode, AnimationType};
 use super::super::components::*;
 use crate::resources::{
-    CharacterCreatorPreviewState, LobbyPortraitRenderer, LobbyPortraits, MinimapCacheState,
-    MinimapRendererState, PlayerPortraitState, PortraitRenderTarget,
+    CharacterCreatorPreviewState, LobbyPortraitRenderer, LobbyPortraits,
+    MinimapCacheState, MinimapRendererState, PlayerPortraitState, PortraitRenderTarget,
 };
 use crate::{
     Camera, RendererState, SpriteSceneState, UnifiedSpriteBatchState, game_files::GameFiles,
@@ -507,7 +507,6 @@ pub fn sync_items_to_renderer(
 
 /// Updates item positions and sprites on the GPU when they change.
 pub fn update_items_to_renderer(
-    renderer: Res<RendererState>,
     sprite_scene: Res<SpriteSceneState>,
     sprite_batch: Res<UnifiedSpriteBatchState>,
     query: Query<
@@ -517,7 +516,6 @@ pub fn update_items_to_renderer(
 ) {
     for (instance, position, sprite, entity_id) in query.iter() {
         sprite_batch.batch.update_item(
-            &renderer.queue,
             &sprite_scene.scene,
             &instance.handle,
             build_item(position, sprite, entity_id),
@@ -643,7 +641,6 @@ pub fn sync_players_to_renderer(
 /// instance writes.
 pub fn update_player_sprites(
     mut commands: Commands,
-    shared_state: Res<RendererState>,
     sprite_scene: Res<SpriteSceneState>,
     sprite_batch: Res<UnifiedSpriteBatchState>,
     settings: Res<Settings>,
@@ -721,7 +718,7 @@ pub fn update_player_sprites(
                     }
                     let _ = sprite_batch
                         .batch
-                        .hide_player(&shared_state.queue, &sprite_instance.handle);
+                        .hide_player(&sprite_instance.handle);
                     commands.entity(child_entity).insert(desired_cache);
                     continue;
                 };
@@ -763,7 +760,6 @@ pub fn update_player_sprites(
                 }
 
                 let submitted = sprite_batch.batch.update_player_with_animation(
-                    &shared_state.queue,
                     &sprite_scene.scene,
                     &sprite_instance.handle,
                     direction,
@@ -780,7 +776,7 @@ pub fn update_player_sprites(
                     let hidden_cache = hidden_player_sprite_cache();
                     let _ = sprite_batch
                         .batch
-                        .hide_player(&shared_state.queue, &sprite_instance.handle);
+                        .hide_player(&sprite_instance.handle);
                     commands.entity(child_entity).insert(hidden_cache);
                 } else {
                     commands.entity(child_entity).insert(desired_cache);
@@ -788,11 +784,11 @@ pub fn update_player_sprites(
             }
         }
     }
+
 }
 
 /// Syncs creature positions and animations to the GPU.
 pub fn creature_movement_sync(
-    renderer: Res<RendererState>,
     query: Query<(
         &CreatureInstance,
         &Position,
@@ -815,7 +811,6 @@ pub fn creature_movement_sync(
     sprite_batch: Res<UnifiedSpriteBatchState>,
 ) {
     use formats::mpf::MpfAnimationType;
-
     let to_update = collect_dirty_entities(changed_query.iter(), &mut removed_hovers);
 
     for entity in to_update {
@@ -831,7 +826,6 @@ pub fn creature_movement_sync(
             if let Some(mpf_anim) = creature.instance.get_animation(actual_anim_type) {
                 let tint = resolve_hover_tint(targeting_hover);
                 sprite_batch.batch.update_creature(
-                    &renderer.queue,
                     &sprite_scene.scene,
                     &creature.instance.handle,
                     pos.x,
@@ -844,6 +838,7 @@ pub fn creature_movement_sync(
             }
         }
     }
+
 }
 
 /// Syncs the local player's appearance to the portrait texture.
@@ -908,6 +903,8 @@ pub fn render_player_batch_to_target(
             label: Some("Player Export Render Encoder"),
         });
 
+    batch.flush_pending(&mut encoder);
+
     {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Player Export Render Pass"),
@@ -936,7 +933,9 @@ pub fn render_player_batch_to_target(
         batch.render(&mut render_pass);
     }
 
+    batch.finish_uploads();
     renderer.queue.submit([encoder.finish()]);
+    batch.recall_uploads();
 }
 
 /// Syncs any player's appearance (local or other) to the profile portrait texture.
@@ -1034,16 +1033,14 @@ pub fn sync_minimap_tiles_to_renderer(
 
     let zoom = minimap_state.config.zoom;
     if (minimap_state.camera.zoom() - zoom).abs() > f32::EPSILON {
-        minimap_state.camera.set_zoom(&renderer.queue, zoom);
+        minimap_state.camera.set_zoom(zoom);
     }
 
     let camera_position = minimap_camera_position(camera.camera.position(), layout);
     if minimap_state.camera.position() != camera_position {
-        minimap_state.camera.set_screen_offset(
-            &renderer.queue,
-            camera_position.x,
-            camera_position.y,
-        );
+        minimap_state
+            .camera
+            .set_screen_offset(camera_position.x, camera_position.y);
     }
 
     let map_changed = minimap_cache.map_id != map.map_id
@@ -1115,11 +1112,10 @@ pub fn sync_minimap_tiles_to_renderer(
 
     minimap_state
         .renderer
-        .rebuild_tiles(&renderer.device, &renderer.queue, tiles);
+        .rebuild_tiles(&renderer.device, tiles);
 }
 
 pub fn sync_minimap_markers_to_renderer(
-    renderer: Res<RendererState>,
     minimap_state: Option<ResMut<MinimapRendererState>>,
     mut marker_query: Query<
         (&Position, &mut crate::ecs::components::MinimapMarker),
@@ -1145,8 +1141,8 @@ pub fn sync_minimap_markers_to_renderer(
         if let Some(handle) = marker.handle {
             minimap_state
                 .renderer
-                .update_marker(&renderer.queue, handle, instance);
-        } else if let Some(handle) = minimap_state.renderer.add_marker(&renderer.queue, instance) {
+                .update_marker(handle, instance);
+        } else if let Some(handle) = minimap_state.renderer.add_marker(instance) {
             marker.handle = Some(handle);
         }
     }

@@ -176,6 +176,28 @@ impl MapRenderer {
         }
     }
 
+    pub fn instance_count(&self) -> usize {
+        self.instance_batches.iter().map(|b| b.instances.len()).sum()
+    }
+
+    pub fn flush_pending(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        for batch in &mut self.instance_batches {
+            batch.flush_pending(encoder);
+        }
+    }
+
+    pub fn finish_uploads(&mut self) {
+        for batch in &mut self.instance_batches {
+            batch.finish_uploads();
+        }
+    }
+
+    pub fn recall_uploads(&mut self) {
+        for batch in &mut self.instance_batches {
+            batch.recall_uploads();
+        }
+    }
+
     /// Compute 2D bounds (min, max) of all tile & wall instances in screen space.
     /// Returns None if there are no instances.
     pub fn bounds(&self) -> Option<(bevy_math::Vec2, bevy_math::Vec2)> {
@@ -244,7 +266,6 @@ impl MapRenderer {
                 if let Some(batch) = self.instance_batches.get_mut(instance_ref.batch_index) {
                     if let Some(instance) = batch.get_instance(instance_ref.instance_index) {
                         batch.update_instance(
-                            queue,
                             instance_ref.instance_index,
                             Instance {
                                 position: instance.position + changes_to_apply.position,
@@ -263,7 +284,7 @@ impl MapRenderer {
         }
     }
 
-    pub fn set_wall_toggle_state(&mut self, queue: &wgpu::Queue, x: u8, y: u8, state: bool) {
+    pub fn set_wall_toggle_state(&mut self, x: u8, y: u8, state: bool) {
         if let Some(anim) = self.wall_toggle_animations.get_mut(&(x, y)) {
             let frame = if state { 1 } else { 0 };
             let instance_data = anim.set_frame(frame);
@@ -272,7 +293,6 @@ impl MapRenderer {
                 if let Some(batch) = self.instance_batches.get_mut(instance_ref.batch_index) {
                     if let Some(instance) = batch.get_instance(instance_ref.instance_index) {
                         batch.update_instance(
-                            queue,
                             instance_ref.instance_index,
                             Instance {
                                 position: instance.position + instance_data.position,

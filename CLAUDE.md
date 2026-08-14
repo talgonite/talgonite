@@ -93,6 +93,18 @@ The file is written to the process working directory, so check where you launche
 binary from. To extend coverage, add `#[tracing::instrument(level = "info", skip_all, ...)]`
 to the function you care about and it will appear in the same trace.
 
+## Debug Console
+
+`cargo run --features debug` opens a second Slint window with live per-frame
+metrics: ECS update/draw time, render-pass and submit counts, scene instance
+counts, instance-buffer GPU writes with dedup skips, Slint property sets (sent
+vs attempted), model rebuilds, texture handoffs, and the top systems by CPU
+time (which need Bevy's `debug` feature for real names). Counters live in
+`FrameMetrics` (`src/resources.rs`); instance traffic is counted in the
+rendering crate (`InstanceBatchStats`) and folded into last-frame values by
+`finish_frame_metrics` in the `Last` schedule. Log lines can be pushed from any
+system via `DebugLog::push`.
+
 Release/dist builds compile the instrumentation out entirely: `tracing` is built with
 `release_max_level_warn`, so info-level spans and events (all timing spans plus `info!`
 logs) expand to nothing, and the chrome layer is `debug_assertions`-gated, so it doesn't

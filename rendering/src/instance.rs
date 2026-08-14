@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::vertex::Vertex;
@@ -203,6 +203,11 @@ impl InstanceRaw {
     }
 }
 
+enum PendingInstanceWrite {
+    Slot { index: usize, raw: InstanceRaw },
+    Replace(Vec<InstanceRaw>),
+}
+
 pub struct InstanceBatch {
     pub instances: Vec<Instance>,
     pub vertices: Vec<Vertex>,
@@ -210,6 +215,8 @@ pub struct InstanceBatch {
     pub instance_buffer: wgpu::Buffer,
     pub vertex_buffer: wgpu::Buffer,
     pub buffer_capacity: usize,
+    pending: Vec<PendingInstanceWrite>,
+    belt: wgpu::util::StagingBelt,
 }
 
 const BATCH_SIZE: usize = 2048;
@@ -251,6 +258,8 @@ impl InstanceBatch {
             instance_buffer: buffer,
             vertex_buffer,
             buffer_capacity,
+            pending: Vec::new(),
+            belt: wgpu::util::StagingBelt::new(device.clone(), 1024 * 1024),
         }
     }
 
@@ -276,38 +285,31 @@ impl InstanceBatch {
         );
     }
 
-    pub fn update_instance(&mut self, queue: &wgpu::Queue, index: usize, instance: Instance) {
+    pub fn update_instance(&mut self, index: usize, instance: Instance) {
         if index < self.instances.len() {
             let raw_instance = instance.to_raw();
             self.instances[index] = instance;
-            queue.write_buffer(
-                &self.instance_buffer,
-                (index * std::mem::size_of::<InstanceRaw>()) as u64,
-                bytemuck::cast_slice(&[raw_instance]),
-            );
+            self.pending
+                .push(PendingInstanceWrite::Slot { index, raw: raw_instance });
         }
     }
 
     /// Replaces every instance with a single upload, reusing the existing GPU
     /// buffer. The caller must ensure the new instance count fits within
     /// `buffer_capacity`; otherwise the batch should be recreated instead.
-    pub fn replace_all(&mut self, queue: &wgpu::Queue, instances: Vec<Instance>) {
+    pub fn replace_all(&mut self, instances: Vec<Instance>) {
         debug_assert!(instances.len() <= self.buffer_capacity);
 
         let raw_instances = instances
             .iter()
             .map(Instance::to_raw)
             .collect::<Vec<InstanceRaw>>();
-        queue.write_buffer(
-            &self.instance_buffer,
-            0,
-            bytemuck::cast_slice(&raw_instances),
-        );
+        self.pending.push(PendingInstanceWrite::Replace(raw_instances));
 
         self.instances = instances;
     }
 
-    pub fn add_instance(&mut self, queue: &wgpu::Queue, instance: Instance) -> Option<usize> {
+    pub fn add_instance(&mut self, instance: Instance) -> Option<usize> {
         let index = self.instances.len();
 
         if index >= self.buffer_capacity {
@@ -315,17 +317,14 @@ impl InstanceBatch {
         }
 
         let raw_instance = instance.to_raw();
-        queue.write_buffer(
-            &self.instance_buffer,
-            (index * std::mem::size_of::<InstanceRaw>()) as u64,
-            bytemuck::cast_slice(&[raw_instance]),
-        );
+        self.pending
+            .push(PendingInstanceWrite::Slot { index, raw: raw_instance });
         self.instances.push(instance);
 
         Some(index)
     }
 
-    pub fn remove_instance(&mut self, queue: &wgpu::Queue, index: usize) {
+    pub fn remove_instance(&mut self, index: usize) {
         if index >= self.instances.len() {
             return;
         }
@@ -334,19 +333,14 @@ impl InstanceBatch {
 
         self.instances.swap_remove(index);
 
-        queue.write_buffer(
-            &self.instance_buffer,
-            (index * std::mem::size_of::<InstanceRaw>()) as u64,
-            bytemuck::cast_slice(&[self.instances[index].to_raw()]),
-        );
-
         if index != removed_index {
-            queue.write_buffer(
-                &self.instance_buffer,
-                (removed_index * std::mem::size_of::<InstanceRaw>()) as u64,
-                bytemuck::cast_slice(&[InstanceRaw::default()]),
-            );
+            self.pending
+                .push(PendingInstanceWrite::Slot { index, raw: self.instances[index].to_raw() });
         }
+        self.pending.push(PendingInstanceWrite::Slot {
+            index: removed_index,
+            raw: InstanceRaw::default(),
+        });
     }
 
     pub fn get_instance(&self, index: usize) -> Option<&Instance> {
@@ -355,6 +349,47 @@ impl InstanceBatch {
         } else {
             None
         }
+    }
+
+    /// Copies all pending writes into the staging belt on `encoder`; call
+    /// before any pass that draws this batch.
+    pub fn flush_pending(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        if self.pending.is_empty() {
+            return;
+        }
+        let writes = std::mem::take(&mut self.pending);
+        let slot_size = std::mem::size_of::<InstanceRaw>() as u64;
+        for write in writes {
+            match write {
+                PendingInstanceWrite::Slot { index, raw } => {
+                    let mut view = self.belt.write_buffer(
+                        encoder,
+                        &self.instance_buffer,
+                        (index as u64) * slot_size,
+                        wgpu::BufferSize::new(slot_size).expect("instance size is nonzero"),
+                    );
+                    view.copy_from_slice(bytemuck::bytes_of(&raw));
+                }
+                PendingInstanceWrite::Replace(raw_instances) => {
+                    let bytes = bytemuck::cast_slice(&raw_instances);
+                    let mut view = self.belt.write_buffer(
+                        encoder,
+                        &self.instance_buffer,
+                        0,
+                        wgpu::BufferSize::new(bytes.len() as u64).expect("nonempty replace"),
+                    );
+                    view.copy_from_slice(bytes);
+                }
+            }
+        }
+    }
+
+    pub fn finish_uploads(&mut self) {
+        self.belt.finish();
+    }
+
+    pub fn recall_uploads(&mut self) {
+        self.belt.recall();
     }
 }
 
@@ -367,6 +402,42 @@ pub struct SharedInstanceBatch {
     free_indices: Arc<Mutex<Vec<usize>>>,
     written_instances: Arc<Mutex<Vec<InstanceRaw>>>,
     translucent_count: AtomicUsize,
+    live_count: AtomicUsize,
+    stats: InstanceBatchStats,
+    pending: Mutex<Vec<(usize, InstanceRaw)>>,
+    belt: Mutex<wgpu::util::StagingBelt>,
+}
+
+/// Monotonic counters for instance-buffer GPU traffic, read per frame by the
+/// debug console to show how much of the scene actually changed.
+#[derive(Debug, Default)]
+pub struct InstanceBatchStats {
+    pub updates: AtomicU64,
+    pub writes: AtomicU64,
+    pub dedup_skips: AtomicU64,
+    pub adds: AtomicU64,
+    pub removes: AtomicU64,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct InstanceBatchStatsSnapshot {
+    pub updates: u64,
+    pub writes: u64,
+    pub dedup_skips: u64,
+    pub adds: u64,
+    pub removes: u64,
+}
+
+impl InstanceBatchStats {
+    pub fn snapshot(&self) -> InstanceBatchStatsSnapshot {
+        InstanceBatchStatsSnapshot {
+            updates: self.updates.load(Ordering::Relaxed),
+            writes: self.writes.load(Ordering::Relaxed),
+            dedup_skips: self.dedup_skips.load(Ordering::Relaxed),
+            adds: self.adds.load(Ordering::Relaxed),
+            removes: self.removes.load(Ordering::Relaxed),
+        }
+    }
 }
 
 impl SharedInstanceBatch {
@@ -396,6 +467,10 @@ impl SharedInstanceBatch {
             free_indices: Arc::new(Mutex::new(Vec::with_capacity(BATCH_SIZE))),
             written_instances: Arc::new(Mutex::new(vec![InstanceRaw::default(); BATCH_SIZE])),
             translucent_count: AtomicUsize::new(0),
+            live_count: AtomicUsize::new(0),
+            stats: InstanceBatchStats::default(),
+            pending: Mutex::new(Vec::new()),
+            belt: Mutex::new(wgpu::util::StagingBelt::new(device.clone(), 1024 * 1024)),
         }
     }
 
@@ -403,9 +478,54 @@ impl SharedInstanceBatch {
         self.next_index.load(Ordering::Relaxed)
     }
 
+    /// Number of live (non-removed) instances; `len()` is the buffer high-water
+    /// mark because removed slots are recycled rather than compacted.
+    pub fn live_len(&self) -> usize {
+        self.live_count.load(Ordering::Relaxed)
+    }
+
     /// Live instances the translucent/x-ray composite pass must draw.
     pub fn translucent_count(&self) -> usize {
         self.translucent_count.load(Ordering::Relaxed)
+    }
+
+    pub fn stats(&self) -> InstanceBatchStatsSnapshot {
+        self.stats.snapshot()
+    }
+
+    /// Copies all pending instance writes into the staging belt, recording the
+    /// copies on `encoder`. Must run before any pass that draws this batch.
+    pub fn flush_pending(&self, encoder: &mut wgpu::CommandEncoder) {
+        let writes = self
+            .pending
+            .lock()
+            .map(|mut pending| std::mem::take(&mut *pending))
+            .unwrap_or_default();
+        if writes.is_empty() {
+            return;
+        }
+        let size = std::mem::size_of::<InstanceRaw>() as u64;
+        let mut belt = self.belt.lock().expect("staging belt poisoned");
+        for (index, raw) in writes {
+            let mut view = belt.write_buffer(
+                encoder,
+                &self.instance_buffer,
+                (index as u64) * size,
+                wgpu::BufferSize::new(size).expect("instance size is nonzero"),
+            );
+            view.copy_from_slice(bytemuck::bytes_of(&raw));
+        }
+    }
+
+    /// Closes the staging belt's mapped buffers; call before submitting the
+    /// encoder that `flush_pending` wrote into.
+    pub fn finish_uploads(&self) {
+        self.belt.lock().expect("staging belt poisoned").finish();
+    }
+
+    /// Reclaims staging buffers whose copies have completed; call after submit.
+    pub fn recall_uploads(&self) {
+        self.belt.lock().expect("staging belt poisoned").recall();
     }
 
     /// Draw all live instances with the batch's vertex buffer, instance buffer, and bind group.
@@ -428,11 +548,16 @@ impl SharedInstanceBatch {
         if let Ok(mut written_instances) = self.written_instances.lock() {
             written_instances.fill(InstanceRaw::default());
         }
+        if let Ok(mut pending) = self.pending.lock() {
+            pending.clear();
+        }
         self.translucent_count.store(0, Ordering::Relaxed);
+        self.live_count.store(0, Ordering::Relaxed);
     }
 
-    pub fn update(&self, queue: &wgpu::Queue, index: usize, instance: Instance) {
+    pub fn update(&self, index: usize, instance: Instance) {
         let raw_instance = instance.to_raw();
+        self.stats.updates.fetch_add(1, Ordering::Relaxed);
 
         if let Ok(mut written_instances) = self.written_instances.lock() {
             let old_translucent = needs_translucent_pass(
@@ -450,6 +575,7 @@ impl SharedInstanceBatch {
             }
 
             if written_instances.get(index) == Some(&raw_instance) {
+                self.stats.dedup_skips.fetch_add(1, Ordering::Relaxed);
                 return;
             }
 
@@ -458,11 +584,10 @@ impl SharedInstanceBatch {
             }
         }
 
-        queue.write_buffer(
-            &self.instance_buffer,
-            (index * std::mem::size_of::<InstanceRaw>()) as u64,
-            bytemuck::cast_slice(&[raw_instance]),
-        );
+        self.stats.writes.fetch_add(1, Ordering::Relaxed);
+        if let Ok(mut pending) = self.pending.lock() {
+            pending.push((index, raw_instance));
+        }
     }
 
     fn get_next_index(&self) -> Option<usize> {
@@ -481,20 +606,24 @@ impl SharedInstanceBatch {
         }
     }
 
-    pub fn add(&self, queue: &wgpu::Queue, instance: Instance) -> Option<usize> {
+    pub fn add(&self, instance: Instance) -> Option<usize> {
         let index = self.get_next_index()?;
+        self.stats.adds.fetch_add(1, Ordering::Relaxed);
+        self.live_count.fetch_add(1, Ordering::Relaxed);
 
-        self.update(queue, index, instance);
+        self.update(index, instance);
 
         Some(index)
     }
 
-    pub fn remove(&self, queue: &wgpu::Queue, index: usize) {
+    pub fn remove(&self, index: usize) {
+        self.stats.removes.fetch_add(1, Ordering::Relaxed);
+        self.live_count.fetch_sub(1, Ordering::Relaxed);
         if let Ok(mut free_indices) = self.free_indices.lock() {
             free_indices.push(index);
         }
 
-        self.update(queue, index, Instance::default());
+        self.update(index, Instance::default());
     }
 }
 
@@ -564,15 +693,17 @@ mod tests {
         assert_eq!(batch.translucent_count(), 0);
 
         let index = batch
-            .add(
-                &queue,
-                Instance::with_texture_region(Vec3::ZERO, Vec2::ZERO, Vec2::ONE, Vec2::ZERO, 0.0),
-            )
+            .add(Instance::with_texture_region(
+                Vec3::ZERO,
+                Vec2::ZERO,
+                Vec2::ONE,
+                Vec2::ZERO,
+                0.0,
+            ))
             .unwrap();
         assert_eq!(batch.translucent_count(), 0);
 
         batch.update(
-            &queue,
             index,
             Instance {
                 flags: InstanceFlag::XRay,
@@ -582,7 +713,6 @@ mod tests {
         assert_eq!(batch.translucent_count(), 1);
 
         batch.update(
-            &queue,
             index,
             Instance {
                 flags: InstanceFlag::Translucent,
@@ -592,7 +722,6 @@ mod tests {
         assert_eq!(batch.translucent_count(), 1);
 
         batch.update(
-            &queue,
             index,
             Instance {
                 flags: InstanceFlag::None,
@@ -601,7 +730,7 @@ mod tests {
         );
         assert_eq!(batch.translucent_count(), 0);
 
-        batch.remove(&queue, index);
+        batch.remove(index);
         assert_eq!(batch.translucent_count(), 0);
     }
 }

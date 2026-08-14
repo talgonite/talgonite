@@ -100,6 +100,8 @@ pub struct DarknessRenderer {
     sampler_mask: wgpu::Sampler,
     uniform: DarknessUniformRaw,
     uniform_buffer: wgpu::Buffer,
+    pending_uniform: Option<DarknessUniformRaw>,
+    belt: wgpu::util::StagingBelt,
 }
 
 impl DarknessRenderer {
@@ -146,6 +148,8 @@ impl DarknessRenderer {
             sampler_mask,
             uniform,
             uniform_buffer,
+            pending_uniform: None,
+            belt: wgpu::util::StagingBelt::new(device.clone(), 1024 * 1024),
         }
     }
 
@@ -243,18 +247,37 @@ impl DarknessRenderer {
     /// Uploads the per-frame camera pose, viewport, and light sources.
     pub fn update_uniform(
         &mut self,
-        queue: &wgpu::Queue,
         camera_pos: [f32; 2],
         zoom: f32,
         viewport: [f32; 2],
         sources: &[LightSource],
     ) {
         fill_uniform(&mut self.uniform, camera_pos, zoom, viewport, sources);
-        queue.write_buffer(
+        self.pending_uniform = Some(self.uniform);
+    }
+
+    /// Copies the pending uniform into the staging belt on `encoder`; call
+    /// before the darkness composite pass.
+    pub fn flush_pending(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        let Some(uniform) = self.pending_uniform.take() else {
+            return;
+        };
+        let size = std::mem::size_of::<DarknessUniformRaw>() as u64;
+        let mut view = self.belt.write_buffer(
+            encoder,
             &self.uniform_buffer,
             0,
-            bytemuck::cast_slice(&[self.uniform]),
+            wgpu::BufferSize::new(size).expect("darkness uniform size is nonzero"),
         );
+        view.copy_from_slice(bytemuck::bytes_of(&uniform));
+    }
+
+    pub fn finish_uploads(&mut self) {
+        self.belt.finish();
+    }
+
+    pub fn recall_uploads(&mut self) {
+        self.belt.recall();
     }
 
     /// Builds the composite pass bind group.

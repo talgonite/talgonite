@@ -40,11 +40,27 @@ pub struct CameraState {
     camera_buffer: wgpu::Buffer,
     pub camera_bind_group: wgpu::BindGroup,
     pub bind_group_layout: wgpu::BindGroupLayout,
+    pending_uniform: Option<CameraUniform>,
+    belt: wgpu::util::StagingBelt,
 }
 
 impl CameraState {
     pub fn new(size: UVec2, device: &wgpu::Device, zoom: f32) -> Self {
-        let camera = Camera::new(size.x as f32, size.y as f32, zoom);
+        Self::new_inner(size, device, zoom, bevy_math::Vec2::ZERO)
+    }
+
+    pub fn new_with_screen_offset(
+        size: UVec2,
+        device: &wgpu::Device,
+        zoom: f32,
+        offset: bevy_math::Vec2,
+    ) -> Self {
+        Self::new_inner(size, device, zoom, offset)
+    }
+
+    fn new_inner(size: UVec2, device: &wgpu::Device, zoom: f32, position: bevy_math::Vec2) -> Self {
+        let mut camera = Camera::new(size.x as f32, size.y as f32, zoom);
+        camera.position = position;
 
         let mut camera_uniform = CameraUniform::new();
         camera_uniform.update_view_proj(&camera);
@@ -86,32 +102,58 @@ impl CameraState {
             camera_buffer,
             camera_bind_group,
             bind_group_layout: camera_bind_group_layout,
+            pending_uniform: None,
+            belt: wgpu::util::StagingBelt::new(device.clone(), 1024 * 1024),
         }
     }
 
-    pub fn resize(&mut self, queue: &wgpu::Queue, new_size: UVec2, scale: f32) {
+    /// Writes the latest uniform into the staging belt on `encoder`; call
+    /// before any pass that binds this camera.
+    pub fn flush_pending(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        let Some(uniform) = self.pending_uniform.take() else {
+            return;
+        };
+        let size = std::mem::size_of::<CameraUniform>() as u64;
+        let mut view = self.belt.write_buffer(
+            encoder,
+            &self.camera_buffer,
+            0,
+            wgpu::BufferSize::new(size).expect("camera uniform size is nonzero"),
+        );
+        view.copy_from_slice(bytemuck::bytes_of(&uniform));
+    }
+
+    pub fn finish_uploads(&mut self) {
+        self.belt.finish();
+    }
+
+    pub fn recall_uploads(&mut self) {
+        self.belt.recall();
+    }
+
+    pub fn resize(&mut self, new_size: UVec2, scale: f32) {
         self.size = new_size;
         self.camera.width = new_size.x as f32;
         self.camera.height = new_size.y as f32;
         self.camera.zoom = scale;
-        self.update(queue);
+        self.update();
     }
 
-    pub fn set_position(&mut self, queue: &wgpu::Queue, x: f32, y: f32) {
+    pub fn set_position(&mut self, x: f32, y: f32) {
         let pos = get_isometric_coordinate(x, y);
         self.camera.position = (pos * self.camera.zoom).round() / self.camera.zoom;
-        self.update(queue);
+        self.update();
     }
 
     // Directly set a screen-space offset (bypasses isometric conversion) and update the GPU buffer.
-    pub fn set_screen_offset(&mut self, queue: &wgpu::Queue, x: f32, y: f32) {
+    pub fn set_screen_offset(&mut self, x: f32, y: f32) {
         self.camera.position = bevy_math::Vec2::new(x, y);
-        self.update(queue);
+        self.update();
     }
 
-    pub fn set_zoom(&mut self, queue: &wgpu::Queue, zoom: f32) {
+    pub fn set_zoom(&mut self, zoom: f32) {
         self.camera.zoom = zoom;
-        self.update(queue);
+        self.update();
     }
 
     pub fn zoom(&self) -> f32 {
@@ -122,38 +164,34 @@ impl CameraState {
         self.camera.position
     }
 
-    pub fn set_position_world(&mut self, queue: &wgpu::Queue, x: f32, y: f32) {
-        self.set_position(queue, x, y);
+    pub fn set_position_world(&mut self, x: f32, y: f32) {
+        self.set_position(x, y);
     }
 
-    pub fn set_magnification(&mut self, queue: &wgpu::Queue, mag: f32) {
-        self.set_zoom(queue, 1.0 / mag.max(0.01));
+    pub fn set_magnification(&mut self, mag: f32) {
+        self.set_zoom(1.0 / mag.max(0.01));
     }
 
-    pub fn set_tint(&mut self, queue: &wgpu::Queue, r: f32, g: f32, b: f32) {
+    pub fn set_tint(&mut self, r: f32, g: f32, b: f32) {
         self.camera_uniform.tint[0] = r;
         self.camera_uniform.tint[1] = g;
         self.camera_uniform.tint[2] = b;
-        self.update(queue);
+        self.update();
     }
 
-    pub fn set_xray_size(&mut self, queue: &wgpu::Queue, size: f32) {
+    pub fn set_xray_size(&mut self, size: f32) {
         self.camera_uniform.xray_size = size;
-        self.update(queue);
+        self.update();
     }
 
-    pub fn set_fog_desaturation(&mut self, queue: &wgpu::Queue, amount: f32) {
+    pub fn set_fog_desaturation(&mut self, amount: f32) {
         self.camera_uniform.fog_desaturation = amount.clamp(0.0, 1.0);
-        self.update(queue);
+        self.update();
     }
 
-    fn update(&mut self, queue: &wgpu::Queue) {
+    fn update(&mut self) {
         self.camera_uniform.update_view_proj(&self.camera);
-        queue.write_buffer(
-            &self.camera_buffer,
-            0,
-            bytemuck::cast_slice(&[self.camera_uniform]),
-        );
+        self.pending_uniform = Some(self.camera_uniform);
     }
 }
 
@@ -639,7 +677,6 @@ mod tests {
             None,
         );
         renderer.update_uniform(
-            &queue,
             [0.0, 0.0],
             1.0,
             [800.0, 600.0],

@@ -12,6 +12,12 @@ path-guid = "3ACCB3E0-68DA-4089-8B96-9E4424618FC4"
 license = false
 eula = false
 
+[features]
+# Debug tooling bundle: Bevy's `debug` feature (real system names in trace
+# spans) plus the debug console window and per-system timing. Off by default;
+# enable with `cargo run --features debug`.
+debug = ["bevy/debug"]
+
 [profile.dev]
 opt-level = 1
 debug = 0

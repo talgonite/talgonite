@@ -1,6 +1,6 @@
 use crate::rich_text::RichText;
 use crate::{
-    resources::{PlayerPortraitState, ZoomState},
+    resources::{FrameMetrics, PlayerPortraitState, ZoomState},
     slint_support::assets::{IconKind, SlintAssetLoader},
 };
 use bevy::prelude::*;
@@ -181,13 +181,14 @@ pub struct SlintAssetLoaderRes(pub SlintAssetLoader);
 pub fn show_prelogin_ui(
     win: Res<SlintWindow>,
     mut popup_manager: ResMut<crate::slint_support::popups::PopupManager>,
+    mut last_sent: ResMut<LastWorldLabelState>,
 ) {
     let Some(strong) = win.0.upgrade() else {
         return;
     };
     // Close every open window when returning to the main menu.
     popup_manager.clear();
-    reset_game_state_for_main_menu(&strong);
+    reset_game_state_for_main_menu(&strong, &mut last_sent);
     strong.set_show_prelogin(true);
     strong.invoke_request_snapshot();
 }
@@ -216,7 +217,11 @@ fn sync_responsive_state(game_state: &crate::GameState, render_size: (u32, u32))
     game_state.set_responsive_wide(mode == "wide");
 }
 
-fn reset_game_state_for_main_menu(window: &crate::MainWindow) {
+fn reset_game_state_for_main_menu(
+    window: &crate::MainWindow,
+    last_sent: &mut LastWorldLabelState,
+) {
+    *last_sent = LastWorldLabelState::default();
     let game_state = slint::ComponentHandle::global::<crate::GameState>(window);
 
     game_state.set_map_name(slint::SharedString::from(""));
@@ -335,6 +340,7 @@ pub fn apply_core_to_slint(
     lobby_portraits: Res<crate::resources::LobbyPortraits>,
     world_list: Res<crate::webui::plugin::WorldListState>,
     mut popup_manager: ResMut<crate::slint_support::popups::PopupManager>,
+    mut metrics: ResMut<FrameMetrics>,
 ) {
     let Some(strong) = win.0.upgrade() else {
         return;
@@ -343,6 +349,7 @@ pub fn apply_core_to_slint(
 
     let mut hotbar_dirty = false;
     if inventory.is_changed() {
+        metrics.acc_slint_core_syncs += 1;
         let inventory_icon_requests: Vec<(IconKind, u16)> = inventory
             .0
             .iter()
@@ -385,6 +392,7 @@ pub fn apply_core_to_slint(
     }
 
     if ability.is_changed() {
+        metrics.acc_slint_core_syncs += 1;
         let skill_icon_requests: Vec<(IconKind, u16)> = ability
             .skills
             .iter()
@@ -480,6 +488,7 @@ pub fn apply_core_to_slint(
     }
 
     if hotbar.is_changed() {
+        metrics.acc_slint_core_syncs += 1;
         hotbar_dirty = true;
     }
 
@@ -1189,12 +1198,14 @@ pub fn apply_core_to_slint(
     }
 
     if hotbar_panel.is_changed() {
+        metrics.acc_slint_core_syncs += 1;
         let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
         game_state.set_current_hotbar_panel(hotbar_panel.current_panel as i32);
         game_state.set_hotbar_row_count(hotbar_panel.rows.as_i32());
     }
 
     if world_list.is_changed() {
+        metrics.acc_slint_core_syncs += 1;
         let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
         game_state.set_world_list_loading(false);
 
@@ -1217,6 +1228,7 @@ pub fn apply_core_to_slint(
             game_state.set_world_list_total_count(raw.world_member_count as i32);
         }
     }
+
 }
 
 pub fn sync_skill_cooldowns_to_slint(
@@ -1314,6 +1326,44 @@ pub fn drain_slint_inbound(
     }
 }
 
+/// Last values pushed to Slint for world labels, so identical per-frame
+/// writes are skipped instead of re-triggering UI bindings. Reset whenever
+/// the UI state is reset, or the guards would skip re-sending values Slint
+/// no longer has.
+#[derive(Resource, Default)]
+pub struct LastWorldLabelState {
+    hp: Option<(i32, i32, i32, i32)>,
+    hp_fraction: Option<(f32, f32)>,
+    server_name: Option<slint::SharedString>,
+    player: Option<(slint::SharedString, i32)>,
+    camera: Option<(f32, f32, f32)>,
+    viewport: Option<(f32, f32, f32)>,
+    responsive: Option<(slint::SharedString, bool, bool)>,
+    casting: Option<crate::CastingIndicator>,
+    labels: Option<Vec<crate::WorldLabel>>,
+    bubbles: Option<Vec<crate::SpeechBubble>>,
+}
+
+/// Clears the last-sent cache when entering the game so the first InGame
+/// frame always re-pushes camera/viewport/label state.
+pub fn reset_label_sync_cache(mut last_sent: ResMut<LastWorldLabelState>) {
+    *last_sent = LastWorldLabelState::default();
+}
+
+fn set_if_changed<T: PartialEq + Clone>(
+    cache: &mut Option<T>,
+    value: T,
+    metrics: &mut FrameMetrics,
+    set: impl FnOnce(T),
+) {
+    metrics.acc_slint_sets_attempted += 1;
+    if *cache != Some(value.clone()) {
+        *cache = Some(value.clone());
+        metrics.acc_slint_sets_sent += 1;
+        set(value);
+    }
+}
+
 /// Syncs world labels and camera state to Slint every frame.
 /// This enables Slint to render entity names, speech bubbles, etc. in screen space.
 pub fn sync_world_labels_to_slint(
@@ -1322,6 +1372,8 @@ pub fn sync_world_labels_to_slint(
     zoom_state: Res<ZoomState>,
     player_attrs: Res<crate::resources::PlayerAttributes>,
     current_session: Res<crate::CurrentSession>,
+    mut metrics: ResMut<FrameMetrics>,
+    mut last_sent: ResMut<LastWorldLabelState>,
     local_player_query: Query<
         (
             &crate::ecs::components::Player,
@@ -1346,11 +1398,23 @@ pub fn sync_world_labels_to_slint(
 
     let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
 
-    // Update player attributes (HP/MP)
-    game_state.set_current_hp(player_attrs.current_hp as i32);
-    game_state.set_max_hp(player_attrs.max_hp as i32);
-    game_state.set_current_mp(player_attrs.current_mp as i32);
-    game_state.set_max_mp(player_attrs.max_mp as i32);
+    set_if_changed(
+        &mut last_sent.hp,
+        (
+            player_attrs.current_hp as i32,
+            player_attrs.max_hp as i32,
+            player_attrs.current_mp as i32,
+            player_attrs.max_mp as i32,
+        ),
+        &mut metrics,
+        |(current_hp, max_hp, current_mp, max_mp)| {
+            game_state.set_current_hp(current_hp);
+            game_state.set_max_hp(max_hp);
+            game_state.set_current_mp(current_mp);
+            game_state.set_max_mp(max_mp);
+        },
+    );
+
     let hp_fraction = if player_attrs.max_hp > 0 {
         player_attrs.current_hp as f32 / player_attrs.max_hp as f32
     } else {
@@ -1361,30 +1425,74 @@ pub fn sync_world_labels_to_slint(
     } else {
         0.0
     };
-    game_state.set_hp_fraction(hp_fraction.clamp(0.0, 1.0));
-    game_state.set_mp_fraction(mp_fraction.clamp(0.0, 1.0));
+    set_if_changed(
+        &mut last_sent.hp_fraction,
+        (hp_fraction.clamp(0.0, 1.0), mp_fraction.clamp(0.0, 1.0)),
+        &mut metrics,
+        |(hp_fraction, mp_fraction)| {
+            game_state.set_hp_fraction(hp_fraction);
+            game_state.set_mp_fraction(mp_fraction);
+        },
+    );
 
-    // Update server name
-    game_state.set_server_name(slint::SharedString::from(
-        current_session.server_url.as_str(),
-    ));
+    set_if_changed(
+        &mut last_sent.server_name,
+        slint::SharedString::from(current_session.server_url.as_str()),
+        &mut metrics,
+        |name| game_state.set_server_name(name),
+    );
 
-    // Update player name and ID
     if let Some((player, entity_id)) = local_player_query.iter().next() {
-        game_state.set_player_name(slint::SharedString::from(player.name.as_str()));
-        game_state.set_player_id(entity_id.id as i32);
+        set_if_changed(
+            &mut last_sent.player,
+            (slint::SharedString::from(player.name.as_str()), entity_id.id as i32),
+            &mut metrics,
+            |(name, id)| {
+                game_state.set_player_name(name);
+                game_state.set_player_id(id);
+            },
+        );
     }
 
-    // Update camera state
     let cam = &camera.camera.camera;
-    game_state.set_camera_x(cam.position.x);
-    game_state.set_camera_y(cam.position.y);
-    game_state.set_camera_zoom(cam.zoom);
-    game_state.set_viewport_width(zoom_state.render_size.0 as f32);
-    game_state.set_viewport_height(zoom_state.render_size.1 as f32);
+    set_if_changed(
+        &mut last_sent.camera,
+        (cam.position.x, cam.position.y, cam.zoom),
+        &mut metrics,
+        |(x, y, zoom)| {
+            game_state.set_camera_x(x);
+            game_state.set_camera_y(y);
+            game_state.set_camera_zoom(zoom);
+        },
+    );
+    set_if_changed(
+        &mut last_sent.viewport,
+        (
+            zoom_state.render_size.0 as f32,
+            zoom_state.render_size.1 as f32,
+            zoom_state.display_scale(),
+        ),
+        &mut metrics,
+        |(width, height, display_scale)| {
+            game_state.set_viewport_width(width);
+            game_state.set_viewport_height(height);
+            game_state.set_display_scale(display_scale);
+        },
+    );
 
-    game_state.set_display_scale(zoom_state.display_scale());
-    sync_responsive_state(&game_state, zoom_state.render_size);
+    let mode = responsive_mode_for(zoom_state.render_size);
+    let compact = mode == "compact";
+    let wide = mode == "wide";
+    set_if_changed(
+        &mut last_sent.responsive,
+        (slint::SharedString::from(mode), compact, wide),
+        &mut metrics,
+        |(mode, compact, wide)| {
+            game_state.set_responsive_mode(mode);
+            game_state.set_responsive_compact(compact);
+            game_state.set_responsive_wide(wide);
+        },
+    );
 
     let mut casting_indicator = crate::CastingIndicator {
         visible: false,
@@ -1407,7 +1515,9 @@ pub fn sync_world_labels_to_slint(
         }
     }
 
-    game_state.set_casting_indicator(casting_indicator);
+    set_if_changed(&mut last_sent.casting, casting_indicator, &mut metrics, |v| {
+        game_state.set_casting_indicator(v);
+    });
 
     // Collect all label types from all entities
     let mut slint_labels: Vec<crate::WorldLabel> = Vec::new();
@@ -1479,15 +1589,28 @@ pub fn sync_world_labels_to_slint(
         }
     }
 
-    let model = slint::VecModel::from(slint_labels);
-    game_state.set_world_labels(slint::ModelRc::new(model));
-    let bubble_model = slint::VecModel::from(slint_speech_bubbles);
-    game_state.set_speech_bubbles(slint::ModelRc::new(bubble_model));
+    metrics.acc_slint_sets_attempted += 2;
+    if last_sent.labels.as_ref() != Some(&slint_labels) {
+        let model = slint::VecModel::from(slint_labels.clone());
+        game_state.set_world_labels(slint::ModelRc::new(model));
+        last_sent.labels = Some(slint_labels);
+        metrics.acc_slint_sets_sent += 1;
+        metrics.acc_slint_model_rebuilds += 1;
+    }
+    if last_sent.bubbles.as_ref() != Some(&slint_speech_bubbles) {
+        let bubble_model = slint::VecModel::from(slint_speech_bubbles.clone());
+        game_state.set_speech_bubbles(slint::ModelRc::new(bubble_model));
+        last_sent.bubbles = Some(slint_speech_bubbles);
+        metrics.acc_slint_sets_sent += 1;
+        metrics.acc_slint_model_rebuilds += 1;
+    }
+
 }
 
 pub fn sync_map_name_to_slint(
     win: Res<SlintWindow>,
     map_query: Query<&crate::ecs::components::GameMap, Changed<crate::ecs::components::GameMap>>,
+    mut debug_log: ResMut<crate::resources::DebugLog>,
 ) {
     let Some(strong) = win.0.upgrade() else {
         return;
@@ -1496,6 +1619,7 @@ pub fn sync_map_name_to_slint(
     if let Some(map) = map_query.iter().next() {
         let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
         game_state.set_map_name(slint::SharedString::from(map.name.as_str()));
+        debug_log.push(format!("map: {}", map.name));
     }
 }
 

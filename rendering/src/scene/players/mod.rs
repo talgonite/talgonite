@@ -473,6 +473,18 @@ impl PlayerBatch {
         }
     }
 
+    pub fn flush_pending(&self, encoder: &mut wgpu::CommandEncoder) {
+        self.batch.flush_pending(encoder);
+    }
+
+    pub fn finish_uploads(&self) {
+        self.batch.finish_uploads();
+    }
+
+    pub fn recall_uploads(&self) {
+        self.batch.recall_uploads();
+    }
+
     pub fn preview_instance_count(&self) -> usize {
         self.batch.len()
     }
@@ -507,7 +519,7 @@ impl PlayerBatch {
 
         let instance_index = self
             .batch
-            .add_instance(queue, instance)
+            .add_instance(instance)
             .expect("Failed to add instance to batch");
 
         let handle = PlayerSpriteHandle {
@@ -523,7 +535,6 @@ impl PlayerBatch {
 
     pub fn update_player_sprite(
         &self,
-        queue: &wgpu::Queue,
         scene: &SpriteScene,
         handle: &PlayerSpriteHandle,
         direction: u8,
@@ -557,7 +568,7 @@ impl PlayerBatch {
             handle.stack_order,
             scene.atlas.palette_rows(),
         )?;
-        self.batch.update_instance(queue, handle.index.0, instance);
+        self.batch.update_instance(handle.index.0, instance);
 
         Ok(())
     }
@@ -591,7 +602,6 @@ impl PlayerBatch {
 
     pub fn update_player_sprite_with_animation(
         &self,
-        queue: &wgpu::Queue,
         scene: &SpriteScene,
         handle: &PlayerSpriteHandle,
         direction: u8,
@@ -629,27 +639,25 @@ impl PlayerBatch {
         )
         .unwrap_or_default();
 
-        self.batch.update_instance(queue, handle.index.0, instance);
+        self.batch.update_instance(handle.index.0, instance);
         Ok(())
     }
 
     pub fn hide_player_sprite(
         &self,
-        queue: &wgpu::Queue,
         handle: &PlayerSpriteHandle,
     ) -> anyhow::Result<()> {
         self.batch
-            .update_instance(queue, handle.index.0, Instance::default());
+            .update_instance(handle.index.0, Instance::default());
         Ok(())
     }
 
     pub fn remove_player_sprite(
         &self,
-        queue: &wgpu::Queue,
         scene: &mut SpriteScene,
         handle: PlayerSpriteHandle,
     ) {
-        self.batch.remove_instance(queue, handle.index.0);
+        self.batch.remove_instance(handle.index.0);
         scene.players.release_sprite(handle.key);
     }
 

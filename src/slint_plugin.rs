@@ -6,11 +6,17 @@
 use bevy::prelude::*;
 
 use crate::app_state::AppState;
+use crate::resources::{DebugLog, FrameMetrics};
+#[cfg(feature = "debug")]
+use crate::slint_support::debug_console::{
+    ConsoleMetricsModel, DebugConsoleWindow, update_debug_console,
+};
 use crate::slint_support::popups::PopupManager;
 use crate::slint_support::state_bridge::{
-    SlintUiChannels, apply_core_to_slint, drain_slint_inbound, sync_group_to_slint,
-    sync_installer_to_slint, sync_map_name_to_slint, sync_popup_to_slint, sync_settings_to_slint,
-    sync_skill_cooldowns_to_slint, sync_world_labels_to_slint,
+    LastWorldLabelState, SlintUiChannels, apply_core_to_slint, drain_slint_inbound,
+    reset_label_sync_cache, sync_group_to_slint, sync_installer_to_slint, sync_map_name_to_slint,
+    sync_popup_to_slint, sync_settings_to_slint, sync_skill_cooldowns_to_slint,
+    sync_world_labels_to_slint,
 };
 use crate::slint_support::{handle_show_self_profile, sync_profile_to_slint};
 
@@ -28,6 +34,9 @@ impl Plugin for SlintBridgePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SlintGpuReady>()
             .init_resource::<PopupManager>()
+            .init_resource::<FrameMetrics>()
+            .init_resource::<DebugLog>()
+            .init_resource::<LastWorldLabelState>()
             .insert_resource(SlintUiChannels::default())
             .add_message::<SlintDoubleClickEvent>()
             .add_message::<ShowSelfProfileEvent>()
@@ -37,6 +46,7 @@ impl Plugin for SlintBridgePlugin {
                 crate::slint_support::state_bridge::show_prelogin_ui
                     .run_if(resource_exists::<crate::slint_support::state_bridge::SlintWindow>),
             )
+            .add_systems(OnEnter(AppState::InGame), reset_label_sync_cache)
             .add_systems(
                 Update,
                 (
@@ -93,6 +103,17 @@ impl Plugin for SlintBridgePlugin {
                 OnExit(AppState::Installing),
                 crate::slint_support::state_bridge::hide_installer_ui,
             );
+
+    #[cfg(feature = "debug")]
+    app.insert_non_send(ConsoleMetricsModel(None));
+
+    #[cfg(feature = "debug")]
+    app.add_systems(
+        Last,
+        update_debug_console
+            .run_if(resource_exists::<DebugConsoleWindow>)
+            .after(crate::sys_timing::collect_system_timings),
+    );
     }
 }
 

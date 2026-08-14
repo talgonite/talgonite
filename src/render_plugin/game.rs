@@ -5,13 +5,27 @@ use crate::{
     RendererState, SceneColorState, SpriteSceneState, TranslucentPlayerPassState,
     UnifiedSpriteBatchState, WeatherState, WindowSurface, game_files,
 };
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use rendering::scene::{EffectManager, UnifiedSpriteBatch, unified_batch::SpriteScene};
 
 use crate::ecs::components::HoverName;
 use crate::ecs::interaction::HoveredEntity;
+use crate::resources::{DebugLog, FrameMetrics};
 
 pub struct GameWorldRenderPlugin;
+
+/// `draw_frame` (and the metrics fold that must follow it) in the `Last` schedule.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GameWorldDrawSet;
+
+/// Keeps `draw_frame` under Bevy's system-parameter arity limit.
+#[derive(SystemParam)]
+pub struct DrawFrameDebug<'w> {
+    pub metrics: ResMut<'w, FrameMetrics>,
+    pub log: ResMut<'w, DebugLog>,
+    pub time: Res<'w, Time>,
+}
 
 impl Plugin for GameWorldRenderPlugin {
     fn build(&self, app: &mut App) {
@@ -32,7 +46,17 @@ impl Plugin for GameWorldRenderPlugin {
                 Last,
                 draw_frame
                     .run_if(in_state(AppState::InGame))
-                    .run_if(resource_exists::<FrameChannels>),
+                    .run_if(resource_exists::<FrameChannels>)
+                    .in_set(GameWorldDrawSet),
+            )
+            .add_systems(
+                Last,
+                crate::resources::finish_frame_metrics.after(GameWorldDrawSet),
+            )
+            .add_systems(
+                Last,
+                crate::sys_timing::collect_system_timings
+                    .after(crate::resources::finish_frame_metrics),
             );
     }
 }
@@ -254,19 +278,15 @@ fn apply_pending_resize(
     let RendererState { device, scene, .. } = &mut *renderer_state;
     scene.resize_depth_texture(device, pending.width, pending.height);
 
-    camera.camera.resize(
-        &renderer_state.queue,
-        (pending.width, pending.height).into(),
-        pending.scale,
-    );
+    camera
+        .camera
+        .resize((pending.width, pending.height).into(), pending.scale);
 
     if let Some(mut minimap) = minimap {
         let zoom = minimap.config.zoom;
-        minimap.camera.resize(
-            &renderer_state.queue,
-            (pending.width, pending.height).into(),
-            zoom,
-        );
+        minimap
+            .camera
+            .resize((pending.width, pending.height).into(), zoom);
     }
 
     // Reallocate pool textures to new resolution so next frame can render immediately
@@ -331,23 +351,31 @@ fn apply_pending_resize(
 fn draw_frame(
     window_surface: NonSendMut<WindowSurface>,
     render_hardware: Res<RendererState>,
-    camera: Res<Camera>,
-    map_renderer_state: Option<Res<MapRendererState>>,
+    mut camera: ResMut<Camera>,
+    mut map_renderer_state: Option<ResMut<MapRendererState>>,
     sprite_batch_state: Option<Res<UnifiedSpriteBatchState>>,
     effect_manager_state: Option<Res<EffectManagerState>>,
-    minimap_renderer_state: Option<Res<MinimapRendererState>>,
+    mut minimap_renderer_state: Option<ResMut<MinimapRendererState>>,
     mut translucent_player_pass_state: Option<ResMut<TranslucentPlayerPassState>>,
     scene_color_state: Option<Res<SceneColorState>>,
     mut darkness_state: Option<ResMut<DarknessState>>,
     mut weather_state: Option<ResMut<WeatherState>>,
     channels: Res<FrameChannels>,
-    time: Res<Time>,
     mut pool: ResMut<BackBufferPool>,
     mut pending: ResMut<PendingResize>,
+    mut debug: DrawFrameDebug,
 ) {
+    let draw_start = std::time::Instant::now();
+    debug.metrics.last_draw_us = 0;
+    debug.metrics.last_queue_submits = 0;
+    debug.metrics.last_draw_passes = 0;
+    debug.metrics.last_texture_handoffs = 0;
+
     if window_surface.width == 0 || window_surface.height == 0 {
         return;
     }
+
+    let mut passes = 0u32;
 
     // Drain control messages: handle ResizeBuffers by marking PendingResize and skipping frame
     while let Ok(msg) = channels.control_rx.try_recv() {
@@ -361,6 +389,10 @@ fn draw_frame(
                 pending.height = height;
                 pending.scale = scale;
                 pending.dirty = true;
+                debug.log.push(format!(
+                    "render target resized to {}x{} (scale {:.2})",
+                    width, height, scale
+                ));
                 return;
             }
             ControlMessage::ReleaseFrontBufferTexture { texture } => {
@@ -414,16 +446,32 @@ fn draw_frame(
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
+    // Deferred writes go through the staging belts first so the copy commands
+    // are recorded before the passes that draw them.
+    camera.camera.flush_pending(&mut encoder);
+    if let Some(mr) = map_renderer_state.as_mut() {
+        mr.map_renderer.flush_pending(&mut encoder);
+    }
+    if let Some(sb) = sprite_batch_state.as_ref() {
+        sb.batch.flush_pending(&mut encoder);
+    }
+    if let Some(em) = effect_manager_state.as_ref() {
+        em.effect_manager.flush_pending(&mut encoder);
+    }
+    if let Some(mm) = minimap_renderer_state.as_mut() {
+        mm.flush_pending(&mut encoder);
+    }
+
     // Update the darkness uniform for this frame.
     if let Some(darkness) = darkness_state.as_deref_mut() {
         if darkness.needs_composite() {
             darkness.renderer.update_uniform(
-                &render_hardware.queue,
                 [camera.camera.position().x, camera.camera.position().y],
                 camera.camera.zoom(),
                 [camera.camera.camera.width, camera.camera.camera.height],
                 &darkness.sources,
             );
+            darkness.renderer.flush_pending(&mut encoder);
         }
     }
 
@@ -448,6 +496,7 @@ fn draw_frame(
         let sprite_batch = sprite_batch_state.as_ref().map(|sb| &sb.batch);
         let effect_manager = effect_manager_state.as_ref().map(|em| &em.effect_manager);
 
+        passes += 1;
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: scene_target,
@@ -496,6 +545,7 @@ fn draw_frame(
         (&sprite_batch_state, &mut translucent_player_pass_state)
     {
         if sb.batch.translucent_count() > 0 {
+            passes += 1;
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Translucent Player Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -546,6 +596,7 @@ fn draw_frame(
                         .unwrap()
                 };
 
+            passes += 1;
             let mut composite_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Translucent Player Composite Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -581,6 +632,7 @@ fn draw_frame(
                 darkness_state.composite_bind_group.clone().unwrap()
             };
 
+            passes += 1;
             let mut darkness_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Darkness Composite Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -604,11 +656,12 @@ fn draw_frame(
     if let Some(weather_state) = weather_state.as_deref_mut() {
         if let Some(weather) = &mut weather_state.renderer {
             weather.update(
-                &render_hardware.queue,
-                time.delta_secs(),
+                debug.time.delta_secs(),
                 [camera.camera.camera.width, camera.camera.camera.height],
             );
+            weather.flush_pending(&mut encoder);
             if weather.is_active() && weather.instance_count() > 0 {
+                passes += 1;
                 let weather_bind_group = weather.create_bind_group(
                     &render_hardware.device,
                     &render_hardware.scene.weather_bind_group_layout,
@@ -635,7 +688,11 @@ fn draw_frame(
         }
     }
 
-    if let Some(minimap) = minimap_renderer_state.filter(|minimap| minimap.visible) {
+    if let Some(minimap) = minimap_renderer_state
+        .as_ref()
+        .filter(|minimap| minimap.visible)
+    {
+        passes += 1;
         let mut minimap_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Minimap Overlay Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -662,7 +719,73 @@ fn draw_frame(
             .render(&mut minimap_pass, &minimap.camera.camera_bind_group);
     }
 
+    debug.metrics.last_map_instances = map_renderer_state
+        .as_ref()
+        .map_or(0, |m| m.map_renderer.instance_count() as u32);
+    debug.metrics.last_sprite_instances = sprite_batch_state.as_ref().map_or(0, |sb| sb.batch.live_len() as u32);
+    debug.metrics.last_effect_instances = effect_manager_state
+        .as_ref()
+        .map_or(0, |em| em.effect_manager.instance_count() as u32);
+    debug.metrics.last_weather_instances = weather_state
+        .as_ref()
+        .and_then(|w| w.renderer.as_ref())
+        .map_or(0, |w| w.instance_count());
+    debug.metrics.last_minimap_tiles = minimap_renderer_state
+        .as_ref()
+        .map_or(0, |m| m.renderer.tile_count() as u32);
+    debug.metrics.last_minimap_markers = minimap_renderer_state
+        .as_ref()
+        .map_or(0, |m| m.renderer.marker_count() as u32);
+    debug.metrics.last_draw_passes = passes;
+    debug.metrics.last_queue_submits = 1;
+    debug.metrics.last_texture_handoffs = 1;
+
+    camera.camera.finish_uploads();
+    if let Some(mr) = map_renderer_state.as_mut() {
+        mr.map_renderer.finish_uploads();
+    }
+    if let Some(darkness) = darkness_state.as_mut() {
+        darkness.renderer.finish_uploads();
+    }
+    if let Some(weather) = weather_state.as_mut() {
+        if let Some(w) = &mut weather.renderer {
+            w.finish_uploads();
+        }
+    }
+    if let Some(sb) = sprite_batch_state.as_ref() {
+        sb.batch.finish_uploads();
+    }
+    if let Some(em) = effect_manager_state.as_ref() {
+        em.effect_manager.finish_uploads();
+    }
+    if let Some(mm) = minimap_renderer_state.as_mut() {
+        mm.finish_uploads();
+    }
     render_hardware.queue.submit([encoder.finish()]);
+
+    camera.camera.recall_uploads();
+    if let Some(mr) = map_renderer_state.as_mut() {
+        mr.map_renderer.recall_uploads();
+    }
+    if let Some(darkness) = darkness_state.as_mut() {
+        darkness.renderer.recall_uploads();
+    }
+    if let Some(weather) = weather_state.as_mut() {
+        if let Some(w) = &mut weather.renderer {
+            w.recall_uploads();
+        }
+    }
+    if let Some(sb) = sprite_batch_state.as_ref() {
+        sb.batch.recall_uploads();
+    }
+    if let Some(em) = effect_manager_state.as_ref() {
+        em.effect_manager.recall_uploads();
+    }
+    if let Some(mm) = minimap_renderer_state.as_mut() {
+        mm.recall_uploads();
+    }
+
+    debug.metrics.last_draw_us = draw_start.elapsed().as_micros() as u64;
 
     // Publish only the newest completed frame; recycle any unpublished older one.
     let mut latest_front_buffer = channels

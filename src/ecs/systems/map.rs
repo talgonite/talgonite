@@ -357,14 +357,12 @@ fn handle_map_darkness(
 }
 
 pub fn handle_doors(
-    renderer: Option<Res<RendererState>>,
     mut map_renderer_state: Option<ResMut<MapRendererState>>,
     minimap_cache: Option<ResMut<MinimapCacheState>>,
     mut map_collision: Option<ResMut<crate::ecs::collision::MapCollisionData>>,
     mut door_queue: ResMut<MapDoorQueue>,
 ) {
-    let (Some(renderer), Some(map_state), Some(map_collision)) = (
-        renderer.as_deref(),
+    let (Some(map_state), Some(map_collision)) = (
         map_renderer_state.as_deref_mut(),
         map_collision.as_deref_mut(),
     ) else {
@@ -378,7 +376,7 @@ pub fn handle_doors(
     for door in &door_queue.pending {
         map_state
             .map_renderer
-            .set_wall_toggle_state(&renderer.queue, door.x, door.y, door.closed);
+            .set_wall_toggle_state(door.x, door.y, door.closed);
         map_collision.set_door(door.x, door.y, door.closed);
     }
 

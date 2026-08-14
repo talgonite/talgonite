@@ -137,7 +137,6 @@ pub fn effect_follow_entity_system(
 pub fn update_effects_system(
     mut commands: Commands,
     time: Res<Time>,
-    renderer: Res<RendererState>,
     effects_state: Res<EffectManagerState>,
     mut effects_query: Query<(Entity, &Position, &Effect, &mut EffectInstance)>,
 ) {
@@ -156,7 +155,6 @@ pub fn update_effects_system(
         }
 
         effects_state.effect_manager.update_effect(
-            &renderer.queue,
             &instance.handle,
             position.x,
             position.y,

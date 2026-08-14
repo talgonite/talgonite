@@ -634,12 +634,6 @@ fn cleanup_player_sprite_instance(mut world: DeferredWorld, ctx: HookContext) {
         return;
     };
     // Limit immutable borrow scope
-    let queue_ptr = if let Some(renderer) = world.get_resource::<crate::RendererState>() {
-        &renderer.queue as *const _
-    } else {
-        return;
-    };
-
     // Use UnsafeWorldCell to get both resources simultaneously to avoid borrow checker conflicts in DeferredWorld
     let cell = world.as_unsafe_world_cell();
     let mut scene = unsafe { cell.get_resource_mut::<crate::SpriteSceneState>() };
@@ -649,11 +643,7 @@ fn cleanup_player_sprite_instance(mut world: DeferredWorld, ctx: HookContext) {
         return;
     };
 
-    unsafe {
-        batch
-            .batch
-            .remove_player(&*queue_ptr, &mut scene.scene, handle);
-    }
+    batch.batch.remove_player(&mut scene.scene, handle);
 }
 
 fn cleanup_creature_instance(mut world: DeferredWorld, ctx: HookContext) {
@@ -663,11 +653,6 @@ fn cleanup_creature_instance(mut world: DeferredWorld, ctx: HookContext) {
     } else {
         return;
     };
-    let queue_ptr = if let Some(renderer) = world.get_resource::<crate::RendererState>() {
-        &renderer.queue as *const _
-    } else {
-        return;
-    };
 
     // Use UnsafeWorldCell to get both resources simultaneously to avoid borrow checker conflicts in DeferredWorld
     let cell = world.as_unsafe_world_cell();
@@ -678,11 +663,7 @@ fn cleanup_creature_instance(mut world: DeferredWorld, ctx: HookContext) {
         return;
     };
 
-    unsafe {
-        batch
-            .batch
-            .remove_creature(&*queue_ptr, &mut scene.scene, handle);
-    }
+    batch.batch.remove_creature(&mut scene.scene, handle);
 }
 
 fn cleanup_item_instance(mut world: DeferredWorld, ctx: HookContext) {
@@ -693,12 +674,6 @@ fn cleanup_item_instance(mut world: DeferredWorld, ctx: HookContext) {
         return;
     };
 
-    let queue_ptr = if let Some(renderer) = world.get_resource::<crate::RendererState>() {
-        &renderer.queue as *const _
-    } else {
-        return;
-    };
-
     let cell = world.as_unsafe_world_cell();
     let mut scene = unsafe { cell.get_resource_mut::<crate::SpriteSceneState>() };
     let batch_state = unsafe { cell.get_resource::<crate::UnifiedSpriteBatchState>() };
@@ -707,11 +682,7 @@ fn cleanup_item_instance(mut world: DeferredWorld, ctx: HookContext) {
         return;
     };
 
-    unsafe {
-        batch
-            .batch
-            .remove_item(&*queue_ptr, &mut scene.scene, handle);
-    }
+    batch.batch.remove_item(&mut scene.scene, handle);
 }
 
 #[derive(Component)]
@@ -738,17 +709,10 @@ fn cleanup_effect_instance(mut world: DeferredWorld, ctx: HookContext) {
     } else {
         return;
     };
-    let queue_ptr = if let Some(renderer) = world.get_resource::<crate::RendererState>() {
-        &renderer.queue as *const _
-    } else {
-        return;
-    };
     let Some(mut effects) = world.get_resource_mut::<crate::EffectManagerState>() else {
         return;
     };
-    unsafe {
-        effects.effect_manager.remove_effect(&*queue_ptr, &handle);
-    }
+    effects.effect_manager.remove_effect(&handle);
 }
 
 fn cleanup_minimap_marker(mut world: DeferredWorld, ctx: HookContext) {
@@ -761,17 +725,10 @@ fn cleanup_minimap_marker(mut world: DeferredWorld, ctx: HookContext) {
     let Some(handle) = handle else {
         return;
     };
-    let queue_ptr = if let Some(renderer) = world.get_resource::<crate::RendererState>() {
-        &renderer.queue as *const _
-    } else {
-        return;
-    };
     let cell = world.as_unsafe_world_cell();
     let minimap_state = unsafe { cell.get_resource::<crate::MinimapRendererState>() };
     let Some(minimap_state) = minimap_state else {
         return;
     };
-    unsafe {
-        minimap_state.renderer.remove_marker(&*queue_ptr, handle);
-    }
+    minimap_state.renderer.remove_marker(handle);
 }

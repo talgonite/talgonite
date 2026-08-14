@@ -1,5 +1,7 @@
 pub mod assets;
 pub mod callbacks;
+#[cfg(feature = "debug")]
+pub mod debug_console;
 pub mod frame_exchange;
 pub mod gpu_init;
 pub mod input_bridge;
@@ -74,6 +76,16 @@ pub fn attach_slint_ui(mut app: App) -> MainWindow {
     let slint_app = MainWindow::new().unwrap();
     apply_platform_state(&slint_app);
 
+    #[cfg(feature = "debug")]
+    {
+        let console_window =
+            debug_console::spawn_debug_console(crate::DebugConsole::new().unwrap());
+        app.world_mut().insert_resource(console_window);
+        if let Some(mut log) = app.world_mut().get_resource_mut::<crate::resources::DebugLog>() {
+            log.push("debug console attached");
+        }
+    }
+
     // Set up input event queues
     let key_event_queue = input_bridge::new_shared_queue();
     let pointer_event_queue = input_bridge::new_shared_pointer_queue();
@@ -116,9 +128,11 @@ pub fn attach_slint_ui(mut app: App) -> MainWindow {
     let slint_app_handle = slint_app.as_weak();
     let app = Rc::new(RefCell::new(app));
     let last_update = Rc::new(RefCell::new(std::time::Instant::now()));
+    let last_pixelated = Rc::new(std::cell::Cell::new(false));
 
     let app_for_notifier = app.clone();
     let last_update_for_notifier = last_update.clone();
+    let last_pixelated_for_notifier = last_pixelated.clone();
 
     slint_app
         .window()
@@ -156,7 +170,22 @@ pub fn attach_slint_ui(mut app: App) -> MainWindow {
                     }
                 }
                 slint::RenderingState::BeforeRendering => {
+                    if let Some(share) = app
+                        .world()
+                        .get_resource::<crate::sys_timing::SystemTimingShare>()
+                    {
+                        share.reset();
+                    }
+                    let update_start = std::time::Instant::now();
                     app.update();
+                    let update_us = update_start.elapsed().as_micros() as u64;
+                    if let Some(mut metrics) = app
+                        .world_mut()
+                        .get_resource_mut::<crate::resources::FrameMetrics>()
+                    {
+                        metrics.last_update_us = update_us;
+                        metrics.acc_repaints += 1;
+                    }
                     *last_update_for_notifier.borrow_mut() = std::time::Instant::now();
 
                     let Some(strong) = slint_app_handle.upgrade() else {
@@ -170,7 +199,12 @@ pub fn attach_slint_ui(mut app: App) -> MainWindow {
                         |w| w.get_requested_texture_width() as u32,
                         |w| w.get_requested_texture_height() as u32,
                         |w| w.get_texture_scale(),
-                        |w, b| w.set_use_pixelated_filtering(b),
+                        |w, b| {
+                            if last_pixelated_for_notifier.get() != b {
+                                w.set_use_pixelated_filtering(b);
+                                last_pixelated_for_notifier.set(b);
+                            }
+                        },
                         |w| w.get_texture(),
                         |w, img| w.set_texture(img),
                     );
@@ -193,7 +227,20 @@ pub fn attach_slint_ui(mut app: App) -> MainWindow {
                 if last_update_for_timer.borrow().elapsed() >= std::time::Duration::from_millis(100)
                 {
                     if let Ok(mut app) = app_rc.try_borrow_mut() {
+                        if let Some(share) = app
+                            .world()
+                            .get_resource::<crate::sys_timing::SystemTimingShare>()
+                        {
+                            share.reset();
+                        }
+                        let update_start = std::time::Instant::now();
                         app.update();
+                        if let Some(mut metrics) = app
+                            .world_mut()
+                            .get_resource_mut::<crate::resources::FrameMetrics>()
+                        {
+                            metrics.last_update_us = update_start.elapsed().as_micros() as u64;
+                        }
                         *last_update_for_timer.borrow_mut() = std::time::Instant::now();
                     }
                 }

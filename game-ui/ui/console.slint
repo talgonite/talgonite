@@ -1,0 +1,63 @@
+import { Theme } from "theme.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export struct DebugMetric {
+    name: string,
+    value: string,
+    help: string,
+}
+
+export component DebugConsole inherits Window {
+    title: "Talgonite Debug Console";
+    preferred-width: 720px;
+    preferred-height: 560px;
+    background: Theme.surface-primary;
+    in-out property <[DebugMetric]> metrics: [];
+    in-out property <string> log-text: "";
+
+    VerticalLayout {
+        padding: 8px;
+        Text {
+            text: "Talgonite frame metrics";
+            font-size: Theme.font-size-large;
+            font-weight: 700;
+            color: Theme.foreground-strong;
+        }
+        Rectangle { height: 1px; background: Theme.border-subtle; }
+        VerticalLayout {
+            for m in metrics: TouchArea {
+                height: 24px;
+                HorizontalLayout {
+                    padding-top: 2px;
+                    padding-bottom: 2px;
+                    Text { text: m.name; color: Theme.foreground-muted; }
+                    Text {
+                        text: m.value;
+                        horizontal-stretch: 1;
+                        horizontal-alignment: right;
+                        color: Theme.foreground;
+                    }
+                }
+                Tooltip {
+                    Text {
+                        text: m.help;
+                        color: Theme.foreground;
+                        font-size: Theme.font-size-small;
+                        width: 380px;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+        Rectangle { height: 1px; background: Theme.border-subtle; }
+        Text { text: "Log"; font-size: Theme.font-size-small; color: Theme.foreground-muted; }
+        ScrollView {
+            vertical-stretch: 1;
+            Text {
+                text: log-text;
+                color: Theme.foreground;
+                font-size: Theme.font-size-small;
+            }
+        }
+    }
+}

@@ -194,6 +194,26 @@ impl UnifiedSpriteBatch {
         self.instances.len()
     }
 
+    pub fn live_len(&self) -> usize {
+        self.instances.live_len()
+    }
+
+    pub fn stats(&self) -> crate::instance::InstanceBatchStatsSnapshot {
+        self.instances.stats()
+    }
+
+    pub fn flush_pending(&self, encoder: &mut wgpu::CommandEncoder) {
+        self.instances.flush_pending(encoder);
+    }
+
+    pub fn finish_uploads(&self) {
+        self.instances.finish_uploads();
+    }
+
+    pub fn recall_uploads(&self) {
+        self.instances.recall_uploads();
+    }
+
     pub fn is_empty(&self) -> bool {
         self.instances.len() == 0
     }
@@ -243,7 +263,7 @@ impl UnifiedSpriteBatch {
         );
         let instance_index = self
             .instances
-            .add(queue, instance)
+            .add(instance)
             .expect("Failed to add instance to batch");
         let handle = PlayerSpriteHandle {
             key: sprite,
@@ -257,7 +277,6 @@ impl UnifiedSpriteBatch {
 
     pub fn update_player(
         &self,
-        queue: &wgpu::Queue,
         scene: &SpriteScene,
         handle: &PlayerSpriteHandle,
         direction: u8,
@@ -289,13 +308,12 @@ impl UnifiedSpriteBatch {
             handle.stack_order,
             scene.atlas.palette_rows(),
         )?;
-        self.instances.update(queue, handle.index.index(), instance);
+        self.instances.update(handle.index.index(), instance);
         Ok(())
     }
 
     pub fn update_player_with_animation(
         &self,
-        queue: &wgpu::Queue,
         scene: &SpriteScene,
         handle: &PlayerSpriteHandle,
         direction: u8,
@@ -330,22 +348,21 @@ impl UnifiedSpriteBatch {
             scene.atlas.palette_rows(),
         )
         .unwrap_or_default();
-        self.instances.update(queue, handle.index.index(), instance);
+        self.instances.update(handle.index.index(), instance);
         Ok(())
     }
 
-    pub fn hide_player(&self, queue: &wgpu::Queue, handle: &PlayerSpriteHandle) {
+    pub fn hide_player(&self, handle: &PlayerSpriteHandle) {
         self.instances
-            .update(queue, handle.index.index(), Instance::default());
+            .update(handle.index.index(), Instance::default());
     }
 
     pub fn remove_player(
         &self,
-        queue: &wgpu::Queue,
         scene: &mut SpriteScene,
         handle: PlayerSpriteHandle,
     ) {
-        self.instances.remove(queue, handle.index.index());
+        self.instances.remove(handle.index.index());
         self.handles.remove(handle.index.index());
         scene.players.release_sprite(handle.key);
     }
@@ -405,7 +422,7 @@ impl UnifiedSpriteBatch {
 
         let instance_index = self
             .instances
-            .add(queue, instance)
+            .add(instance)
             .ok_or_else(|| anyhow::anyhow!("Failed to add creature instance"))?;
         let handle = CreateInstanceHandle {
             index: instance_index,
@@ -421,7 +438,6 @@ impl UnifiedSpriteBatch {
 
     pub fn update_creature(
         &self,
-        queue: &wgpu::Queue,
         scene: &SpriteScene,
         handle: &CreateInstanceHandle,
         x: f32,
@@ -442,7 +458,7 @@ impl UnifiedSpriteBatch {
                 scene.atlas.palette_rows(),
             ) {
                 instance.tint = tint;
-                self.instances.update(queue, handle.index, instance);
+                self.instances.update(handle.index, instance);
                 return true;
             }
         }
@@ -451,11 +467,10 @@ impl UnifiedSpriteBatch {
 
     pub fn remove_creature(
         &self,
-        queue: &wgpu::Queue,
         scene: &mut SpriteScene,
         handle: CreateInstanceHandle,
     ) {
-        self.instances.remove(queue, handle.index);
+        self.instances.remove(handle.index);
         self.handles.remove(handle.index);
         scene.creatures.release_sprite(handle.sprite_id);
     }
@@ -494,7 +509,7 @@ impl UnifiedSpriteBatch {
                 return None;
             }
         };
-        let idx = match self.instances.add(queue, instance) {
+        let idx = match self.instances.add(instance) {
             Some(idx) => idx,
             None => {
                 scene.items.release_sheet(item.sprite);
@@ -512,7 +527,6 @@ impl UnifiedSpriteBatch {
 
     pub fn update_item(
         &self,
-        queue: &wgpu::Queue,
         scene: &SpriteScene,
         handle: &ItemInstanceHandle,
         item: Item,
@@ -531,16 +545,15 @@ impl UnifiedSpriteBatch {
         ) else {
             return;
         };
-        self.instances.update(queue, handle.index, instance);
+        self.instances.update(handle.index, instance);
     }
 
     pub fn remove_item(
         &self,
-        queue: &wgpu::Queue,
         scene: &mut SpriteScene,
         handle: ItemInstanceHandle,
     ) {
-        self.instances.remove(queue, handle.index);
+        self.instances.remove(handle.index);
         self.handles.remove(handle.index);
         scene.items.release_sheet(handle.sprite_id);
     }
