@@ -8,4 +8,5 @@ pub enum SlotPanelType {
     Hotbar,
     World,
     Macro,
+    Exchange,
 }

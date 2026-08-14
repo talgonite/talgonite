@@ -81,7 +81,10 @@ pub fn attach_slint_ui(mut app: App) -> MainWindow {
         let console_window =
             debug_console::spawn_debug_console(crate::DebugConsole::new().unwrap());
         app.world_mut().insert_resource(console_window);
-        if let Some(mut log) = app.world_mut().get_resource_mut::<crate::resources::DebugLog>() {
+        if let Some(mut log) = app
+            .world_mut()
+            .get_resource_mut::<crate::resources::DebugLog>()
+        {
             log.push("debug console attached");
         }
     }

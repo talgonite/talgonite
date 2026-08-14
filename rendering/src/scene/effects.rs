@@ -599,8 +599,7 @@ impl EffectManager {
             .unwrap_or(0);
 
         if let Some(instance) = self.create_instance(loaded, frame_index, x, y, z_offset) {
-            self.instances
-                .update(handle.instance_index, instance);
+            self.instances.update(handle.instance_index, instance);
             true
         } else {
             false

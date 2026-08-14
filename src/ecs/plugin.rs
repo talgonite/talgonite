@@ -25,6 +25,7 @@ impl Plugin for GamePlugin {
         app.init_resource::<SpellCastingState>()
             .init_resource::<SpellTargetingState>()
             .init_resource::<SpellQueueState>()
+            .init_resource::<crate::ecs::interaction::ActiveDragState>()
             .init_resource::<LocalSocialStatus>()
             .init_resource::<systems::AutoAttackState>()
             .init_resource::<crate::resources::LobbyPortraits>()

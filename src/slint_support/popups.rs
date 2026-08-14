@@ -38,6 +38,7 @@ pub enum PopupId {
     Group,
     ContextMenu,
     GroupInvite,
+    Exchange,
     // Prelogin
     LoginModal,
     ServerManager,
@@ -49,8 +50,8 @@ impl PopupId {
     pub fn kind(self) -> PopupKind {
         use PopupId::*;
         match self {
-            GameMenu | Settings | NpcDialog | Profile | MailBoard | WorldMap | LoginModal
-            | ServerManager | CharacterCreation => PopupKind::Modal,
+            GameMenu | Settings | NpcDialog | Profile | MailBoard | WorldMap | Exchange
+            | LoginModal | ServerManager | CharacterCreation => PopupKind::Modal,
             Inventory | Skills | Spells | WorldList | Group => PopupKind::Window,
             ContextMenu => PopupKind::Popover,
             GroupInvite => PopupKind::Toast,
@@ -79,6 +80,7 @@ impl PopupId {
             S::Group => PopupId::Group,
             S::ContextMenu => PopupId::ContextMenu,
             S::GroupInvite => PopupId::GroupInvite,
+            S::Exchange => PopupId::Exchange,
             S::LoginModal => PopupId::LoginModal,
             S::ServerManager => PopupId::ServerManager,
             S::CharacterCreation => PopupId::CharacterCreation,
@@ -102,6 +104,7 @@ impl PopupId {
             PopupId::Group => S::Group,
             PopupId::ContextMenu => S::ContextMenu,
             PopupId::GroupInvite => S::GroupInvite,
+            PopupId::Exchange => S::Exchange,
             PopupId::LoginModal => S::LoginModal,
             PopupId::ServerManager => S::ServerManager,
             PopupId::CharacterCreation => S::CharacterCreation,

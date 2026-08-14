@@ -289,8 +289,10 @@ impl InstanceBatch {
         if index < self.instances.len() {
             let raw_instance = instance.to_raw();
             self.instances[index] = instance;
-            self.pending
-                .push(PendingInstanceWrite::Slot { index, raw: raw_instance });
+            self.pending.push(PendingInstanceWrite::Slot {
+                index,
+                raw: raw_instance,
+            });
         }
     }
 
@@ -304,7 +306,8 @@ impl InstanceBatch {
             .iter()
             .map(Instance::to_raw)
             .collect::<Vec<InstanceRaw>>();
-        self.pending.push(PendingInstanceWrite::Replace(raw_instances));
+        self.pending
+            .push(PendingInstanceWrite::Replace(raw_instances));
 
         self.instances = instances;
     }
@@ -317,8 +320,10 @@ impl InstanceBatch {
         }
 
         let raw_instance = instance.to_raw();
-        self.pending
-            .push(PendingInstanceWrite::Slot { index, raw: raw_instance });
+        self.pending.push(PendingInstanceWrite::Slot {
+            index,
+            raw: raw_instance,
+        });
         self.instances.push(instance);
 
         Some(index)
@@ -334,8 +339,10 @@ impl InstanceBatch {
         self.instances.swap_remove(index);
 
         if index != removed_index {
-            self.pending
-                .push(PendingInstanceWrite::Slot { index, raw: self.instances[index].to_raw() });
+            self.pending.push(PendingInstanceWrite::Slot {
+                index,
+                raw: self.instances[index].to_raw(),
+            });
         }
         self.pending.push(PendingInstanceWrite::Slot {
             index: removed_index,

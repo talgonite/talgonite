@@ -217,10 +217,7 @@ fn sync_responsive_state(game_state: &crate::GameState, render_size: (u32, u32))
     game_state.set_responsive_wide(mode == "wide");
 }
 
-fn reset_game_state_for_main_menu(
-    window: &crate::MainWindow,
-    last_sent: &mut LastWorldLabelState,
-) {
+fn reset_game_state_for_main_menu(window: &crate::MainWindow, last_sent: &mut LastWorldLabelState) {
     *last_sent = LastWorldLabelState::default();
     let game_state = slint::ComponentHandle::global::<crate::GameState>(window);
 
@@ -324,6 +321,7 @@ pub fn sync_popup_to_slint(
     state.set_group_open(popup_manager.is_open(PopupId::Group));
     state.set_context_menu_open(popup_manager.is_open(PopupId::ContextMenu));
     state.set_group_invite_open(popup_manager.is_open(PopupId::GroupInvite));
+    state.set_exchange_open(popup_manager.is_open(PopupId::Exchange));
 }
 
 pub fn apply_core_to_slint(
@@ -339,6 +337,7 @@ pub fn apply_core_to_slint(
     hotbar_panel: Res<crate::ecs::hotbar::HotbarPanelState>,
     lobby_portraits: Res<crate::resources::LobbyPortraits>,
     world_list: Res<crate::webui::plugin::WorldListState>,
+    exchange: Res<crate::webui::plugin::ExchangeSessionState>,
     mut popup_manager: ResMut<crate::slint_support::popups::PopupManager>,
     mut metrics: ResMut<FrameMetrics>,
 ) {
@@ -1231,6 +1230,74 @@ pub fn apply_core_to_slint(
         }
     }
 
+    if exchange.is_changed() {
+        metrics.acc_slint_core_syncs += 1;
+        let game_state = slint::ComponentHandle::global::<crate::GameState>(&strong);
+
+        let mut my_icon_requests = Vec::new();
+        for item in &exchange.my_items {
+            if item.sprite > 0 {
+                my_icon_requests.push((IconKind::Item, item.sprite));
+            }
+        }
+        let my_icons = asset_loader.icons(&game_files, &my_icon_requests);
+
+        let mut other_icon_requests = Vec::new();
+        for item in &exchange.other_items {
+            if item.sprite > 0 {
+                other_icon_requests.push((IconKind::Item, item.sprite));
+            }
+        }
+        let other_icons = asset_loader.icons(&game_files, &other_icon_requests);
+
+        let mut my_slint_items = Vec::with_capacity(exchange.my_items.len());
+        let mut my_icon_iter = my_icons.into_iter();
+        for (i, item) in exchange.my_items.iter().enumerate() {
+            let icon = if item.sprite > 0 {
+                my_icon_iter.next().flatten().unwrap_or_default()
+            } else {
+                slint::Image::default()
+            };
+            let has_item = item.sprite > 0 || !item.name.is_empty();
+            my_slint_items.push(crate::ExchangeItem {
+                slot: i as i32,
+                name: slint::SharedString::from(item.name.as_str()),
+                icon,
+                color: item.color as i32,
+                has_item,
+            });
+        }
+
+        let mut other_slint_items = Vec::with_capacity(exchange.other_items.len());
+        let mut other_icon_iter = other_icons.into_iter();
+        for (i, item) in exchange.other_items.iter().enumerate() {
+            let icon = if item.sprite > 0 {
+                other_icon_iter.next().flatten().unwrap_or_default()
+            } else {
+                slint::Image::default()
+            };
+            let has_item = item.sprite > 0 || !item.name.is_empty();
+            other_slint_items.push(crate::ExchangeItem {
+                slot: i as i32,
+                name: slint::SharedString::from(item.name.as_str()),
+                icon,
+                color: item.color as i32,
+                has_item,
+            });
+        }
+
+        game_state.set_exchange(crate::ExchangeData {
+            is_active: exchange.is_active,
+            other_player_name: slint::SharedString::from(exchange.other_player_name.as_str()),
+            my_gold: exchange.my_gold as i32,
+            other_gold: exchange.other_gold as i32,
+            my_items: slint::ModelRc::new(slint::VecModel::from(my_slint_items)),
+            other_items: slint::ModelRc::new(slint::VecModel::from(other_slint_items)),
+            my_accepted: exchange.my_accepted,
+            other_accepted: exchange.other_accepted,
+            pending_quantity_slot: exchange.quantity_prompt.unwrap_or(0) as i32,
+        });
+    }
 }
 
 pub fn sync_skill_cooldowns_to_slint(
@@ -1367,7 +1434,8 @@ pub fn sync_spell_casting_to_slint(
                                     if !slot_cfg.action_id.is_empty() {
                                         let action_id = ActionId::from_str(&slot_cfg.action_id);
                                         if action_id == *prev_id {
-                                            if let Some(mut row) = hotbar_state.row_data(entry_idx) {
+                                            if let Some(mut row) = hotbar_state.row_data(entry_idx)
+                                            {
                                                 if row.cast_progress != 0.0 {
                                                     row.cast_progress = 0.0;
                                                     hotbar_state.set_row_data(entry_idx, row);
@@ -1586,7 +1654,10 @@ pub fn sync_world_labels_to_slint(
     if let Some((player, entity_id)) = local_player_query.iter().next() {
         set_if_changed(
             &mut last_sent.player,
-            (slint::SharedString::from(player.name.as_str()), entity_id.id as i32),
+            (
+                slint::SharedString::from(player.name.as_str()),
+                entity_id.id as i32,
+            ),
             &mut metrics,
             |(name, id)| {
                 game_state.set_player_name(name);
@@ -1644,9 +1715,14 @@ pub fn sync_world_labels_to_slint(
 
     casting_indicator.targeting = spell_targeting.pending_target.is_some();
 
-    set_if_changed(&mut last_sent.casting, casting_indicator, &mut metrics, |v| {
-        game_state.set_casting_indicator(v);
-    });
+    set_if_changed(
+        &mut last_sent.casting,
+        casting_indicator,
+        &mut metrics,
+        |v| {
+            game_state.set_casting_indicator(v);
+        },
+    );
 
     // Collect all label types from all entities
     let mut slint_labels: Vec<crate::WorldLabel> = Vec::new();
@@ -1733,7 +1809,6 @@ pub fn sync_world_labels_to_slint(
         metrics.acc_slint_sets_sent += 1;
         metrics.acc_slint_model_rebuilds += 1;
     }
-
 }
 
 pub fn sync_map_name_to_slint(

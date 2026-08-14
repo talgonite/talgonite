@@ -271,9 +271,7 @@ impl TestScene {
     pub fn capture(&mut self, width: u32, height: u32) -> Vec<u8> {
         {
             let mut camera = self.app.world_mut().resource_mut::<Camera>();
-            camera
-                .camera
-                .resize(UVec2::new(width, height), 1.0);
+            camera.camera.resize(UVec2::new(width, height), 1.0);
         }
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Test Output Texture"),

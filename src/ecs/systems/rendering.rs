@@ -3,8 +3,8 @@
 use super::super::animation::{Animation, AnimationMode, AnimationType};
 use super::super::components::*;
 use crate::resources::{
-    CharacterCreatorPreviewState, LobbyPortraitRenderer, LobbyPortraits,
-    MinimapCacheState, MinimapRendererState, PlayerPortraitState, PortraitRenderTarget,
+    CharacterCreatorPreviewState, LobbyPortraitRenderer, LobbyPortraits, MinimapCacheState,
+    MinimapRendererState, PlayerPortraitState, PortraitRenderTarget,
 };
 use crate::{
     Camera, RendererState, SpriteSceneState, UnifiedSpriteBatchState, game_files::GameFiles,
@@ -717,9 +717,7 @@ pub fn update_player_sprites(
                     if !parent_dirty && !child_dirty && cached == Some(&desired_cache) {
                         continue;
                     }
-                    let _ = sprite_batch
-                        .batch
-                        .hide_player(&sprite_instance.handle);
+                    let _ = sprite_batch.batch.hide_player(&sprite_instance.handle);
                     commands.entity(child_entity).insert(desired_cache);
                     continue;
                 };
@@ -775,9 +773,7 @@ pub fn update_player_sprites(
 
                 if submitted.is_err() {
                     let hidden_cache = hidden_player_sprite_cache();
-                    let _ = sprite_batch
-                        .batch
-                        .hide_player(&sprite_instance.handle);
+                    let _ = sprite_batch.batch.hide_player(&sprite_instance.handle);
                     commands.entity(child_entity).insert(hidden_cache);
                 } else {
                     commands.entity(child_entity).insert(desired_cache);
@@ -785,7 +781,6 @@ pub fn update_player_sprites(
             }
         }
     }
-
 }
 
 /// Syncs creature positions and animations to the GPU.
@@ -821,8 +816,17 @@ pub fn creature_movement_sync(
     let settings_changed = settings.is_changed();
     let to_update = collect_dirty_entities(changed_query.iter(), &mut removed_hovers);
 
-    for (entity, creature, pos, dir, anim, render_state, local_player, targeting_hover, _entity_id) in
-        query.iter()
+    for (
+        entity,
+        creature,
+        pos,
+        dir,
+        anim,
+        render_state,
+        local_player,
+        targeting_hover,
+        _entity_id,
+    ) in query.iter()
     {
         if !settings_changed && !to_update.contains(&entity) {
             continue;
@@ -1152,9 +1156,7 @@ pub fn sync_minimap_markers_to_renderer(
         };
 
         if let Some(handle) = marker.handle {
-            minimap_state
-                .renderer
-                .update_marker(handle, instance);
+            minimap_state.renderer.update_marker(handle, instance);
         } else if let Some(handle) = minimap_state.renderer.add_marker(instance) {
             marker.handle = Some(handle);
         }
@@ -1321,15 +1323,27 @@ mod tests {
         let xray_on = settings_with_xray(crate::settings_types::XRaySize::Small);
 
         assert_eq!(
-            player_instance_state(Some(&PlayerRenderState::from_translucent(false)), true, &xray_off),
+            player_instance_state(
+                Some(&PlayerRenderState::from_translucent(false)),
+                true,
+                &xray_off
+            ),
             InstanceFlag::XRay
         );
         assert_eq!(
-            player_instance_state(Some(&PlayerRenderState::from_translucent(false)), true, &xray_on),
+            player_instance_state(
+                Some(&PlayerRenderState::from_translucent(false)),
+                true,
+                &xray_on
+            ),
             InstanceFlag::None
         );
         assert_eq!(
-            player_instance_state(Some(&PlayerRenderState::from_translucent(true)), true, &xray_off),
+            player_instance_state(
+                Some(&PlayerRenderState::from_translucent(true)),
+                true,
+                &xray_off
+            ),
             InstanceFlag::TranslucentOverlay
         );
         assert_eq!(

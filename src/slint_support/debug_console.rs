@@ -160,7 +160,10 @@ pub fn update_debug_console(
         ),
         metric(
             "Texture handoffs / repaints",
-            &format!("{} / {}", metrics.last_texture_handoffs, metrics.last_repaints),
+            &format!(
+                "{} / {}",
+                metrics.last_texture_handoffs, metrics.last_repaints
+            ),
             "handoffs = game textures published to Slint\nrepaints = Slint BeforeRendering callbacks\nBoth stay ~1/frame while in game: the fixed cost of the always-render loop.",
         ),
     ];

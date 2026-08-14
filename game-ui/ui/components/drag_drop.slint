@@ -30,11 +30,13 @@ export component DragDropItem inherits Rectangle {
             if self.dragging {
                 DragDropState.source-panel = root.panel-type;
                 DragDropState.source-index = root.slot-index;
+                DragDropState.drag-state-changed(true, root.panel-type, root.slot-index);
             }
         }
         drag-finished(action) => {
             DragDropState.source-panel = SlotPanelType.none;
             DragDropState.source-index = -1;
+            DragDropState.drag-state-changed(false, SlotPanelType.none, -1);
         }
         touch := TouchArea {
             mouse-cursor: root.draggable ? MouseCursor.pointer : MouseCursor.default;

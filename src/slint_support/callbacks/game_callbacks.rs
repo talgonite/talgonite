@@ -18,6 +18,7 @@ fn slint_to_game_panel(panel: SlotPanelType) -> game_types::SlotPanelType {
         SlotPanelType::Hotbar => game_types::SlotPanelType::Hotbar,
         SlotPanelType::World => game_types::SlotPanelType::World,
         SlotPanelType::None => game_types::SlotPanelType::None,
+        SlotPanelType::Exchange => game_types::SlotPanelType::Exchange,
     }
 }
 
@@ -287,7 +288,10 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
     {
         let tx = tx.clone();
         dragdrop_state.on_dropped(move |data, dst_panel, dst_slot, x, y| {
-            let Some(src) = data.user_data().and_then(|rc| rc.downcast::<DragSource>().ok()) else {
+            let Some(src) = data
+                .user_data()
+                .and_then(|rc| rc.downcast::<DragSource>().ok())
+            else {
                 tracing::warn!("Drag drop payload is missing the drag source");
                 return;
             };
@@ -315,6 +319,16 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
             {
                 tracing::error!("Failed to send DragDropAction message");
             }
+        });
+    }
+    {
+        let tx = tx.clone();
+        dragdrop_state.on_drag_state_changed(move |is_dragging, panel, index| {
+            let _ = tx.send(UiToCore::DragStateChanged {
+                is_dragging,
+                panel: slint_to_game_panel(panel),
+                index,
+            });
         });
     }
 
@@ -358,6 +372,49 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
             if tx.send(UiToCore::PopupCloseTop).is_err() {
                 tracing::error!("Failed to send PopupCloseTop message");
             }
+        });
+    }
+
+    // Exchange callbacks
+    {
+        let tx = tx.clone();
+        game_state.on_exchange_add_item(move |slot| {
+            let _ = tx.send(UiToCore::ExchangeAddItem { slot: slot as u8 });
+        });
+    }
+    {
+        let tx = tx.clone();
+        game_state.on_exchange_add_stackable_item(move |slot, count| {
+            let _ = tx.send(UiToCore::ExchangeAddStackableItem {
+                slot: slot as u8,
+                count: count.max(0).min(255) as u8,
+            });
+        });
+    }
+    {
+        let tx = tx.clone();
+        game_state.on_exchange_set_gold(move |amount| {
+            let _ = tx.send(UiToCore::ExchangeSetGold {
+                amount: amount.max(0) as u32,
+            });
+        });
+    }
+    {
+        let tx = tx.clone();
+        game_state.on_exchange_cancel_quantity(move || {
+            let _ = tx.send(UiToCore::ExchangeCancelQuantity);
+        });
+    }
+    {
+        let tx = tx.clone();
+        game_state.on_exchange_accept(move || {
+            let _ = tx.send(UiToCore::ExchangeAccept);
+        });
+    }
+    {
+        let tx = tx.clone();
+        game_state.on_exchange_cancel(move || {
+            let _ = tx.send(UiToCore::ExchangeCancel);
         });
     }
 }

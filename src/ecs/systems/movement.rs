@@ -725,7 +725,10 @@ mod tests {
         app.update();
 
         let anim = app.world().get::<Animation>(entity).unwrap();
-        assert_eq!(anim.anim_type, AnimationType::Creature(MpfAnimationType::Walk));
+        assert_eq!(
+            anim.anim_type,
+            AnimationType::Creature(MpfAnimationType::Walk)
+        );
         assert_eq!(anim.end_index, 1);
         assert!((anim.frame_duration - (WALK_STEP_DURATION / 2.0)).abs() < f32::EPSILON);
         match &anim.mode {
@@ -781,7 +784,10 @@ mod tests {
         app.update();
 
         let anim = app.world().get::<Animation>(entity).unwrap();
-        assert_eq!(anim.anim_type, AnimationType::Creature(MpfAnimationType::Walk));
+        assert_eq!(
+            anim.anim_type,
+            AnimationType::Creature(MpfAnimationType::Walk)
+        );
         assert_eq!(anim.end_index, 3);
         assert!((anim.frame_duration - (WALK_STEP_DURATION / 4.0)).abs() < f32::EPSILON);
         match &anim.mode {

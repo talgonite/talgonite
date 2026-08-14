@@ -107,16 +107,16 @@ impl Plugin for SlintBridgePlugin {
                 crate::slint_support::state_bridge::hide_installer_ui,
             );
 
-    #[cfg(feature = "debug")]
-    app.insert_non_send(ConsoleMetricsModel(None));
+        #[cfg(feature = "debug")]
+        app.insert_non_send(ConsoleMetricsModel(None));
 
-    #[cfg(feature = "debug")]
-    app.add_systems(
-        Last,
-        update_debug_console
-            .run_if(resource_exists::<DebugConsoleWindow>)
-            .after(crate::sys_timing::collect_system_timings),
-    );
+        #[cfg(feature = "debug")]
+        app.add_systems(
+            Last,
+            update_debug_console
+                .run_if(resource_exists::<DebugConsoleWindow>)
+                .after(crate::sys_timing::collect_system_timings),
+        );
     }
 }
 

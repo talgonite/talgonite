@@ -357,11 +357,7 @@ impl UnifiedSpriteBatch {
             .update(handle.index.index(), Instance::default());
     }
 
-    pub fn remove_player(
-        &self,
-        scene: &mut SpriteScene,
-        handle: PlayerSpriteHandle,
-    ) {
+    pub fn remove_player(&self, scene: &mut SpriteScene, handle: PlayerSpriteHandle) {
         self.instances.remove(handle.index.index());
         self.handles.remove(handle.index.index());
         scene.players.release_sprite(handle.key);
@@ -471,11 +467,7 @@ impl UnifiedSpriteBatch {
         false
     }
 
-    pub fn remove_creature(
-        &self,
-        scene: &mut SpriteScene,
-        handle: CreateInstanceHandle,
-    ) {
+    pub fn remove_creature(&self, scene: &mut SpriteScene, handle: CreateInstanceHandle) {
         self.instances.remove(handle.index);
         self.handles.remove(handle.index);
         scene.creatures.release_sprite(handle.sprite_id);
@@ -531,12 +523,7 @@ impl UnifiedSpriteBatch {
         Some(handle)
     }
 
-    pub fn update_item(
-        &self,
-        scene: &SpriteScene,
-        handle: &ItemInstanceHandle,
-        item: Item,
-    ) {
+    pub fn update_item(&self, scene: &SpriteScene, handle: &ItemInstanceHandle, item: Item) {
         let sheet_index = ((item.sprite - 1) as u32 / ITEMS_PER_EPF_FILE) + 1;
         let frame_index = ((item.sprite - 1) as u32 % ITEMS_PER_EPF_FILE) as usize;
         let Some(sheet) = scene.items.loaded_sheets.get(&sheet_index) else {
@@ -554,11 +541,7 @@ impl UnifiedSpriteBatch {
         self.instances.update(handle.index, instance);
     }
 
-    pub fn remove_item(
-        &self,
-        scene: &mut SpriteScene,
-        handle: ItemInstanceHandle,
-    ) {
+    pub fn remove_item(&self, scene: &mut SpriteScene, handle: ItemInstanceHandle) {
         self.instances.remove(handle.index);
         self.handles.remove(handle.index);
         scene.items.release_sheet(handle.sprite_id);

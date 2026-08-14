@@ -364,10 +364,51 @@ fn process_net_packets(
                         session_events.write(SessionEvent::GroupInvite(q));
                     }
                 }
+                &server::Codes::DisplayExchange => {
+                    if let Some(q) = parse_packet::<server::DisplayExchange>(data) {
+                        session_events.write(SessionEvent::DisplayExchange(q));
+                    }
+                }
+                &server::Codes::ForceClientPacket => {
+                    if let Some(q) = parse_packet::<server::ForceClientPacket>(data) {
+                        handle_forced_client_packet(&outbox, q);
+                    }
+                }
                 e => {
                     tracing::warn!(?e, "Unhandled game event");
                 }
             },
+        }
+    }
+}
+
+/// A server-requested client packet. Only the exchange-offer stages are honored;
+/// anything else is dropped so the server can't make the client send arbitrary packets.
+fn handle_forced_client_packet(
+    outbox: &crate::network::PacketOutbox,
+    q: server::ForceClientPacket,
+) {
+    match q.client_op_code {
+        opcode if opcode == client::Codes::ExchangeInteraction as u8 => {
+            match client::ExchangeInteraction::try_from_bytes(&q.data) {
+                Ok(
+                    pkt @ (client::ExchangeInteraction::Start { .. }
+                    | client::ExchangeInteraction::AddItem { .. }
+                    | client::ExchangeInteraction::AddStackableItem { .. }),
+                ) => {
+                    tracing::info!("Sending server-requested exchange packet: {:?}", pkt);
+                    outbox.send(&pkt);
+                }
+                Ok(other) => {
+                    tracing::warn!(?other, "Ignoring forced exchange packet outside allow list");
+                }
+                Err(err) => {
+                    tracing::warn!(?err, "Failed to parse forced exchange packet");
+                }
+            }
+        }
+        opcode => {
+            tracing::warn!(opcode, "Ignoring forced client packet outside allow list");
         }
     }
 }

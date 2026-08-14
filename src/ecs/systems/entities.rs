@@ -75,6 +75,7 @@ pub fn spawn_entities_system(
             | SessionEvent::OtherProfile(_)
             | SessionEvent::WorldList(_)
             | SessionEvent::GroupInvite(_)
+            | SessionEvent::DisplayExchange(_)
             | SessionEvent::NetworkDisconnected => {}
         }
     }
@@ -592,7 +593,9 @@ pub fn queue_creatures_for_loading(
     }
 }
 
-pub fn creature_idle_animation(result: &rendering::scene::creatures::AddCreatureResult) -> Option<Animation> {
+pub fn creature_idle_animation(
+    result: &rendering::scene::creatures::AddCreatureResult,
+) -> Option<Animation> {
     let standing_anim = result.get_animation(MpfAnimationType::Standing)?;
     if standing_anim.frame_count == 0 {
         return None;
@@ -606,8 +609,10 @@ pub fn creature_idle_animation(result: &rendering::scene::creatures::AddCreature
     ));
 
     idle_animation = idle_animation.map(|anim| {
-        result.animations.iter().fold(anim, |acc, anim_info| {
-            match anim_info.animation_type {
+        result
+            .animations
+            .iter()
+            .fold(anim, |acc, anim_info| match anim_info.animation_type {
                 MpfAnimationType::Extra(ratio) if anim_info.frame_count > 0 => Animation::new(
                     AnimationMode::LoopExtra {
                         ratio: ratio as f32 / 100.0,
@@ -619,8 +624,7 @@ pub fn creature_idle_animation(result: &rendering::scene::creatures::AddCreature
                     anim_info.frame_count as usize,
                 ),
                 _ => acc,
-            }
-        })
+            })
     });
 
     idle_animation

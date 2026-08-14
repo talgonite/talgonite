@@ -2,13 +2,13 @@ use bevy::prelude::*;
 
 pub use game_ui::slint_types::{
     CastingIndicator, ChatMessage, ContextMenuEntry, ContextMenuState, Cooldown, DebugConsole,
-    DebugMetric, DragDropState,
-    EquipmentSlotData, GameState, GroupInviteNotification, GroupMember, HotbarEntry, InputBridge,
-    InstallerState, InventoryItem, KeyBinding, LegendMarkData, LobbyState, LoginBridge, LoginState,
-    MailBoardPost, MailBoardState, MainWindow, MenuEntry, NetworkState, NpcDialogData,
-    NpcDialogState, PlatformState, PopupId, PopupManagerState, ProfileData, SavedLoginItem,
-    ServerItem, SettingsState, Skill, SlotPanelType, SocialStatus, SocialStatusEntry,
-    SocialStatusState, SpeechBubble, Spell, WorldLabel, WorldListMemberUi, WorldMapNode,
+    DebugMetric, DragDropState, EquipmentSlotData, ExchangeData, ExchangeItem, GameState,
+    GroupInviteNotification, GroupMember, HotbarEntry, InputBridge, InstallerState, InventoryItem,
+    KeyBinding, LegendMarkData, LobbyState, LoginBridge, LoginState, MailBoardPost, MailBoardState,
+    MainWindow, MenuEntry, NetworkState, NpcDialogData, NpcDialogState, PlatformState, PopupId,
+    PopupManagerState, ProfileData, SavedLoginItem, ServerItem, SettingsState, Skill,
+    SlotPanelType, SocialStatus, SocialStatusEntry, SocialStatusState, SpeechBubble, Spell,
+    WorldLabel, WorldListMemberUi, WorldMapNode,
 };
 
 use tracing_subscriber::prelude::*;
@@ -252,11 +252,17 @@ fn init() -> TraceInit {
                 "Chrome trace recording enabled - exit the app to flush"
             );
         }
-        return TraceInit { flush_guard: chrome_guard, sys_timing };
+        return TraceInit {
+            flush_guard: chrome_guard,
+            sys_timing,
+        };
     }
 
     #[cfg(any(target_os = "android", not(debug_assertions)))]
-    TraceInit { flush_guard: None, sys_timing }
+    TraceInit {
+        flush_guard: None,
+        sys_timing,
+    }
 }
 
 #[cfg(target_os = "android")]

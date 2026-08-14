@@ -87,13 +87,34 @@ export struct Spell {
     cast-progress: float,
 }
 
+export struct ExchangeItem {
+    slot: int,
+    name: string,
+    icon: image,
+    color: int,
+    has_item: bool,
+}
+
+export struct ExchangeData {
+    is_active: bool,
+    other_player_name: string,
+    my_gold: int,
+    other_gold: int,
+    my_items: [ExchangeItem],
+    other_items: [ExchangeItem],
+    my_accepted: bool,
+    other_accepted: bool,
+    pending_quantity_slot: int,
+}
+
 export enum SlotPanelType {
     none,
     item,
     skill,
     spell,
     hotbar,
-    world
+    world,
+    exchange,
 }
 
 // Drag/drop bridge: sources build an opaque payload, drop targets hand it to the host.
@@ -103,6 +124,7 @@ export global DragDropState {
     in-out property <int> source-index: -1;
     pure callback make-transfer(SlotPanelType, int) -> data-transfer;
     callback dropped(data-transfer, SlotPanelType, int, length, length);
+    callback drag-state-changed(bool, SlotPanelType, int);
 }
 
 export struct WorldLabel {
@@ -286,6 +308,17 @@ export global GameState {
     in-out property <bool> is-group-leader: false;
     in-out property <[GroupMember]> group-members: [];
     in-out property <GroupInviteNotification> group-invite: { source-name: "", group-name: "", group-note: "" };
+    in-out property <ExchangeData> exchange: {
+        is_active: false,
+        other_player_name: "",
+        my_gold: 0,
+        other_gold: 0,
+        my_items: [],
+        other_items: [],
+        my_accepted: false,
+        other_accepted: false,
+        pending_quantity_slot: 0,
+    };
     callback world-map-click(int, int, int, int);
     callback set-hotbar-panel(int);
     callback expand-hotbar();
@@ -305,6 +338,14 @@ export global GameState {
     callback leave-group();
     callback request-self-profile();
     callback cancel-spell-targeting();
+
+    // Exchange callbacks
+    callback exchange-add-item(int);
+    callback exchange-add-stackable-item(int, int);
+    callback exchange-set-gold(int);
+    callback exchange-cancel-quantity();
+    callback exchange-accept();
+    callback exchange-cancel();
 }
 
 export global PopupState {

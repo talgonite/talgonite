@@ -121,6 +121,7 @@ pub enum SessionEvent {
     OtherProfile(server::OtherProfile),
     WorldList(server::WorldList),
     GroupInvite(server::DisplayGroupInvite),
+    DisplayExchange(server::DisplayExchange),
     NetworkDisconnected,
 }
 
@@ -187,6 +188,9 @@ pub enum WorldContextAction {
         tile_y: i32,
     },
     SpeakToNpc {
+        entity: Entity,
+    },
+    Trade {
         entity: Entity,
     },
     InteractWalls {

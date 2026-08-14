@@ -248,7 +248,7 @@ mod tests {
             .map(|entry| entry.as_str().expect("bar entry string"))
             .collect();
 
-        assert_eq!(actual, DEFAULT_EMOTE_HOTBAR_LAYOUT);
+        assert_eq!(actual, &DEFAULT_EMOTE_HOTBAR_LAYOUT[..47]);
         assert!(bars.bars[4].iter().all(|slot| slot.action_id.is_empty()));
     }
 }

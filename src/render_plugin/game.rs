@@ -722,7 +722,9 @@ fn draw_frame(
     debug.metrics.last_map_instances = map_renderer_state
         .as_ref()
         .map_or(0, |m| m.map_renderer.instance_count() as u32);
-    debug.metrics.last_sprite_instances = sprite_batch_state.as_ref().map_or(0, |sb| sb.batch.live_len() as u32);
+    debug.metrics.last_sprite_instances = sprite_batch_state
+        .as_ref()
+        .map_or(0, |sb| sb.batch.live_len() as u32);
     debug.metrics.last_effect_instances = effect_manager_state
         .as_ref()
         .map_or(0, |em| em.effect_manager.instance_count() as u32);

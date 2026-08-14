@@ -177,7 +177,10 @@ impl MapRenderer {
     }
 
     pub fn instance_count(&self) -> usize {
-        self.instance_batches.iter().map(|b| b.instances.len()).sum()
+        self.instance_batches
+            .iter()
+            .map(|b| b.instances.len())
+            .sum()
     }
 
     pub fn flush_pending(&mut self, encoder: &mut wgpu::CommandEncoder) {

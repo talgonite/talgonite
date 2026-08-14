@@ -51,9 +51,7 @@ pub fn camera_position_sync(
     camera_query: Query<&Position, (Changed<Position>, With<GameCamera>)>,
 ) {
     for position in camera_query.iter() {
-        camera
-            .camera
-            .set_position(position.x, position.y);
+        camera.camera.set_position(position.x, position.y);
     }
 }
 
@@ -63,9 +61,7 @@ pub fn camera_xray_sync(
     settings: Res<crate::settings_types::Settings>,
 ) {
     if settings.is_changed() {
-        camera
-            .camera
-            .set_fog_desaturation(DEFAULT_FOG_DESATURATION);
+        camera.camera.set_fog_desaturation(DEFAULT_FOG_DESATURATION);
         camera
             .camera
             .set_xray_size(settings.graphics.xray_size.to_shader_multiplier());

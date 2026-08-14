@@ -77,41 +77,38 @@ pub fn start_spell_cast(
                 }
             }
 
-            match spell.spell_type {
-                SpellType::Targeted => {
-                    targeting_state.pending_target = Some(PendingTargetSpell {
+            if spell.spell_type == SpellType::NoTarget {
+                targeting_state.pending_target = None;
+                queue_state.queued_spell = None;
+                casting_state.active_cast = None;
+
+                if spell.cast_lines == 0 {
+                    outbox.send(&SpellUse {
+                        source_slot: *slot,
+                        args: SpellUseArgs::None,
+                    });
+                } else {
+                    outbox.send(&BeginChant {
+                        cast_line_count: spell.cast_lines,
+                    });
+                    outbox.send(&SpellChant {
+                        chant_message: "1".to_string(),
+                    });
+
+                    casting_state.active_cast = Some(ActiveSpellCast {
                         spell_id: spell.id.clone(),
+                        spell_type: spell.spell_type,
                         total_cast_lines: spell.cast_lines,
+                        current_line: 1,
+                        time_since_last_chant: 0.0,
+                        target: None,
                     });
                 }
-                _ => {
-                    targeting_state.pending_target = None;
-                    queue_state.queued_spell = None;
-                    casting_state.active_cast = None;
-
-                    if spell.cast_lines == 0 {
-                        outbox.send(&SpellUse {
-                            source_slot: *slot,
-                            args: SpellUseArgs::None,
-                        });
-                    } else {
-                        outbox.send(&BeginChant {
-                            cast_line_count: spell.cast_lines,
-                        });
-                        outbox.send(&SpellChant {
-                            chant_message: "1".to_string(),
-                        });
-
-                        casting_state.active_cast = Some(ActiveSpellCast {
-                            spell_id: spell.id.clone(),
-                            spell_type: spell.spell_type,
-                            total_cast_lines: spell.cast_lines,
-                            current_line: 1,
-                            time_since_last_chant: 0.0,
-                            target: None,
-                        });
-                    }
-                }
+            } else {
+                targeting_state.pending_target = Some(PendingTargetSpell {
+                    spell_id: spell.id.clone(),
+                    total_cast_lines: spell.cast_lines,
+                });
             }
         }
     }
@@ -271,20 +268,35 @@ pub fn handle_spell_targeting(
 
 pub fn update_targeting_hover(
     targeting_state: Res<SpellTargetingState>,
+    active_drag: Res<crate::ecs::interaction::ActiveDragState>,
     hovered_entity: Res<HoveredEntity>,
     mut commands: Commands,
-    targetable_query: Query<(Entity, Option<&Player>, Option<&NPC>)>,
+    targetable_query: Query<(
+        Entity,
+        Option<&Player>,
+        Option<&NPC>,
+        Option<&crate::ecs::components::LocalPlayer>,
+    )>,
     with_hover: Query<Entity, With<TargetingHover>>,
 ) {
     let is_targeting = targeting_state.pending_target.is_some();
+    let is_dragging_action = active_drag.is_dragging
+        && (active_drag.source_panel == game_types::SlotPanelType::Item
+            || active_drag.source_panel == game_types::SlotPanelType::Spell);
 
-    if is_targeting {
+    if is_targeting || is_dragging_action {
         if let Some(hovered) = hovered_entity.0 {
-            if let Ok((entity, player, npc)) = targetable_query.get(hovered) {
-                if player.is_some() || npc.is_some() {
-                    if !with_hover.contains(entity) {
-                        commands.entity(entity).insert(TargetingHover::default());
-                    }
+            if let Ok((entity, player, npc, local_player)) = targetable_query.get(hovered) {
+                let valid = if active_drag.is_dragging
+                    && active_drag.source_panel == game_types::SlotPanelType::Item
+                {
+                    (player.is_some() && local_player.is_none()) || npc.is_some()
+                } else {
+                    player.is_some() || npc.is_some()
+                };
+
+                if valid && !with_hover.contains(entity) {
+                    commands.entity(entity).insert(TargetingHover::default());
                 }
             }
         }

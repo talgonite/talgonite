@@ -581,6 +581,11 @@ fn build_world_context_entries(
                             tile_y: hit.tile_y,
                         },
                     );
+                    push_world_context_entry(
+                        &mut entries,
+                        "Trade",
+                        WorldContextAction::Trade { entity: hit.entity },
+                    );
                 }
 
                 push_world_context_entry(

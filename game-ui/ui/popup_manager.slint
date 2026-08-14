@@ -15,6 +15,7 @@ export enum PopupId {
     Group,
     ContextMenu,
     GroupInvite,
+    Exchange,
     LoginModal,
     ServerManager,
     CharacterCreation,
@@ -39,6 +40,8 @@ export global PopupManagerState {
     in-out property <bool> group-open: false;
     in-out property <bool> context-menu-open: false;
     in-out property <bool> group-invite-open: false;
+    in-out property <bool> exchange-open: false;
+    in-out property <bool> exchange-overlay-open: false;
 
     // User requests, forwarded to Rust via the UI bridge.
     callback open-request(PopupId);

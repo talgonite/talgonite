@@ -292,20 +292,13 @@ impl MinimapRenderer {
         }
     }
 
-    pub fn add_marker(
-        &self,
-        marker: MinimapMarker,
-    ) -> Option<MinimapMarkerHandle> {
+    pub fn add_marker(&self, marker: MinimapMarker) -> Option<MinimapMarkerHandle> {
         let index = self.markers.add(self.marker_instance(marker))?;
 
         Some(MinimapMarkerHandle { index })
     }
 
-    pub fn update_marker(
-        &self,
-        handle: MinimapMarkerHandle,
-        marker: MinimapMarker,
-    ) {
+    pub fn update_marker(&self, handle: MinimapMarkerHandle, marker: MinimapMarker) {
         self.markers
             .update(handle.index, self.marker_instance(marker));
     }

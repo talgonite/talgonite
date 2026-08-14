@@ -120,6 +120,33 @@ impl BoardSessionState {
     }
 }
 
+#[derive(Resource, Default, Debug, Clone)]
+pub struct ExchangeSessionState {
+    pub is_active: bool,
+    pub other_player_id: u32,
+    pub other_player_name: String,
+    pub my_gold: u32,
+    pub other_gold: u32,
+    pub my_items: Vec<ExchangeSlotItem>,
+    pub other_items: Vec<ExchangeSlotItem>,
+    pub my_accepted: bool,
+    pub other_accepted: bool,
+    pub quantity_prompt: Option<u8>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ExchangeSlotItem {
+    pub sprite: u16,
+    pub color: u8,
+    pub name: String,
+}
+
+impl ExchangeSessionState {
+    pub fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
 #[derive(Message)]
 pub struct UiInbound(pub UiToCore);
 
@@ -140,6 +167,7 @@ impl Plugin for UiBridgePlugin {
             .init_resource::<PlayerProfileState>()
             .init_resource::<GroupState>()
             .init_resource::<BoardSessionState>()
+            .init_resource::<ExchangeSessionState>()
             .init_resource::<crate::ecs::hotbar::HotbarState>()
             .init_resource::<crate::ecs::hotbar::HotbarPanelState>()
             .init_resource::<ActiveMenuContext>()
@@ -235,6 +263,8 @@ struct UiStateResources<'w> {
     ability_state: Res<'w, AbilityState>,
     world_list_state: ResMut<'w, WorldListState>,
     board_state: ResMut<'w, BoardSessionState>,
+    exchange_state: ResMut<'w, ExchangeSessionState>,
+    active_drag: ResMut<'w, crate::ecs::interaction::ActiveDragState>,
 }
 
 #[derive(bevy::ecs::system::SystemParam)]
@@ -283,6 +313,8 @@ fn handle_ui_inbound_ingame(
     let ability_state = ui_state.ability_state;
     let mut world_list_state = ui_state.world_list_state;
     let mut board_state = ui_state.board_state;
+    let mut exchange_state = ui_state.exchange_state;
+    let mut active_drag = ui_state.active_drag;
     let mut input_bindings = bindings.input_bindings;
     let mut unified_bindings = bindings.unified_bindings;
     let mut zoom_state = interaction_res.zoom_state;
@@ -359,6 +391,13 @@ fn handle_ui_inbound_ingame(
                     crate::events::WorldContextAction::SpeakToNpc { entity } => {
                         if let Ok((entity_id, _)) = world_context.entity_ids.get(entity) {
                             outbox.send(&packets::client::Click::TargetEntity(entity_id.id));
+                        }
+                    }
+                    crate::events::WorldContextAction::Trade { entity } => {
+                        if let Ok((entity_id, _)) = world_context.entity_ids.get(entity) {
+                            outbox.send(&packets::client::ExchangeInteraction::Start {
+                                other_player_id: entity_id.id,
+                            });
                         }
                     }
                     crate::events::WorldContextAction::InteractWalls { walls } => {
@@ -838,7 +877,14 @@ fn handle_ui_inbound_ingame(
             }
             UiToCore::ActivateAction { category, index } => match category {
                 SlotPanelType::Item => {
-                    inventory_events.write(InventoryEvent::Use { slot: *index as u8 });
+                    if exchange_state.is_active && !exchange_state.my_accepted {
+                        outbox.send(&packets::client::ExchangeInteraction::AddItem {
+                            other_player_id: exchange_state.other_player_id,
+                            source_slot: *index as u8,
+                        });
+                    } else {
+                        inventory_events.write(InventoryEvent::Use { slot: *index as u8 });
+                    }
                 }
                 SlotPanelType::Skill => {
                     ability_events.write(AbilityEvent::UseSkill { slot: *index as u8 });
@@ -891,7 +937,10 @@ fn handle_ui_inbound_ingame(
                         }
                     }
                 }
-                SlotPanelType::World | SlotPanelType::None | SlotPanelType::Macro => {}
+                SlotPanelType::World
+                | SlotPanelType::None
+                | SlotPanelType::Macro
+                | SlotPanelType::Exchange => {}
             },
             UiToCore::DragDropAction {
                 src_category,
@@ -1054,7 +1103,7 @@ fn handle_ui_inbound_ingame(
                                         outbox.send(&client::ItemDroppedOnCreature {
                                             source_slot: item.slot,
                                             target_id: eid.id,
-                                            count: 1, // Only drop 1 as requested
+                                            count: if item.stackable { 0 } else { 1 },
                                         });
                                     }
                                 } else {
@@ -1077,6 +1126,38 @@ fn handle_ui_inbound_ingame(
                                     ),
                                     count: 1, // Only drop 1 as requested
                                 });
+                            }
+                        }
+                    }
+
+                    if matches!(src_category, SlotPanelType::Spell) {
+                        if let Some((_, entity_id, is_creature, _, _)) = hits.first() {
+                            if *is_creature {
+                                if let Some(eid) = entity_id {
+                                    if let Some(spell) = ability_state
+                                        .spells
+                                        .iter()
+                                        .find(|s| s.slot == *src_index as u8)
+                                    {
+                                        if spell.cast_lines == 0 {
+                                            outbox.send(&client::SpellUse {
+                                                source_slot: spell.slot,
+                                                args: client::SpellUseArgs::Targeted {
+                                                    target_id: eid.id,
+                                                    target_x: tile_i.0.max(0) as u16,
+                                                    target_y: tile_i.1.max(0) as u16,
+                                                },
+                                            });
+                                        } else {
+                                            outbox.send(&client::BeginChant {
+                                                cast_line_count: spell.cast_lines,
+                                            });
+                                            outbox.send(&client::SpellChant {
+                                                chant_message: "1".to_string(),
+                                            });
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1147,6 +1228,68 @@ fn handle_ui_inbound_ingame(
             UiToCore::RequestSelfProfile => {
                 outbox.send(&packets::client::SelfProfileRequest {});
             }
+            UiToCore::ExchangeAddItem { slot } => {
+                if exchange_state.is_active && !exchange_state.my_accepted {
+                    outbox.send(&packets::client::ExchangeInteraction::AddItem {
+                        other_player_id: exchange_state.other_player_id,
+                        source_slot: *slot,
+                    });
+                }
+            }
+            UiToCore::ExchangeAddStackableItem { slot, count } => {
+                if exchange_state.is_active && !exchange_state.my_accepted {
+                    tracing::info!("Offering {}x from inventory slot {}", count, slot);
+                    outbox.send(&packets::client::ExchangeInteraction::AddStackableItem {
+                        other_player_id: exchange_state.other_player_id,
+                        source_slot: *slot,
+                        item_count: *count,
+                    });
+                    exchange_state.quantity_prompt = None;
+                }
+            }
+            UiToCore::ExchangeSetGold { amount } => {
+                if exchange_state.is_active && !exchange_state.my_accepted {
+                    let amt = (*amount).max(0) as u32;
+                    exchange_state.my_gold = amt;
+                    outbox.send(&packets::client::ExchangeInteraction::SetGold {
+                        other_player_id: exchange_state.other_player_id,
+                        gold_amount: amt,
+                    });
+                }
+            }
+            UiToCore::ExchangeAccept => {
+                if exchange_state.is_active && !exchange_state.my_accepted {
+                    exchange_state.quantity_prompt = None;
+                    tracing::info!(
+                        "Sending ExchangeInteraction::Accept for other_player_id: {}",
+                        exchange_state.other_player_id
+                    );
+                    exchange_state.my_accepted = true;
+                    outbox.send(&packets::client::ExchangeInteraction::Accept {
+                        other_player_id: exchange_state.other_player_id,
+                    });
+                }
+            }
+            UiToCore::ExchangeCancelQuantity => {
+                exchange_state.quantity_prompt = None;
+            }
+            UiToCore::ExchangeCancel => {
+                if exchange_state.is_active {
+                    outbox.send(&packets::client::ExchangeInteraction::Cancel {
+                        other_player_id: exchange_state.other_player_id,
+                    });
+                    exchange_state.reset();
+                }
+            }
+            UiToCore::DragStateChanged {
+                is_dragging,
+                panel,
+                index,
+            } => {
+                active_drag.is_dragging = *is_dragging;
+                active_drag.source_panel = *panel;
+                active_drag.source_index = *index;
+            }
             _ => {}
         }
     }
@@ -1162,6 +1305,7 @@ pub fn handle_popup_requests(
     outbox: Res<crate::network::PacketOutbox>,
     mut menu_ctx: ResMut<ActiveMenuContext>,
     mut board_state: ResMut<BoardSessionState>,
+    mut exchange_state: ResMut<ExchangeSessionState>,
     mut world_context: ResMut<ActiveWorldContextMenu>,
     mut outbound: MessageWriter<UiOutbound>,
 ) {
@@ -1191,6 +1335,7 @@ pub fn handle_popup_requests(
                 &outbox,
                 &mut menu_ctx,
                 &mut board_state,
+                &mut exchange_state,
                 &mut world_context,
                 &mut outbound,
             );
@@ -1205,6 +1350,7 @@ fn popup_close_coordination(
     outbox: &Res<crate::network::PacketOutbox>,
     menu_ctx: &mut ActiveMenuContext,
     board_state: &mut BoardSessionState,
+    exchange_state: &mut ExchangeSessionState,
     world_context: &mut ActiveWorldContextMenu,
     outbound: &mut MessageWriter<UiOutbound>,
 ) {
@@ -1226,6 +1372,14 @@ fn popup_close_coordination(
         }
         PopupId::MailBoard => {
             board_state.invalidate();
+        }
+        PopupId::Exchange => {
+            if exchange_state.is_active {
+                outbox.send(&packets::client::ExchangeInteraction::Cancel {
+                    other_player_id: exchange_state.other_player_id,
+                });
+                exchange_state.reset();
+            }
         }
         PopupId::ContextMenu => {
             world_context.entries.clear();
@@ -1930,7 +2084,10 @@ fn bridge_session_events(
     mut show_profile: MessageWriter<crate::slint_plugin::ShowSelfProfileEvent>,
     mut world_list_state: ResMut<WorldListState>,
     mut board_state: ResMut<BoardSessionState>,
+    mut exchange_state: ResMut<ExchangeSessionState>,
     mut group_state: ResMut<GroupState>,
+    mut popup_manager: ResMut<crate::slint_support::popups::PopupManager>,
+    mut chat_events: MessageWriter<ChatEvent>,
 ) {
     for evt in session_events.read() {
         match evt {
@@ -2412,6 +2569,102 @@ fn bridge_session_events(
                             group_name: String::new(),
                             group_note: String::new(),
                         });
+                    }
+                }
+            }
+            SessionEvent::DisplayExchange(pkt) => {
+                tracing::info!("Received DisplayExchange: {:?}", pkt);
+                match pkt {
+                    packets::server::DisplayExchange::Start {
+                        other_user_id,
+                        other_user_name,
+                    } => {
+                        exchange_state.reset();
+                        exchange_state.is_active = true;
+                        exchange_state.other_player_id = *other_user_id;
+                        exchange_state.other_player_name = other_user_name.clone();
+                        popup_manager.open(crate::slint_support::popups::PopupId::Exchange);
+                    }
+                    packets::server::DisplayExchange::AddItem {
+                        right_side,
+                        exchange_index: _,
+                        item_sprite,
+                        item_color,
+                        item_name,
+                    } => {
+                        let item = ExchangeSlotItem {
+                            sprite: *item_sprite,
+                            color: *item_color,
+                            name: item_name.clone(),
+                        };
+                        let list = if *right_side {
+                            &mut exchange_state.other_items
+                        } else {
+                            &mut exchange_state.my_items
+                        };
+                        // The wire index is not a reliable placement key; items append in arrival order.
+                        list.push(item);
+                        if *right_side {
+                            exchange_state.other_accepted = false;
+                        } else {
+                            exchange_state.my_accepted = false;
+                        }
+                    }
+                    packets::server::DisplayExchange::SetGold {
+                        right_side,
+                        gold_amount,
+                    } => {
+                        if *right_side {
+                            exchange_state.other_gold = *gold_amount;
+                            exchange_state.other_accepted = false;
+                        } else {
+                            exchange_state.my_gold = *gold_amount;
+                            exchange_state.my_accepted = false;
+                        }
+                    }
+                    packets::server::DisplayExchange::RequestAmount { from_slot } => {
+                        if exchange_state.is_active {
+                            exchange_state.quantity_prompt = Some(*from_slot);
+                        }
+                    }
+                    packets::server::DisplayExchange::Accept {
+                        right_side,
+                        message,
+                    } => {
+                        if *right_side {
+                            exchange_state.other_accepted = true;
+                        } else {
+                            exchange_state.my_accepted = true;
+                        }
+
+                        if exchange_state.my_accepted && exchange_state.other_accepted {
+                            popup_manager.close(crate::slint_support::popups::PopupId::Exchange);
+                            exchange_state.reset();
+                            if !message.is_empty() {
+                                chat_events.write(ChatEvent::ServerMessage(
+                                    packets::server::ServerMessage {
+                                        message_type:
+                                            packets::server::ServerMessageType::ActiveMessage,
+                                        message: message.clone(),
+                                    },
+                                ));
+                            }
+                        }
+                    }
+                    packets::server::DisplayExchange::Cancel {
+                        right_side: _,
+                        message,
+                    } => {
+                        popup_manager.close(crate::slint_support::popups::PopupId::Exchange);
+                        exchange_state.reset();
+                        if !message.is_empty() {
+                            chat_events.write(ChatEvent::ServerMessage(
+                                packets::server::ServerMessage {
+                                    message_type: packets::server::ServerMessageType::ActiveMessage,
+                                    message: message.clone(),
+                                },
+                            ));
+                        }
                     }
                 }
             }

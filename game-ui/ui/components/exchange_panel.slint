@@ -1,0 +1,648 @@
+import { GameState, SlotPanelType, ExchangeItem, InventoryItem, PopupState } from "../game_state.slint";
+import { PopupManagerState, PopupId } from "../popup_manager.slint";
+import { Theme } from "../theme.slint";
+import { BasePanel } from "base_panel.slint";
+import { Icon } from "icon.slint";
+import { LineEdit, ScrollView } from "std-widgets.slint";
+
+component ExchangeSlotRow inherits Rectangle {
+    in property <ExchangeItem> item;
+    in property <int> slot-index: 0;
+    in property <bool> is-my-side: false;
+
+    height: 38px;
+    background: Theme.surface-row;
+    border-radius: Theme.radius-small;
+    border-width: 1px;
+    border-color: Theme.border-muted;
+
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+        spacing: 8px;
+        alignment: start;
+
+        Rectangle {
+            width: 32px;
+            height: 32px;
+            y: (parent.height - self.height) / 2;
+            background: Theme.surface-muted;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: Theme.border-muted;
+
+            if item.has_item: Icon {
+                icon: item.icon;
+            }
+        }
+
+        Text {
+            text: item.has_item ? item.name : (root.is-my-side ? "Empty slot" : "Empty slot");
+            font-size: Theme.font-size-medium;
+            color: item.has_item ? Theme.foreground-strong : Theme.neutral-faint;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+component ItemPickerSlot inherits Rectangle {
+    in property <InventoryItem> item;
+    in property <int> slot;
+    callback selected();
+    property <bool> has-item: item.slot > 0;
+
+    background: touch.has-hover ? Theme.surface-secondary : Theme.surface-muted;
+    border-radius: Theme.radius-small;
+    border-width: 1px;
+    border-color: touch.has-hover ? Theme.accent : Theme.border-muted;
+    animate background { duration: 60ms; }
+
+    if has-item: Rectangle {
+        width: parent.width;
+        height: parent.height;
+        Icon {
+            icon: item.icon;
+        }
+
+        if item.quantity > 1: Text {
+            text: item.quantity;
+            font-size: Theme.font-size-caption;
+            font-weight: 700;
+            color: Theme.foreground-strong;
+            x: parent.width - self.width - 4px;
+            y: parent.height - self.height - 2px;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: has-item;
+        mouse-cursor: has-item ? pointer : default;
+        clicked => {
+            if (has-item) {
+                root.selected();
+            }
+        }
+    }
+
+    property <bool> has-tooltip: touch.has-hover && has-item;
+    changed has-tooltip => {
+        if (root.has-tooltip) {
+            PopupState.show(item.name, self.absolute-position.x, self.absolute-position.y, root.width, root.height);
+        } else {
+            PopupState.hide();
+        }
+    }
+}
+
+export component ExchangePanel inherits BasePanel {
+    title: "Exchange";
+    width: 620px;
+    height: 480px;
+
+    // Modal state for adding items and picking stack counts
+    property <bool> show-item-picker: PopupManagerState.exchange-overlay-open;
+    property <string> gold-text: "";
+
+    init => {
+        PopupManagerState.exchange-overlay-open = false;
+    }
+
+    close => {
+        GameState.exchange-cancel();
+        PopupManagerState.exchange-overlay-open = false;
+        PopupManagerState.close-request(PopupId.Exchange);
+    }
+
+    VerticalLayout {
+        padding: Theme.spacing-medium;
+        spacing: Theme.spacing-small;
+
+        // Two-Column Main Content Layout
+        HorizontalLayout {
+            spacing: Theme.spacing-medium;
+
+            // ==== Left Column: Your Offer ====
+            VerticalLayout {
+                width: 280px;
+                spacing: 6px;
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text {
+                        text: GameState.player_name != "" ? GameState.player_name : "Your Offer";
+                        font-size: Theme.font-size-medium;
+                        font-weight: 700;
+                        color: Theme.info-soft;
+                        vertical-alignment: center;
+                    }
+                    if GameState.exchange.my_accepted: Rectangle {
+                        height: 20px;
+                        background: Theme.fill-success;
+                        border-radius: 3px;
+                        border-width: 1px;
+                        border-color: Theme.status-online.with-alpha(0.6);
+                        HorizontalLayout {
+                            padding-left: 6px;
+                            padding-right: 6px;
+                            Text {
+                                text: "✓ Locked In";
+                                font-size: Theme.font-size-small;
+                                font-weight: 600;
+                                color: Theme.foreground-strong;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                // Scrollable offered items box
+                Rectangle {
+                    background: Theme.surface-primary;
+                    border-radius: Theme.radius-small;
+                    border-width: 1px;
+                    border-color: Theme.border-panel;
+
+                    VerticalLayout {
+                        padding: 6px;
+                        spacing: 6px;
+
+                        // Add item button (disabled if already accepted)
+                        add-btn := Rectangle {
+                            height: 28px;
+                            background: GameState.exchange.my_accepted ? Theme.fill-muted : (add-touch.has-hover ? Theme.fill-info-hover : Theme.fill-info);
+                            border-radius: 4px;
+                            border-width: 1px;
+                            border-color: GameState.exchange.my_accepted ? Theme.fill-muted-hover : Theme.info-border;
+                            animate background { duration: 80ms; }
+                            Text {
+                                text: "+ Add Item";
+                                font-size: Theme.font-size-medium;
+                                font-weight: 600;
+                                color: Theme.foreground-strong;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            add-touch := TouchArea {
+                                enabled: !GameState.exchange.my_accepted;
+                                mouse-cursor: !GameState.exchange.my_accepted ? pointer : default;
+                                clicked => {
+                                    PopupManagerState.exchange-overlay-open = true;
+                                }
+                            }
+                        }
+
+                        // Scrollable list of offered items
+                        ScrollView {
+                            viewport-width: self.visible-width;
+                            VerticalLayout {
+                                spacing: 4px;
+                                for item[i] in GameState.exchange.my_items: ExchangeSlotRow {
+                                    item: item;
+                                    slot-index: i;
+                                    is-my-side: true;
+                                }
+                                if GameState.exchange.my_items.length == 0: Rectangle {
+                                    height: 120px;
+                                    Text {
+                                        text: "No items offered yet";
+                                        font-size: Theme.font-size-medium;
+                                        color: Theme.neutral-faint;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Gold input row
+                HorizontalLayout {
+                    spacing: 6px;
+                    height: 32px;
+                    alignment: start;
+                    Text {
+                        text: "Offer Gold:";
+                        font-size: Theme.font-size-medium;
+                        color: Theme.neutral-strong;
+                        vertical-alignment: center;
+                    }
+                    gold-edit := LineEdit {
+                        width: 150px;
+                        input-type: number;
+                        placeholder-text: "0";
+                        text: (GameState.exchange.my_gold == 0 && !GameState.exchange.my_accepted && !GameState.exchange.other_accepted)
+                            ? root.gold-text
+                            : (GameState.exchange.my_gold > 0 ? GameState.exchange.my_gold : "");
+                        enabled: GameState.exchange.my_gold == 0 && !GameState.exchange.my_accepted && !GameState.exchange.other_accepted;
+                        changed text => {
+                            root.gold-text = self.text;
+                        }
+                        accepted => {
+                            if (GameState.exchange.my_gold == 0 && !GameState.exchange.my_accepted && !GameState.exchange.other_accepted && self.text != "") {
+                                GameState.exchange-set-gold(Math.max(0, self.text.to-float()));
+                            }
+                        }
+                        changed has-focus => {
+                            if (!self.has-focus && GameState.exchange.my_gold == 0 && !GameState.exchange.my_accepted && !GameState.exchange.other_accepted && self.text != "") {
+                                GameState.exchange-set-gold(Math.max(0, self.text.to-float()));
+                            }
+                        }
+                        key-pressed(event) => {
+                            if (event.text == "\u{001b}") {
+                                root.close();
+                                return accept;
+                            }
+                            return reject;
+                        }
+                    }
+                }
+            }
+
+            // Divider
+            Rectangle {
+                width: 1px;
+                background: Theme.border-panel;
+            }
+
+            // ==== Right Column: Partner's Offer ====
+            VerticalLayout {
+                width: 280px;
+                spacing: 6px;
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text {
+                        text: GameState.exchange.other_player_name != "" ? GameState.exchange.other_player_name : "Partner's Offer";
+                        font-size: Theme.font-size-medium;
+                        font-weight: 700;
+                        color: Theme.info-soft;
+                        vertical-alignment: center;
+                    }
+                    if GameState.exchange.other_accepted: Rectangle {
+                        height: 20px;
+                        background: Theme.fill-success;
+                        border-radius: 3px;
+                        border-width: 1px;
+                        border-color: Theme.status-online.with-alpha(0.6);
+                        HorizontalLayout {
+                            padding-left: 6px;
+                            padding-right: 6px;
+                            Text {
+                                text: "✓ Ready";
+                                font-size: Theme.font-size-small;
+                                font-weight: 600;
+                                color: Theme.foreground-strong;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                // Scrollable list of partner items
+                Rectangle {
+                    background: Theme.surface-primary;
+                    border-radius: Theme.radius-small;
+                    border-width: 1px;
+                    border-color: Theme.border-panel;
+
+                    ScrollView {
+                        viewport-width: self.visible-width;
+                        VerticalLayout {
+                            padding: 6px;
+                            spacing: 4px;
+                            for item[i] in GameState.exchange.other_items: ExchangeSlotRow {
+                                item: item;
+                                slot-index: i;
+                                is-my-side: false;
+                            }
+                            if GameState.exchange.other_items.length == 0: Rectangle {
+                                height: 154px;
+                                Text {
+                                    text: "Waiting for partner items...";
+                                    font-size: Theme.font-size-medium;
+                                    color: Theme.neutral-faint;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Partner Gold display
+                HorizontalLayout {
+                    spacing: 6px;
+                    height: 32px;
+                    alignment: start;
+                    Text {
+                        text: "Partner Gold:";
+                        font-size: Theme.font-size-medium;
+                        color: Theme.neutral-strong;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: GameState.exchange.other_gold > 0 ? (GameState.exchange.other_gold + " Gold") : "0 Gold";
+                        font-size: Theme.font-size-medium;
+                        font-weight: 600;
+                        color: Theme.foreground-strong;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            height: 1px;
+            background: Theme.border-panel;
+        }
+
+        // Bottom Bar: Status Message & Action Buttons
+        HorizontalLayout {
+            spacing: Theme.spacing-medium;
+            alignment: space-between;
+
+            // Status message
+            HorizontalLayout {
+                alignment: start;
+                spacing: 8px;
+                Text {
+                    text: GameState.exchange.my_accepted
+                        ? (GameState.exchange.other_accepted ? "Both accepted! Completing exchange..." : "You have locked in. Waiting for partner...")
+                        : (GameState.exchange.other_accepted ? "Partner is ready! Review their offer and click Accept." : "Offer items and gold, then click Accept.");
+                    font-size: Theme.font-size-small;
+                    color: GameState.exchange.other_accepted ? Theme.info-soft : Theme.neutral-strong;
+                    vertical-alignment: center;
+                }
+            }
+
+            // Buttons
+            HorizontalLayout {
+                spacing: Theme.spacing-medium;
+                alignment: end;
+
+                accept-btn := Rectangle {
+                    width: 130px;
+                    height: 34px;
+                    background: GameState.exchange.my_accepted ? Theme.fill-muted : (accept-touch.has-hover ? Theme.fill-success-hover : Theme.fill-success);
+                    border-radius: 5px;
+                    border-width: 1px;
+                    border-color: GameState.exchange.my_accepted ? Theme.fill-muted-hover : Theme.status-online.with-alpha(0.6);
+                    animate background { duration: 80ms; }
+                    Text {
+                        text: GameState.exchange.my_accepted ? "Waiting..." : "Accept Trade";
+                        font-size: Theme.font-size-medium;
+                        font-weight: 600;
+                        color: Theme.foreground-strong;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    accept-touch := TouchArea {
+                        enabled: !GameState.exchange.my_accepted;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            if (GameState.exchange.my_gold == 0 && !GameState.exchange.my_accepted && !GameState.exchange.other_accepted && gold-edit.text != "") {
+                                GameState.exchange-set-gold(Math.max(0, gold-edit.text.to-float()));
+                            }
+                            GameState.exchange-accept();
+                        }
+                    }
+                }
+
+                cancel-btn := Rectangle {
+                    width: 100px;
+                    height: 34px;
+                    background: cancel-touch.has-hover ? Theme.status-busy : Theme.fill-danger;
+                    border-radius: 5px;
+                    border-width: 1px;
+                    border-color: Theme.status-busy.with-alpha(0.6);
+                    animate background { duration: 80ms; }
+                    Text {
+                        text: "Cancel";
+                        font-size: Theme.font-size-medium;
+                        font-weight: 600;
+                        color: Theme.foreground-strong;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    cancel-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            GameState.exchange-cancel();
+                            PopupManagerState.close-request(PopupId.Exchange);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ==== Overlay 1: Item Selection Modal ====
+    if root.show-item-picker: Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: Theme.overlay-strong;
+
+        TouchArea {
+            // Absorb background clicks
+        }
+
+        Rectangle {
+            width: 380px;
+            height: 360px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: Theme.surface-modal;
+            border-radius: Theme.radius-medium;
+            border-width: 1px;
+            border-color: Theme.border-accent;
+
+            VerticalLayout {
+                padding: Theme.spacing-medium;
+                spacing: Theme.spacing-small;
+
+                // Modal Header
+                HorizontalLayout {
+                    alignment: space-between;
+                    Text {
+                        text: "Select Item to Offer";
+                        font-size: Theme.font-size-large;
+                        font-weight: 700;
+                        color: Theme.foreground-strong;
+                        vertical-alignment: center;
+                    }
+                    Rectangle {
+                        width: 24px;
+                        height: 24px;
+                        background: picker-close-touch.has-hover ? Theme.fill-danger : Theme.surface-muted;
+                        border-radius: 4px;
+                        Text {
+                            text: "✕";
+                            font-size: Theme.font-size-small;
+                            font-weight: 700;
+                            color: Theme.foreground-strong;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        picker-close-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                PopupManagerState.exchange-overlay-open = false;
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    height: 1px;
+                    background: Theme.border-panel;
+                }
+
+                // Inventory Grid
+                ScrollView {
+                    viewport-width: self.visible-width;
+                    GridLayout {
+                        padding: 6px;
+                        spacing: 6px;
+                        for slot[i] in GameState.inventory: Rectangle {
+                            row: Math.floor(i / 6);
+                            col: Math.mod(i, 6);
+                            width: 48px;
+                            height: 48px;
+                            ItemPickerSlot {
+                                item: slot;
+                                slot: slot.slot;
+                                selected => {
+                                    GameState.exchange-add-item(slot.slot);
+                                    PopupManagerState.exchange-overlay-open = false;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ==== Overlay 2: Stack Quantity Picker Modal ====
+    if GameState.exchange.pending-quantity-slot > 0: Rectangle {
+        init => {
+            qty-input.focus();
+        }
+        width: parent.width;
+        height: parent.height;
+        background: Theme.overlay-strong;
+
+        TouchArea {
+            // Absorb background clicks
+        }
+
+        Rectangle {
+            width: 320px;
+            height: 180px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: Theme.surface-modal;
+            border-radius: Theme.radius-medium;
+            border-width: 1px;
+            border-color: Theme.border-accent;
+
+            VerticalLayout {
+                padding: Theme.spacing-medium;
+                spacing: Theme.spacing-small;
+                alignment: space-between;
+
+                // Header
+                Text {
+                    text: "Offer Quantity";
+                    font-size: Theme.font-size-large;
+                    font-weight: 700;
+                    color: Theme.foreground-strong;
+                }
+
+                Text {
+                    text: "How many will you give?";
+                    font-size: Theme.font-size-medium;
+                    color: Theme.info-soft;
+                }
+
+                // Count input
+                qty-input := LineEdit {
+                    width: 120px;
+                    height: 32px;
+                    input-type: number;
+                    text: "";
+                    accepted => {
+                        if (self.text != "") {
+                            GameState.exchange-add-stackable-item(
+                                GameState.exchange.pending-quantity-slot,
+                                Math.max(0, self.text.to-float())
+                            );
+                        }
+                    }
+                    key-pressed(event) => {
+                        if (event.text == "\u{001b}") {
+                            GameState.exchange-cancel-quantity();
+                            return accept;
+                        }
+                        return reject;
+                    }
+                }
+
+                // Action buttons
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: end;
+
+                    Rectangle {
+                        width: 90px;
+                        height: 32px;
+                        background: offer-touch.has-hover ? Theme.fill-success-hover : Theme.fill-success;
+                        border-radius: 4px;
+                        Text {
+                            text: "Offer";
+                            font-size: Theme.font-size-medium;
+                            font-weight: 600;
+                            color: Theme.foreground-strong;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        offer-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                if (qty-input.text != "") {
+                                    GameState.exchange-add-stackable-item(
+                                        GameState.exchange.pending-quantity-slot,
+                                        Math.max(0, qty-input.text.to-float())
+                                    );
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: 80px;
+                        height: 32px;
+                        background: cancel-qty-touch.has-hover ? Theme.fill-muted-hover : Theme.fill-muted;
+                        border-radius: 4px;
+                        Text {
+                            text: "Cancel";
+                            font-size: Theme.font-size-medium;
+                            font-weight: 600;
+                            color: Theme.foreground-strong;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        cancel-qty-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                GameState.exchange-cancel-quantity();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

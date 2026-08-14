@@ -109,13 +109,17 @@ pub fn finish_frame_metrics(
         combined.removes += snap.removes;
     }
 
-    metrics.last_instance_updates = combined.updates.saturating_sub(metrics.prev_instance_updates);
+    metrics.last_instance_updates = combined
+        .updates
+        .saturating_sub(metrics.prev_instance_updates);
     metrics.last_instance_writes = combined.writes.saturating_sub(metrics.prev_instance_writes);
     metrics.last_instance_dedup_skips = combined
         .dedup_skips
         .saturating_sub(metrics.prev_instance_dedup_skips);
     metrics.last_instance_adds = combined.adds.saturating_sub(metrics.prev_instance_adds);
-    metrics.last_instance_removes = combined.removes.saturating_sub(metrics.prev_instance_removes);
+    metrics.last_instance_removes = combined
+        .removes
+        .saturating_sub(metrics.prev_instance_removes);
     metrics.prev_instance_updates = combined.updates;
     metrics.prev_instance_writes = combined.writes;
     metrics.prev_instance_dedup_skips = combined.dedup_skips;

@@ -247,6 +247,24 @@ pub enum UiToCore {
         post_id: i32,
     },
     MailBoardClose,
+    ExchangeAddItem {
+        slot: u8,
+    },
+    ExchangeAddStackableItem {
+        slot: u8,
+        count: u8,
+    },
+    ExchangeSetGold {
+        amount: u32,
+    },
+    ExchangeCancelQuantity,
+    ExchangeAccept,
+    ExchangeCancel,
+    DragStateChanged {
+        is_dragging: bool,
+        panel: SlotPanelType,
+        index: i32,
+    },
 }
 
 /// A menu entry that can be a text option or an item with sprite

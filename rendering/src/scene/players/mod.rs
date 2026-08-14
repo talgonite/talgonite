@@ -643,20 +643,13 @@ impl PlayerBatch {
         Ok(())
     }
 
-    pub fn hide_player_sprite(
-        &self,
-        handle: &PlayerSpriteHandle,
-    ) -> anyhow::Result<()> {
+    pub fn hide_player_sprite(&self, handle: &PlayerSpriteHandle) -> anyhow::Result<()> {
         self.batch
             .update_instance(handle.index.0, Instance::default());
         Ok(())
     }
 
-    pub fn remove_player_sprite(
-        &self,
-        scene: &mut SpriteScene,
-        handle: PlayerSpriteHandle,
-    ) {
+    pub fn remove_player_sprite(&self, scene: &mut SpriteScene, handle: PlayerSpriteHandle) {
         self.batch.remove_instance(handle.index.0);
         scene.players.release_sprite(handle.key);
     }
