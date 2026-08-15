@@ -24,6 +24,7 @@ pub struct BoardInfo {
     pub board_id: u16,
     pub name: String,
     pub posts: Vec<PostInfo>,
+    pub flag: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -67,7 +68,7 @@ impl TryFromCursor for PostInfo {
             month_of_year,
             day_of_month,
             subject,
-            is_unread: is_unread,
+            is_unread,
         })
     }
 }
@@ -144,6 +145,40 @@ impl TryFromBytes for DisplayBoard {
                 .map_err(|e| anyhow!("Failed to decode {}: {}", label, e))
         };
 
+        let read_board = |cursor: &mut Cursor<&[u8]>| -> anyhow::Result<BoardInfo> {
+            let flag = cursor.read_u8().context("reading board flag")? != 0;
+            let board_id = cursor.read_u16::<BigEndian>().context("reading board id")?;
+            let name = decode_string_u8(cursor, "board name")?;
+            let posts_count = cursor.read_i8().context("reading board post count")?;
+            let posts_to_read = posts_count.max(0_i8) as usize;
+            let mut posts = Vec::with_capacity(posts_to_read);
+            for _ in 0..posts_to_read {
+                posts.push(PostInfo::try_from_cursor(cursor)?);
+            }
+            Ok(BoardInfo {
+                board_id,
+                name,
+                posts,
+                flag,
+            })
+        };
+
+        let read_post = |cursor: &mut Cursor<&[u8]>| -> anyhow::Result<(bool, PostInfo, String)> {
+            let enable_prev_btn = cursor
+                .read_u8()
+                .context("reading post previous button flag")?
+                != 0;
+            let post = PostInfo::try_from_cursor(cursor)?;
+            let message = read_string_u16(cursor, "post message")?;
+            Ok((enable_prev_btn, post, message))
+        };
+
+        let read_response = |cursor: &mut Cursor<&[u8]>| -> anyhow::Result<(bool, String)> {
+            let success = cursor.read_u8().context("reading response success flag")? != 0;
+            let response_message = decode_string_u8(cursor, "response message")?;
+            Ok((success, response_message))
+        };
+
         let payload = match board_type {
             BoardOrResponseType::BoardList => {
                 let count = cursor
@@ -157,77 +192,27 @@ impl TryFromBytes for DisplayBoard {
                         board_id,
                         name,
                         posts: Vec::new(),
+                        flag: false,
                     });
                 }
                 DisplayBoard::BoardList { boards }
             }
-            BoardOrResponseType::PublicBoard => {
-                let _ = cursor
-                    .read_u8()
-                    .context("reading public board unknown flag")?; // unknown flag
-                let board_id = cursor
-                    .read_u16::<BigEndian>()
-                    .context("reading public board id")?;
-                let name = decode_string_u8(&mut cursor, "board name")?;
-                let posts_count = cursor
-                    .read_i8()
-                    .context("reading public board post count")?;
-                let posts_to_read = posts_count.max(0_i8) as usize;
-                let mut posts = Vec::with_capacity(posts_to_read);
-                for _ in 0..posts_to_read {
-                    posts.push(PostInfo::try_from_cursor(&mut cursor)?);
-                }
-                DisplayBoard::PublicBoard {
-                    board: BoardInfo {
-                        board_id,
-                        name,
-                        posts,
-                    },
-                }
-            }
+            BoardOrResponseType::PublicBoard => DisplayBoard::PublicBoard {
+                board: read_board(&mut cursor)?,
+            },
             BoardOrResponseType::PublicPost => {
-                let enable_prev_btn = cursor
-                    .read_u8()
-                    .context("reading public post previous button flag")?
-                    != 0;
-                let post = PostInfo::try_from_cursor(&mut cursor)?;
-                let message = read_string_u16(&mut cursor, "post message")?;
+                let (enable_prev_btn, post, message) = read_post(&mut cursor)?;
                 DisplayBoard::PublicPost {
                     enable_prev_btn,
                     post,
                     message,
                 }
             }
-            BoardOrResponseType::MailBoard => {
-                let _ = cursor
-                    .read_u8()
-                    .context("reading mail board unknown flag")?; // unknown flag
-                let board_id = cursor
-                    .read_u16::<BigEndian>()
-                    .context("reading mail board id")?;
-                let name = decode_string_u8(&mut cursor, "board name")?;
-                let post_count = cursor.read_i8().context("reading mail board post count")?;
-                let posts_to_read = post_count.max(0_i8) as usize;
-                let mut posts = Vec::with_capacity(posts_to_read);
-                for _ in 0..posts_to_read {
-                    posts.push(PostInfo::try_from_cursor(&mut cursor)?);
-                }
-                DisplayBoard::MailBoard {
-                    board: BoardInfo {
-                        board_id,
-                        name,
-                        posts,
-                    },
-                }
-            }
+            BoardOrResponseType::MailBoard => DisplayBoard::MailBoard {
+                board: read_board(&mut cursor)?,
+            },
             BoardOrResponseType::MailPost => {
-                let enable_prev_btn = cursor
-                    .read_u8()
-                    .context("reading mail post previous button flag")?
-                    != 0;
-                cursor.read_u8().context("reading mail post unknown flag")?; // unknown
-                let post = PostInfo::try_from_cursor(&mut cursor)?;
-                let message = read_string_u16(&mut cursor, "post message")?;
+                let (enable_prev_btn, post, message) = read_post(&mut cursor)?;
                 DisplayBoard::MailPost {
                     enable_prev_btn,
                     post,
@@ -235,33 +220,21 @@ impl TryFromBytes for DisplayBoard {
                 }
             }
             BoardOrResponseType::SubmitPostResponse => {
-                let success = cursor
-                    .read_u8()
-                    .context("reading submit post response success flag")?
-                    != 0;
-                let response_message = decode_string_u8(&mut cursor, "response message")?;
+                let (success, response_message) = read_response(&mut cursor)?;
                 DisplayBoard::SubmitResponse {
                     success,
                     response_message,
                 }
             }
             BoardOrResponseType::DeletePostResponse => {
-                let success = cursor
-                    .read_u8()
-                    .context("reading delete post response success flag")?
-                    != 0;
-                let response_message = decode_string_u8(&mut cursor, "response message")?;
+                let (success, response_message) = read_response(&mut cursor)?;
                 DisplayBoard::DeleteResponse {
                     success,
                     response_message,
                 }
             }
             BoardOrResponseType::HighlightPostResponse => {
-                let success = cursor
-                    .read_u8()
-                    .context("reading highlight post response success flag")?
-                    != 0;
-                let response_message = decode_string_u8(&mut cursor, "response message")?;
+                let (success, response_message) = read_response(&mut cursor)?;
                 DisplayBoard::MarkUnreadResponse {
                     success,
                     response_message,

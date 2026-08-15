@@ -10,8 +10,6 @@ use crate::webui::state::{
     ActiveMenuContext, ActiveWorldContextMenu, BoardSessionState, ExchangeSessionState,
 };
 
-/// Route UI popup open/close requests into the PopupManager. User-initiated
-/// closes also run server/client cleanup (NPC dialog, mail board, context menu).
 pub fn handle_popup_requests(
     mut inbound: MessageReader<UiInbound>,
     mut popup_manager: ResMut<PopupManager>,
@@ -27,7 +25,16 @@ pub fn handle_popup_requests(
     for UiInbound(msg) in inbound.read() {
         let closed = match msg {
             UiToCore::PopupOpenRequest { id } => {
-                popup_manager.open(PopupId::from_slint(*id));
+                let id = PopupId::from_slint(*id);
+                if id == PopupId::MailBoard {
+                    board_state.open_board_list();
+                    tracing::info!("board: ui open list");
+                    let mut ui = board_state.to_display_board_ui(false);
+                    ui.visible = true;
+                    outbound.write(UiOutbound(CoreToUi::DisplayBoard(ui)));
+                    outbox.send(&packets::client::BoardInteraction::ListBoards);
+                }
+                popup_manager.open(id);
                 None
             }
             UiToCore::PopupCloseRequest { id } => {
@@ -56,8 +63,6 @@ pub fn handle_popup_requests(
     }
 }
 
-/// Server/client cleanup for user-initiated closes (skipped for
-/// server-initiated ones like `DisplayMenuClose`).
 fn popup_close_coordination(
     id: PopupId,
     outbox: &Res<PacketOutbox>,
@@ -69,7 +74,6 @@ fn popup_close_coordination(
 ) {
     match id {
         PopupId::NpcDialog => {
-            // Tell the server we closed the dialog (mirrors `UiToCore::MenuClose`).
             if let Some(dialog_id) = menu_ctx.dialog_id {
                 if let Some(entity_type) = menu_ctx.entity_type {
                     outbox.send(&packets::client::DialogInteraction {
@@ -84,6 +88,11 @@ fn popup_close_coordination(
         }
         PopupId::MailBoard => {
             board_state.invalidate();
+            outbound.write(UiOutbound(CoreToUi::DisplayBoard(
+                board_state.to_display_board_ui(false),
+            )));
+            outbound.write(UiOutbound(board_state.to_compose_msg()));
+            outbound.write(UiOutbound(board_state.to_delete_msg("")));
         }
         PopupId::Exchange => {
             if exchange_state.is_active {

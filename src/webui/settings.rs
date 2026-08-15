@@ -150,10 +150,7 @@ pub fn apply_modifier_rows_change(enabled: bool, settings: &mut SettingsFile) {
     settings.gameplay.modifier_hotbar_rows_target_custom_only = enabled;
 }
 
-pub fn write_snapshot_and_sync(
-    outbound: &mut MessageWriter<UiOutbound>,
-    settings: &SettingsFile,
-) {
+pub fn write_snapshot_and_sync(outbound: &mut MessageWriter<UiOutbound>, settings: &SettingsFile) {
     outbound.write(UiOutbound(settings.to_snapshot_message(None)));
     outbound.write(UiOutbound(settings.to_sync_message()));
 }

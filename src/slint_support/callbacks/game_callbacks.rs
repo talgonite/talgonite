@@ -2,6 +2,7 @@
 
 use crossbeam_channel::Sender;
 use slint::ComponentHandle;
+use slint::Model;
 
 use crate::webui::ipc::{UiToCore, WorldListFilter};
 use crate::{
@@ -216,17 +217,78 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
         });
     }
 
-    // Mail board close
+    let mail_board = slint_app.global::<MailBoardState>();
     {
         let tx = tx.clone();
-        let mail_board = slint_app.global::<MailBoardState>();
         mail_board.on_post_open_request(move |index, post_id| {
             let _ = tx.send(UiToCore::MailBoardOpenPost { index, post_id });
         });
     }
-
-    // Mail board close is routed through `PopupManagerState`; its coordination
-    // (board session invalidation) happens in `handle_popup_requests`.
+    {
+        let tx = tx.clone();
+        mail_board.on_delete_request(move |index, post_id| {
+            let _ = tx.send(UiToCore::MailBoardDeletePost { index, post_id });
+        });
+    }
+    {
+        let tx = tx.clone();
+        mail_board.on_delete_dismiss(move || {
+            let _ = tx.send(UiToCore::MailBoardDeleteDismiss);
+        });
+    }
+    {
+        let tx = tx.clone();
+        mail_board.on_board_selected(move |index| {
+            let _ = tx.send(UiToCore::MailBoardSelectBoard { index });
+        });
+    }
+    {
+        let tx = tx.clone();
+        mail_board.on_new_post_request(move || {
+            let _ = tx.send(UiToCore::MailBoardComposeNew);
+        });
+    }
+    {
+        let tx = tx.clone();
+        let slint_app_weak = slint_app.as_weak();
+        mail_board.on_reply_request(move || {
+            if let Some(app) = slint_app_weak.upgrade() {
+                let mail_board = app.global::<MailBoardState>();
+                let index = mail_board.get_selected_index();
+                if index >= 0 {
+                    if let Some(post) = mail_board.get_posts().row_data(index as usize) {
+                        let _ = tx.send(UiToCore::MailBoardComposeReply {
+                            index,
+                            post_id: post.post_id,
+                        });
+                    }
+                }
+            }
+        });
+    }
+    {
+        let tx = tx.clone();
+        let slint_app_weak = slint_app.as_weak();
+        mail_board.on_compose_send(move || {
+            if let Some(app) = slint_app_weak.upgrade() {
+                let mail_board = app.global::<MailBoardState>();
+                let name = mail_board.get_compose_name().to_string();
+                let subject = mail_board.get_compose_subject().to_string();
+                let body = mail_board.get_compose_body().to_string();
+                let _ = tx.send(UiToCore::MailBoardComposeSend {
+                    name,
+                    subject,
+                    body,
+                });
+            }
+        });
+    }
+    {
+        let tx = tx.clone();
+        mail_board.on_compose_cancel(move || {
+            let _ = tx.send(UiToCore::MailBoardComposeCancel);
+        });
+    }
 
     // === Group callbacks ===
     {

@@ -12,20 +12,55 @@ export struct MailBoardPost {
     can-delete: bool,
 }
 
+export struct MailBoardEntry {
+    board-id: int,
+    name: string,
+}
+
 export global MailBoardState {
     in-out property <string> board-name: "";
     in-out property <int> selected-index: -1;
     in-out property <int> loading-post-id: -1;
     in-out property <int> session-token: 0;
+    in-out property <bool> can-post: false;
+    in-out property <bool> board-list-mode: false;
+    in-out property <bool> board-loading: false;
     in-out property <[MailBoardPost]> posts: [];
+    in-out property <[MailBoardEntry]> boards: [];
+    in-out property <int> selected-board-index: -1;
+    in-out property <int> deleting-post-id: -1;
+    in-out property <string> delete-message: "";
+    in-out property <bool> compose-visible: false;
+    in-out property <string> compose-title: "";
+    in-out property <string> compose-name-label: "";
+    in-out property <string> compose-name: "";
+    in-out property <bool> compose-name-editable: false;
+    in-out property <string> compose-subject: "";
+    in-out property <string> compose-body: "";
+    in-out property <bool> compose-waiting: false;
+    in-out property <string> compose-result: "";
     callback close-request();
     callback post-open-request(index: int, post-id: int);
+    callback delete-request(index: int, post-id: int);
+    callback delete-dismiss();
+    callback board-selected(index: int);
+    callback new-post-request();
+    callback reply-request();
+    callback compose-send();
+    callback compose-cancel();
 
     public function select-post(index: int) {
         if index >= 0 && index < posts.length {
             selected-index = index;
             loading-post-id = posts[index].post-id;
             post-open-request(index, posts[index].post-id);
+        }
+    }
+
+    public function select-board(index: int) {
+        if index >= 0 && index < boards.length {
+            selected-board-index = index;
+            board-selected(index);
         }
     }
 
@@ -38,6 +73,9 @@ export global MailBoardState {
         session-token += 1;
         selected-index = -1;
         loading-post-id = -1;
+        deleting-post-id = -1;
+        delete-message = "";
+        compose-visible = false;
         PopupManagerState.close-request(PopupId.MailBoard);
     }
 }

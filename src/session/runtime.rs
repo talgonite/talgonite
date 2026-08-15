@@ -183,7 +183,7 @@ fn process_net_packets(
                 }
                 &server::Codes::DisplayBoard => {
                     if let Some(q) = parse_packet::<server::DisplayBoard>(data) {
-                        tracing::info!("Received DisplayBoard: {:?}", q);
+                        tracing::info!("Received DisplayBoard: {}", display_board_summary(&q));
                         session_events.write(SessionEvent::DisplayBoard(q));
                     }
                 }
@@ -609,9 +609,73 @@ fn parse_packet<T: TryFromBytes>(data: &Vec<u8>) -> Option<T> {
                 ?err,
                 len = data.len(),
                 packet = type_name::<T>(),
+                bytes = format!("{data:02x?}"),
                 "Failed to parse packet"
             );
             None
+        }
+    }
+}
+
+fn display_board_summary(pkt: &server::DisplayBoard) -> String {
+    match pkt {
+        server::DisplayBoard::BoardList { boards } => {
+            let boards = boards
+                .iter()
+                .map(|board| format!("{}:{:?}", board.board_id, board.name))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("BoardList [{boards}]")
+        }
+        server::DisplayBoard::PublicBoard { board } | server::DisplayBoard::MailBoard { board } => {
+            let kind = if matches!(pkt, server::DisplayBoard::MailBoard { .. }) {
+                "MailBoard"
+            } else {
+                "PublicBoard"
+            };
+            let posts = board
+                .posts
+                .iter()
+                .map(|post| post.post_id.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            format!(
+                "{kind} #{} {:?} posts=[{posts}]",
+                board.board_id, board.name
+            )
+        }
+        server::DisplayBoard::PublicPost { post, message, .. }
+        | server::DisplayBoard::MailPost { post, message, .. } => {
+            let kind = if matches!(pkt, server::DisplayBoard::MailPost { .. }) {
+                "MailPost"
+            } else {
+                "PublicPost"
+            };
+            format!(
+                "{kind} #{} author={:?} subject={:?} message_len={}",
+                post.post_id,
+                post.author,
+                post.subject,
+                message.len()
+            )
+        }
+        server::DisplayBoard::SubmitResponse {
+            success,
+            response_message,
+        } => {
+            format!("SubmitResponse success={success} msg={response_message:?}")
+        }
+        server::DisplayBoard::DeleteResponse {
+            success,
+            response_message,
+        } => {
+            format!("DeleteResponse success={success} msg={response_message:?}")
+        }
+        server::DisplayBoard::MarkUnreadResponse {
+            success,
+            response_message,
+        } => {
+            format!("MarkUnreadResponse success={success} msg={response_message:?}")
         }
     }
 }

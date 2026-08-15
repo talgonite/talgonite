@@ -284,10 +284,10 @@ pub fn update_targeting_hover(
     let is_dragging_item = active_drag.is_dragging
         && match active_drag.source_panel {
             game_types::SlotPanelType::Item => true,
-            game_types::SlotPanelType::Hotbar => dragged_hotbar_panel_type(
-                &active_drag,
-                hotbar_state.as_deref(),
-            ) == Some(game_types::SlotPanelType::Item),
+            game_types::SlotPanelType::Hotbar => {
+                dragged_hotbar_panel_type(&active_drag, hotbar_state.as_deref())
+                    == Some(game_types::SlotPanelType::Item)
+            }
             _ => false,
         };
 

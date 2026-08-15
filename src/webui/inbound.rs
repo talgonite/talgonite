@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use game_types::SlotPanelType;
-use game_ui::{ActionId, BoardStateUi, CoreToUi, UiToCore};
+use game_ui::{ActionId, CoreToUi, UiToCore};
 use packets::client;
 use packets::types::MenuType;
 use rendering::scene::utils::screen_to_iso_tile;
@@ -91,7 +91,6 @@ pub(crate) fn handle_ui_inbound_settings(
     }
 }
 
-
 pub(crate) fn handle_ui_inbound_world(
     mut inbound: MessageReader<UiInbound>,
     mut outbound: MessageWriter<UiOutbound>,
@@ -103,7 +102,6 @@ pub(crate) fn handle_ui_inbound_world(
     mut world_list_state: ResMut<WorldListState>,
     mut local_social_status: ResMut<LocalSocialStatus>,
 ) {
-
     for UiInbound(msg) in inbound.read() {
         match msg {
             UiToCore::WorldContextMenuSelect { id } => {
@@ -123,39 +121,35 @@ pub(crate) fn handle_ui_inbound_world(
 
                 match selected.action {
                     crate::events::WorldContextAction::WalkToTile { tile_x, tile_y } => {
-                        interaction_intents
-                            .write(InteractionIntentEvent {
-                                source: crate::events::ClickSource::AndroidLongPress,
-                                target_kind: InteractionTargetKind::Ground,
-                                target_entity: None,
-                                tile_x,
-                                tile_y,
-                                action: InteractionIntentAction::WalkToTile,
-                            });
+                        interaction_intents.write(InteractionIntentEvent {
+                            source: crate::events::ClickSource::AndroidLongPress,
+                            target_kind: InteractionTargetKind::Ground,
+                            target_entity: None,
+                            tile_x,
+                            tile_y,
+                            action: InteractionIntentAction::WalkToTile,
+                        });
                     }
                     crate::events::WorldContextAction::ApproachActor {
                         entity,
                         tile_x,
                         tile_y,
                     } => {
-                        interaction_intents
-                            .write(InteractionIntentEvent {
-                                source: crate::events::ClickSource::AndroidLongPress,
-                                target_kind: InteractionTargetKind::Actor,
-                                target_entity: Some(entity),
-                                tile_x,
-                                tile_y,
-                                action: InteractionIntentAction::ApproachAndFace,
-                            });
+                        interaction_intents.write(InteractionIntentEvent {
+                            source: crate::events::ClickSource::AndroidLongPress,
+                            target_kind: InteractionTargetKind::Actor,
+                            target_entity: Some(entity),
+                            tile_x,
+                            tile_y,
+                            action: InteractionIntentAction::ApproachAndFace,
+                        });
                     }
                     crate::events::WorldContextAction::ViewProfile { entity, is_self } => {
                         if is_self {
-                            profile_events
-                                .write(ShowSelfProfileEvent::SelfRequested);
+                            profile_events.write(ShowSelfProfileEvent::SelfRequested);
                             outbox.send(&packets::client::SelfProfileRequest {});
                         } else if let Ok((entity_id, _)) = entity_ids.get(entity) {
-                            profile_events
-                                .write(ShowSelfProfileEvent::OtherRequested);
+                            profile_events.write(ShowSelfProfileEvent::OtherRequested);
                             outbox.send(&packets::client::Click::TargetEntity(entity_id.id));
                         }
                     }
@@ -228,7 +222,6 @@ pub(crate) fn handle_ui_inbound_world(
     }
 }
 
-
 pub(crate) fn handle_ui_inbound_menus(
     mut inbound: MessageReader<UiInbound>,
     mut outbound: MessageWriter<UiOutbound>,
@@ -237,8 +230,8 @@ pub(crate) fn handle_ui_inbound_menus(
     mut board_state: ResMut<BoardSessionState>,
     mut chat_events: MessageWriter<ChatEvent>,
     mut next_state: ResMut<NextState<AppState>>,
+    time: Res<Time>,
 ) {
-
     for UiInbound(msg) in inbound.read() {
         match msg {
             UiToCore::MenuSelect { id, name } => {
@@ -357,18 +350,13 @@ pub(crate) fn handle_ui_inbound_menus(
                 };
 
                 board_state.selected_index = *index;
+                tracing::info!(board_id, post_id, index = *index, "board: ui select post");
 
                 if board_state.has_cached_message(*index, i32::from(post_id)) {
                     board_state.loading_post_id = -1;
-                    outbound.write(UiOutbound(CoreToUi::DisplayBoard(BoardStateUi {
-                        visible: board_state.visible,
-                        board_name: board_state.board_name.clone(),
-                        selected_index: board_state.selected_index,
-                        loading_post_id: board_state.loading_post_id,
-                        session_token: board_state.session_token,
-                        append: false,
-                        posts: board_state.posts.clone(),
-                    })));
+                    outbound.write(UiOutbound(CoreToUi::DisplayBoard(
+                        board_state.to_display_board_ui(false),
+                    )));
                     continue;
                 }
 
@@ -379,8 +367,167 @@ pub(crate) fn handle_ui_inbound_menus(
                     navigation: None,
                 });
             }
+            UiToCore::MailBoardSelectBoard { index } => {
+                let Ok(index) = usize::try_from(*index) else {
+                    continue;
+                };
+                let Some(entry) = board_state.boards.get(index) else {
+                    continue;
+                };
+                let Ok(board_id) = u16::try_from(entry.board_id) else {
+                    continue;
+                };
+                let board_name = entry.name.clone();
+                tracing::info!(
+                    board_id,
+                    name = %entry.name,
+                    "board: ui select board"
+                );
+
+                board_state.select_board(board_id, board_name);
+                outbound.write(UiOutbound(CoreToUi::DisplayBoard(
+                    board_state.to_display_board_ui(false),
+                )));
+
+                outbox.send(&client::BoardInteraction::ViewBoard {
+                    board_id,
+                    start_post_id: i16::MAX,
+                });
+            }
+            UiToCore::MailBoardComposeNew => {
+                let Some(board_id) = board_state.active_board_id else {
+                    continue;
+                };
+                if !board_state.can_post {
+                    continue;
+                }
+                board_state.compose_open = true;
+                board_state.compose_reply_to = None;
+                board_state.compose_title = if board_id == 0 {
+                    "New Mail".to_string()
+                } else {
+                    "New Post".to_string()
+                };
+                board_state.compose_subject.clear();
+                board_state.compose_waiting = false;
+                board_state.compose_result.clear();
+                board_state.compose_submitted_at = None;
+                tracing::info!(board_id, "board: ui compose new");
+                outbound.write(UiOutbound(board_state.to_compose_msg()));
+            }
+            UiToCore::MailBoardComposeReply { index, post_id } => {
+                let Some(board_id) = board_state.active_board_id else {
+                    continue;
+                };
+                let Ok(index) = usize::try_from(*index) else {
+                    continue;
+                };
+                let Some(post) = board_state
+                    .posts
+                    .get(index)
+                    .filter(|entry| entry.post_id == *post_id && entry.can_reply)
+                else {
+                    continue;
+                };
+                let author = post.author.clone();
+                let title = post.title.clone();
+                board_state.compose_open = true;
+                board_state.compose_reply_to = Some(author.clone());
+                board_state.compose_title = "Reply".to_string();
+                board_state.compose_subject = format!("Re: {}", title);
+                board_state.compose_waiting = false;
+                board_state.compose_result.clear();
+                board_state.compose_submitted_at = None;
+                tracing::info!(board_id, post_id, author = %author, "board: ui compose reply");
+                outbound.write(UiOutbound(board_state.to_compose_msg()));
+            }
+            UiToCore::MailBoardComposeSend {
+                name,
+                subject,
+                body,
+            } => {
+                let Some(board_id) = board_state.active_board_id else {
+                    continue;
+                };
+                let reply_to = board_state.compose_reply_to.clone();
+                if board_id == 0 && reply_to.is_none() && name.trim().is_empty() {
+                    tracing::warn!("board: mail compose send with empty recipient");
+                    continue;
+                }
+                board_state.compose_waiting = true;
+                board_state.compose_result.clear();
+                board_state.compose_submitted_at = Some(time.elapsed());
+                outbound.write(UiOutbound(board_state.to_compose_msg()));
+
+                if let Some(to) = reply_to {
+                    tracing::info!(board_id, to = %to, "board: send mail (reply)");
+                    outbox.send(&client::BoardInteraction::SendMail {
+                        board_id,
+                        to,
+                        subject: subject.clone(),
+                        message: body.clone(),
+                    });
+                } else if board_id == 0 {
+                    let to = name.trim();
+                    tracing::info!(board_id, to, "board: send mail");
+                    outbox.send(&client::BoardInteraction::SendMail {
+                        board_id,
+                        to: to.to_string(),
+                        subject: subject.clone(),
+                        message: body.clone(),
+                    });
+                } else {
+                    tracing::info!(board_id, "board: new post");
+                    outbox.send(&client::BoardInteraction::NewPost {
+                        board_id,
+                        subject: subject.clone(),
+                        message: body.clone(),
+                    });
+                }
+            }
+            UiToCore::MailBoardComposeCancel => {
+                board_state.reset_compose();
+                outbound.write(UiOutbound(board_state.to_compose_msg()));
+            }
+            UiToCore::MailBoardDeletePost { index, post_id } => {
+                if board_state.deleting_post_id.is_some() {
+                    continue;
+                }
+                let Some(board_id) = board_state.active_board_id else {
+                    continue;
+                };
+                let Ok(index) = usize::try_from(*index) else {
+                    continue;
+                };
+                let Some(post) = board_state
+                    .posts
+                    .get(index)
+                    .filter(|entry| entry.post_id == *post_id)
+                else {
+                    continue;
+                };
+                let Ok(post_id) = i16::try_from(post.post_id) else {
+                    continue;
+                };
+
+                tracing::info!(board_id, post_id, "board: ui delete post");
+                board_state.deleting_post_id = Some(i32::from(post_id));
+                board_state.delete_requested_at = Some(time.elapsed());
+                outbound.write(UiOutbound(board_state.to_delete_msg("")));
+                outbox.send(&client::BoardInteraction::Delete { board_id, post_id });
+            }
+            UiToCore::MailBoardDeleteDismiss => {
+                board_state.deleting_post_id = None;
+                board_state.delete_requested_at = None;
+                outbound.write(UiOutbound(board_state.to_delete_msg("")));
+            }
             UiToCore::MailBoardClose => {
                 board_state.invalidate();
+                outbound.write(UiOutbound(CoreToUi::DisplayBoard(
+                    board_state.to_display_board_ui(false),
+                )));
+                outbound.write(UiOutbound(board_state.to_compose_msg()));
+                outbound.write(UiOutbound(board_state.to_delete_msg("")));
             }
             UiToCore::ReturnToMainMenu => {
                 board_state.invalidate();
@@ -390,7 +537,6 @@ pub(crate) fn handle_ui_inbound_menus(
         }
     }
 }
-
 
 pub(crate) fn handle_ui_inbound_slots(
     mut inbound: MessageReader<UiInbound>,
@@ -408,9 +554,16 @@ pub(crate) fn handle_ui_inbound_slots(
     camera: Res<Camera>,
     window_surface: NonSend<WindowSurface>,
     zoom_state: Res<ZoomState>,
-    entity_query: Query<(Entity, &Position, &Hitbox, Option<&EntityId>, Option<&NPC>, Option<&Player>, Option<&LocalPlayer>)>,
+    entity_query: Query<(
+        Entity,
+        &Position,
+        &Hitbox,
+        Option<&EntityId>,
+        Option<&NPC>,
+        Option<&Player>,
+        Option<&LocalPlayer>,
+    )>,
 ) {
-
     for UiInbound(msg) in inbound.read() {
         match msg {
             UiToCore::ActivateAction { category, index } => match category {
@@ -572,10 +725,8 @@ pub(crate) fn handle_ui_inbound_slots(
                     let camera = &camera;
                     let cam_pos = camera.camera.position();
                     let cam_zoom = camera.camera.zoom();
-                    let win_size = Vec2::new(
-                        window_surface.width as f32,
-                        window_surface.height as f32,
-                    );
+                    let win_size =
+                        Vec2::new(window_surface.width as f32, window_surface.height as f32);
 
                     let cursor_scale = zoom_state.cursor_to_render_scale();
                     let screen = Vec2::new(*x * cursor_scale, *y * cursor_scale);
@@ -590,8 +741,7 @@ pub(crate) fn handle_ui_inbound_slots(
                         bool, // is_local
                         f32,  // Y-sort height
                     )> = Vec::new();
-                    for (entity, pos, hitbox, entity_id, npc, player, local) in
-                        entity_query.iter()
+                    for (entity, pos, hitbox, entity_id, npc, player, local) in entity_query.iter()
                     {
                         if hitbox.check_hit(
                             Vec2::new(pos.x, pos.y),
@@ -674,15 +824,14 @@ pub(crate) fn handle_ui_inbound_slots(
                             .iter()
                             .find(|s| s.slot == *src_index as u8)
                         {
-                            let target_entity = if spell.spell_type
-                                == packets::server::SpellType::NoTarget
-                            {
-                                None
-                            } else {
-                                hits.first()
-                                    .filter(|hit| hit.2)
-                                    .and_then(|hit| hit.1.map(|eid| eid.id))
-                            };
+                            let target_entity =
+                                if spell.spell_type == packets::server::SpellType::NoTarget {
+                                    None
+                                } else {
+                                    hits.first()
+                                        .filter(|hit| hit.2)
+                                        .and_then(|hit| hit.1.map(|eid| eid.id))
+                                };
 
                             ability_events.write(AbilityEvent::UseSpellAt {
                                 slot: spell.slot,
@@ -715,10 +864,8 @@ pub(crate) fn handle_ui_inbound_slots(
                                     continue;
                                 };
 
-                                let target = hits
-                                    .iter()
-                                    .find(|hit| !hit.3)
-                                    .map(|hit| (hit.1, hit.2));
+                                let target =
+                                    hits.iter().find(|hit| !hit.3).map(|hit| (hit.1, hit.2));
 
                                 match target {
                                     Some((Some(eid), true)) => {
@@ -744,9 +891,8 @@ pub(crate) fn handle_ui_inbound_slots(
                                 if let Some(skill) =
                                     ability_state.skills.iter().find(|s| s.id == action_id)
                                 {
-                                    ability_events.write(AbilityEvent::UseSkill {
-                                        slot: skill.slot,
-                                    });
+                                    ability_events
+                                        .write(AbilityEvent::UseSkill { slot: skill.slot });
                                 }
                             }
                             SlotPanelType::Spell => {
@@ -823,14 +969,12 @@ pub(crate) fn handle_ui_inbound_slots(
     }
 }
 
-
 pub(crate) fn handle_ui_inbound_group_exchange(
     mut inbound: MessageReader<UiInbound>,
     outbox: Res<PacketOutbox>,
     mut group_state: ResMut<GroupState>,
     mut exchange_state: ResMut<ExchangeSessionState>,
 ) {
-
     for UiInbound(msg) in inbound.read() {
         match msg {
             UiToCore::ToggleGroupable => {
@@ -917,12 +1061,10 @@ pub(crate) fn handle_ui_inbound_group_exchange(
     }
 }
 
-
 pub(crate) fn handle_ui_inbound_hotbar(
     mut inbound: MessageReader<UiInbound>,
     mut hotbar_panel_state: ResMut<HotbarPanelState>,
 ) {
-
     for UiInbound(msg) in inbound.read() {
         match msg {
             UiToCore::SetHotbarPanel { panel_num } => {

@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 
 use game_ui::{
-    ActionId, BoardPostUi, BoardStateUi, ChatEntryUi, Cooldown, CoreToUi, InventoryItemUi,
-    MenuEntryUi, SkillUi, SpellUi, WorldListMemberUi, WorldMapNodeUi,
+    ActionId, BoardPostUi, ChatEntryUi, Cooldown, CoreToUi, InventoryItemUi, MenuEntryUi, SkillUi,
+    SpellUi, WorldListMemberUi, WorldMapNodeUi,
 };
 use packets::client;
 use packets::server::display_menu::DisplayMenuPayload;
@@ -127,6 +127,24 @@ pub(crate) fn bridge_chat_events(
     }
 }
 
+fn request_next_board_page(
+    board_id: u16,
+    board_state: &mut BoardSessionState,
+    outbox: &crate::network::PacketOutbox,
+) {
+    if board_state.pending_start_post_id.is_none() {
+        if let Some(last_post_id) = board_state.last_post_id {
+            let start_post_id = last_post_id.saturating_sub(1);
+            board_state.mark_request(board_id, start_post_id);
+            tracing::info!(board_id, start_post_id, "board: request page");
+            outbox.send(&packets::client::BoardInteraction::ViewBoard {
+                board_id,
+                start_post_id,
+            });
+        }
+    }
+}
+
 pub(crate) fn bridge_session_events(
     mut session_events: MessageReader<SessionEvent>,
     mut outbound: MessageWriter<UiOutbound>,
@@ -225,11 +243,8 @@ pub(crate) fn bridge_session_events(
             SessionEvent::DisplayBoard(pkt) => match pkt {
                 packets::server::DisplayBoard::PublicBoard { board }
                 | packets::server::DisplayBoard::MailBoard { board } => {
-                    let response_session_token = board_state
-                        .pending_request_session_token
-                        .unwrap_or(board_state.session_token);
-
-                    let mut posts = board
+                    let is_mail = matches!(pkt, packets::server::DisplayBoard::MailBoard { .. });
+                    let posts = board
                         .posts
                         .iter()
                         .map(|post| BoardPostUi {
@@ -240,64 +255,139 @@ pub(crate) fn bridge_session_events(
                             title: post.subject.clone(),
                             message: String::new(),
                             is_unread: post.is_unread,
-                            can_reply: true,
-                            can_delete: false,
+                            can_reply: is_mail,
+                            can_delete: true,
                         })
                         .collect::<Vec<_>>();
 
-                    for post in &mut posts {
-                        board_state.merge_cached_post(post);
+                    if board_state.visible && board_state.active_board_id == Some(board.board_id) {
+                        let response_session_token = board_state
+                            .pending_request_session_token
+                            .unwrap_or(board_state.session_token);
+
+                        if board_state.is_page_response(board.board_id, &posts) {
+                            tracing::info!(board_id = board.board_id, "board: page response");
+                            board_state.clear_pending();
+                        } else {
+                            tracing::info!(
+                                board_id = board.board_id,
+                                "board: duplicate open response"
+                            );
+                        }
+
+                        let added = board_state.merge_page(posts);
+                        if let Some(last) = board.posts.last().map(|post| post.post_id) {
+                            if board_state
+                                .last_post_id
+                                .is_none_or(|current| last < current)
+                            {
+                                board_state.last_post_id = Some(last);
+                            }
+                        }
+
+                        if !added.is_empty() {
+                            let added_ids = added
+                                .iter()
+                                .map(|post| post.post_id.to_string())
+                                .collect::<Vec<_>>()
+                                .join(",");
+                            let order = board_state
+                                .posts
+                                .iter()
+                                .map(|post| post.post_id.to_string())
+                                .collect::<Vec<_>>()
+                                .join(",");
+                            tracing::info!(
+                                board_id = board.board_id,
+                                added = %added_ids,
+                                total = board_state.posts.len(),
+                                order = %order,
+                                "board: merged page"
+                            );
+                            let mut ui = board_state.to_display_board_ui(true);
+                            ui.posts = added;
+                            ui.session_token = response_session_token;
+                            outbound.write(UiOutbound(CoreToUi::DisplayBoard(ui)));
+                        }
+
+                        if !board.posts.is_empty() {
+                            request_next_board_page(board.board_id, &mut board_state, &outbox);
+                        }
+                        continue;
                     }
 
+                    let panel_open =
+                        popup_manager.is_open(crate::slint_support::popups::PopupId::MailBoard);
+                    let stale = if panel_open {
+                        board_state
+                            .requested_board_id
+                            .is_some_and(|id| id != board.board_id)
+                    } else {
+                        board_state.abandoned_page_request.is_some_and(
+                            |(board_id, start_post_id)| {
+                                board.board_id == board_id
+                                    && (posts.is_empty()
+                                        || posts
+                                            .iter()
+                                            .all(|post| post.post_id <= i32::from(start_post_id)))
+                            },
+                        )
+                    };
+                    if stale {
+                        tracing::info!(
+                            board_id = board.board_id,
+                            panel_open,
+                            "board: stale response dropped"
+                        );
+                        continue;
+                    }
+                    board_state.clear_pending();
+                    board_state.board_list_mode = board_state.requested_board_id.is_some();
+                    board_state.board_loading = false;
+                    board_state.abandoned_page_request = None;
+                    board_state.requested_board_id = Some(board.board_id);
                     board_state.visible = true;
                     board_state.active_board_id = Some(board.board_id);
                     board_state.board_name = board.name.clone();
+                    board_state.can_post = true;
                     board_state.last_post_id = board.posts.last().map(|post| post.post_id);
-                    let append = board_state.pending_request_session_token.is_some();
-                    let initial_post_id = (!append)
-                        .then(|| {
-                            posts.first().and_then(|post| {
-                                if post.message.is_empty() {
-                                    i16::try_from(post.post_id).ok()
-                                } else {
-                                    None
-                                }
-                            })
-                        })
-                        .flatten();
+                    board_state.posts = posts.clone();
+                    let post_ids = board_state
+                        .posts
+                        .iter()
+                        .map(|post| post.post_id.to_string())
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    tracing::info!(
+                        board_id = board.board_id,
+                        name = %board.name,
+                        posts = %post_ids,
+                        "board: fresh open"
+                    );
 
-                    if append {
-                        board_state.posts.extend(posts.iter().cloned());
-                    } else {
-                        board_state.posts = posts.clone();
-                        if !board_state.posts.is_empty() {
-                            board_state.selected_index = 0;
+                    let initial_post_id = posts.first().and_then(|post| {
+                        if post.message.is_empty() {
+                            i16::try_from(post.post_id).ok()
                         } else {
-                            board_state.selected_index = -1;
+                            None
                         }
-
-                        if let Some(post_id) = initial_post_id {
-                            board_state.selected_index = 0;
-                            board_state.loading_post_id = i32::from(post_id);
-                        } else {
-                            board_state.loading_post_id = -1;
-                        }
-                    }
-
-                    outbound.write(UiOutbound(CoreToUi::DisplayBoard(BoardStateUi {
-                        visible: true,
-                        board_name: board_state.board_name.clone(),
-                        selected_index: board_state.selected_index,
-                        loading_post_id: board_state.loading_post_id,
-                        session_token: response_session_token,
-                        append,
-                        posts,
-                    })));
-
-                    board_state.pending_request_session_token = None;
-                    board_state.pending_start_post_id = None;
+                    });
 
                     if let Some(post_id) = initial_post_id {
+                        board_state.selected_index = 0;
+                        board_state.loading_post_id = i32::from(post_id);
+                    } else {
+                        board_state.selected_index =
+                            if board_state.posts.is_empty() { -1 } else { 0 };
+                        board_state.loading_post_id = -1;
+                    }
+
+                    outbound.write(UiOutbound(CoreToUi::DisplayBoard(
+                        board_state.to_display_board_ui(false),
+                    )));
+
+                    if let Some(post_id) = initial_post_id {
+                        tracing::info!(board_id = board.board_id, post_id, "board: request post");
                         outbox.send(&client::BoardInteraction::ViewPost {
                             board_id: board.board_id,
                             post_id,
@@ -306,60 +396,180 @@ pub(crate) fn bridge_session_events(
                     }
 
                     if board_state.visible && !board.posts.is_empty() {
-                        if let Some(last_post_id) = board_state.last_post_id {
-                            let start_post_id = last_post_id.saturating_sub(1);
-                            board_state.mark_request(start_post_id);
-                            outbox.send(&client::BoardInteraction::ViewBoard {
-                                board_id: board.board_id,
-                                start_post_id,
-                            });
+                        request_next_board_page(board.board_id, &mut board_state, &outbox);
+                    }
+                }
+                packets::server::DisplayBoard::BoardList { boards } => {
+                    board_state.board_list_mode = true;
+                    board_state.boards = boards
+                        .iter()
+                        .map(|entry| game_ui::BoardEntryUi {
+                            board_id: i32::from(entry.board_id),
+                            name: entry.name.clone(),
+                        })
+                        .collect();
+                    board_state.selected_board_index = boards
+                        .iter()
+                        .position(|entry| entry.board_id == 0)
+                        .map(|index| index as i32)
+                        .unwrap_or(0);
+                    let board_ids = boards
+                        .iter()
+                        .map(|entry| format!("{}:{:?}", entry.board_id, entry.name))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    tracing::info!(
+                        boards = %board_ids,
+                        selected = board_state.selected_board_index,
+                        "board: list received"
+                    );
+
+                    outbound.write(UiOutbound(CoreToUi::BoardListUpdate {
+                        boards: board_state.boards.clone(),
+                        selected_index: board_state.selected_board_index,
+                    }));
+
+                    if popup_manager.is_open(crate::slint_support::popups::PopupId::MailBoard) {
+                        if let Some(entry) = board_state
+                            .boards
+                            .get(board_state.selected_board_index as usize)
+                        {
+                            if let Ok(board_id) = u16::try_from(entry.board_id) {
+                                board_state.board_name = entry.name.clone();
+                                board_state.active_board_id = Some(board_id);
+                                board_state.requested_board_id = Some(board_id);
+                                tracing::info!(
+                                    board_id,
+                                    start_post_id = i16::MAX,
+                                    "board: request page"
+                                );
+                                outbox.send(&client::BoardInteraction::ViewBoard {
+                                    board_id,
+                                    start_post_id: i16::MAX,
+                                });
+                            }
                         }
                     }
                 }
-                packets::server::DisplayBoard::MailPost {
-                    enable_prev_btn: _,
-                    post,
-                    message,
-                }
-                | packets::server::DisplayBoard::PublicPost {
-                    enable_prev_btn: _,
-                    post,
-                    message,
-                } => {
+                packets::server::DisplayBoard::MailPost { post, message, .. }
+                | packets::server::DisplayBoard::PublicPost { post, message, .. } => {
                     let post_id = post.post_id as i32;
-                    if let Some(index) = board_state
+                    let Some(index) = board_state
                         .posts
                         .iter()
                         .position(|entry| entry.post_id == post_id)
+                    else {
+                        continue;
+                    };
+                    if board_state.loading_post_id != post_id
+                        && board_state.selected_index != index as i32
                     {
-                        let entry = &mut board_state.posts[index];
-                        entry.author = post.author.clone();
-                        entry.month_of_year = post.month_of_year as i32;
-                        entry.day_of_month = post.day_of_month as i32;
-                        entry.title = post.subject.clone();
-                        entry.message = message.clone();
-                        entry.is_unread = false;
+                        continue;
+                    }
 
-                        board_state.selected_index = index as i32;
-                        if board_state.loading_post_id == post_id {
-                            board_state.loading_post_id = -1;
+                    let entry = &mut board_state.posts[index];
+                    entry.author = post.author.clone();
+                    entry.month_of_year = post.month_of_year as i32;
+                    entry.day_of_month = post.day_of_month as i32;
+                    entry.title = post.subject.clone();
+                    entry.message = message.clone();
+                    entry.is_unread = false;
+
+                    tracing::info!(post_id, message_len = message.len(), "board: post loaded");
+                    board_state.selected_index = index as i32;
+                    if board_state.loading_post_id == post_id {
+                        board_state.loading_post_id = -1;
+                    }
+
+                    outbound.write(UiOutbound(CoreToUi::DisplayBoard(
+                        board_state.to_display_board_ui(false),
+                    )));
+                }
+                packets::server::DisplayBoard::DeleteResponse {
+                    success,
+                    response_message,
+                } => {
+                    let Some(deleting_post_id) = board_state.deleting_post_id else {
+                        continue;
+                    };
+                    board_state.delete_requested_at = None;
+
+                    if *success {
+                        tracing::info!(deleting_post_id, "board: delete confirmed");
+                        board_state.deleting_post_id = None;
+                        if let Some(index) = board_state
+                            .posts
+                            .iter()
+                            .position(|entry| entry.post_id == deleting_post_id)
+                        {
+                            board_state.posts.remove(index);
+                            if board_state.posts.is_empty() {
+                                board_state.selected_index = -1;
+                                board_state.loading_post_id = -1;
+                            } else {
+                                let new_index = index.min(board_state.posts.len() - 1);
+                                board_state.selected_index = new_index as i32;
+                                let next_post_id = board_state.posts[new_index].post_id;
+                                if board_state.posts[new_index].message.is_empty() {
+                                    board_state.loading_post_id = next_post_id;
+                                    if let (Some(board_id), Ok(post_id)) =
+                                        (board_state.active_board_id, i16::try_from(next_post_id))
+                                    {
+                                        outbox.send(&client::BoardInteraction::ViewPost {
+                                            board_id,
+                                            post_id,
+                                            navigation: None,
+                                        });
+                                    }
+                                } else {
+                                    board_state.loading_post_id = -1;
+                                }
+                            }
+                            outbound.write(UiOutbound(CoreToUi::DisplayBoard(
+                                board_state.to_display_board_ui(false),
+                            )));
                         }
-
-                        outbound.write(UiOutbound(CoreToUi::DisplayBoard(BoardStateUi {
-                            visible: board_state.visible,
-                            board_name: board_state.board_name.clone(),
-                            selected_index: board_state.selected_index,
-                            loading_post_id: board_state.loading_post_id,
-                            session_token: board_state.session_token,
-                            append: false,
-                            posts: board_state.posts.clone(),
-                        })));
+                        outbound.write(UiOutbound(board_state.to_delete_msg("")));
+                    } else {
+                        tracing::info!(
+                            deleting_post_id,
+                            message = %response_message,
+                            "board: delete rejected"
+                        );
+                        outbound.write(UiOutbound(
+                            board_state.to_delete_msg(response_message.as_str()),
+                        ));
                     }
                 }
-                packets::server::DisplayBoard::BoardList { .. }
-                | packets::server::DisplayBoard::SubmitResponse { .. }
-                | packets::server::DisplayBoard::DeleteResponse { .. }
-                | packets::server::DisplayBoard::MarkUnreadResponse { .. } => continue,
+                packets::server::DisplayBoard::SubmitResponse {
+                    success,
+                    response_message,
+                } => {
+                    tracing::info!(success, message = %response_message, "board: submit response");
+                    if !board_state.compose_open {
+                        continue;
+                    }
+                    board_state.compose_waiting = false;
+                    board_state.compose_submitted_at = None;
+                    if *success {
+                        board_state.reset_compose();
+                        outbound.write(UiOutbound(board_state.to_compose_msg()));
+                        outbound.write(UiOutbound(CoreToUi::ChatAppend {
+                            entries: vec![ChatEntryUi {
+                                kind: "server".to_string(),
+                                message_type: None,
+                                text: response_message.clone(),
+                                show_in_message_box: true,
+                                show_in_action_bar: false,
+                                color: Some("#9acd32".to_string()),
+                            }],
+                        }));
+                    } else {
+                        board_state.compose_result = response_message.clone();
+                        outbound.write(UiOutbound(board_state.to_compose_msg()));
+                    }
+                }
+                packets::server::DisplayBoard::MarkUnreadResponse { .. } => continue,
             },
             SessionEvent::SelfProfile(pkt) => {
                 profile_state.is_self = true;
@@ -795,7 +1005,10 @@ pub(crate) fn bridge_inventory_events(
     }
 }
 
-pub(crate) fn update_world_list_filtered(mut state: ResMut<WorldListState>, mut last_version: Local<u32>) {
+pub(crate) fn update_world_list_filtered(
+    mut state: ResMut<WorldListState>,
+    mut last_version: Local<u32>,
+) {
     if state.version == *last_version {
         return;
     }

@@ -3,7 +3,7 @@ import { Theme } from "../theme.slint";
 import { BasePanel } from "base_panel.slint";
 import { ScrollView } from "std-widgets.slint";
 
-component MailActionButton inherits Rectangle {
+export component MailActionButton inherits Rectangle {
     in property <string> label;
     in property <bool> enabled: true;
     in property <string> emphasis: "secondary";
@@ -39,7 +39,7 @@ component MailPostRow inherits Rectangle {
     in property <bool> selected: false;
     callback clicked();
 
-    height: 58px;
+    min-height: 58px;
     border-radius: Theme.radius-small;
     border-width: 1px;
     border-color: selected ? Theme.accent-muted : row-touch.has-hover ? Theme.border-subtle : transparent;
@@ -55,16 +55,12 @@ component MailPostRow inherits Rectangle {
             padding-bottom: 7px;
             spacing: 3px;
 
-            HorizontalLayout {
-                spacing: 6px;
-
-                Text {
-                    text: post.title;
-                    color: post.is-unread ? Theme.foreground-strong : Theme.foreground;
-                    font-size: Theme.font-size-medium;
-                    font-weight: selected ? 700 : post.is-unread ? 700 : 600;
-                    overflow: elide;
-                }
+            Text {
+                text: post.title;
+                color: post.is-unread ? Theme.foreground-strong : Theme.foreground;
+                font-size: Theme.font-size-medium;
+                font-weight: selected ? 700 : post.is-unread ? 700 : 600;
+                wrap: word-wrap;
             }
 
             HorizontalLayout {
@@ -111,6 +107,7 @@ export component MailBoardPanel inherits BasePanel {
     title: MailBoardState.board-name;
     width: 760px;
     height: 540px;
+    private property <bool> board-list-open: false;
     close => {
         MailBoardState.close();
     }
@@ -120,7 +117,7 @@ export component MailBoardPanel inherits BasePanel {
         spacing: Theme.spacing-medium;
 
         Rectangle {
-            width: 300px;
+            width: 236px;
             background: Theme.surface-muted;
             border-radius: Theme.radius-medium;
             border-width: 1px;
@@ -136,7 +133,46 @@ export component MailBoardPanel inherits BasePanel {
                         padding: Theme.spacing-small;
                         spacing: Theme.spacing-small;
 
-                        VerticalLayout {
+                        if MailBoardState.board-list-mode: Rectangle {
+                            width: 130px;
+                            height: 30px;
+                            background: board-list-open ? Theme.surface-secondary : Theme.surface-card;
+                            border-radius: Theme.radius-small;
+                            border-width: 1px;
+                            border-color: board-list-open ? Theme.accent : Theme.border-subtle;
+
+                            HorizontalLayout {
+                                padding-left: Theme.spacing-small;
+                                padding-right: Theme.spacing-xsmall;
+                                spacing: Theme.spacing-small;
+
+                                Text {
+                                    text: MailBoardState.selected-board-index >= 0 ? MailBoardState.boards[MailBoardState.selected-board-index].name : "Select Board";
+                                    color: Theme.foreground;
+                                    font-size: Theme.font-size-medium;
+                                    font-weight: 700;
+                                    overflow: elide;
+                                    vertical-alignment: center;
+                                }
+
+                                Rectangle { }
+
+                                Text {
+                                    text: board-list-open ? "▲" : "▼";
+                                    color: Theme.foreground-muted;
+                                    font-size: 8px;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            TouchArea {
+                                clicked => {
+                                    board-list-open = !board-list-open;
+                                }
+                            }
+                        }
+
+                        if !MailBoardState.board-list-mode: VerticalLayout {
                             padding-left: Theme.spacing-small;
                             Text {
                                 text: "Posts";
@@ -149,11 +185,14 @@ export component MailBoardPanel inherits BasePanel {
 
                         Rectangle { }
 
-                        MailActionButton {
+                        if MailBoardState.can-post: MailActionButton {
                             width: 74px;
                             label: "New Post";
                             emphasis: "primary";
-                            enabled: false;
+                            enabled: MailBoardState.deleting-post-id < 0 && !MailBoardState.compose-visible;
+                            clicked => {
+                                MailBoardState.new-post-request();
+                            }
                         }
                     }
                 }
@@ -163,7 +202,30 @@ export component MailBoardPanel inherits BasePanel {
                     background: Theme.border-subtle;
                 }
 
-                ScrollView {
+                if MailBoardState.board-loading: VerticalLayout {
+                    alignment: center;
+                    spacing: Theme.spacing-small;
+
+                    Rectangle { }
+
+                    Text {
+                        text: "Loading...";
+                        color: Theme.foreground-muted;
+                        font-size: Theme.font-size-small;
+                        horizontal-alignment: center;
+                    }
+
+                    Text {
+                        text: "Fetching posts from the server.";
+                        color: Theme.foreground-subtle;
+                        font-size: Theme.font-size-xsmall;
+                        horizontal-alignment: center;
+                    }
+
+                    Rectangle { }
+                }
+
+                if !MailBoardState.board-loading: ScrollView {
                     VerticalLayout {
                         padding: Theme.spacing-small;
                         spacing: 6px;
@@ -173,6 +235,71 @@ export component MailBoardPanel inherits BasePanel {
                             selected: index == MailBoardState.selected-index;
                             clicked => {
                                 MailBoardState.select-post(index);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if board-list-open: Rectangle {
+                x: 0px;
+                y: 0px;
+                width: 100%;
+                height: 100%;
+                background: transparent;
+
+                TouchArea {
+                    clicked => {
+                        board-list-open = false;
+                    }
+                }
+            }
+
+            if board-list-open: Rectangle {
+                x: Theme.spacing-small;
+                y: Theme.spacing-small + 30px + Theme.spacing-xsmall;
+                width: 220px;
+                height: min(220px, MailBoardState.boards.length * 34px + 10px);
+                background: Theme.panel-background;
+                border-radius: Theme.radius-medium;
+                border-width: 1px;
+                border-color: Theme.border-panel;
+                drop-shadow-blur: 8px;
+                drop-shadow-color: Theme.surface-card;
+                drop-shadow-offset-y: 4px;
+
+                VerticalLayout {
+                    padding: 4px;
+
+                    ScrollView {
+                        viewport-height: MailBoardState.boards.length * 34px;
+                        VerticalLayout {
+                            spacing: 0px;
+
+                            for entry[idx] in MailBoardState.boards: Rectangle {
+                                height: 34px;
+                                border-radius: Theme.radius-small;
+                                background: idx == MailBoardState.selected-board-index ? Theme.accent-subtle : row-touch.has-hover ? Theme.surface-secondary : transparent;
+
+                                HorizontalLayout {
+                                    padding-left: Theme.spacing-small;
+
+                                    Text {
+                                        text: entry.name;
+                                        color: idx == MailBoardState.selected-board-index ? Theme.foreground-strong : Theme.foreground;
+                                        font-size: Theme.font-size-small;
+                                        font-weight: idx == MailBoardState.selected-board-index ? 700 : 600;
+                                        overflow: elide;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                row-touch := TouchArea {
+                                    clicked => {
+                                        MailBoardState.select-board(idx);
+                                        board-list-open = false;
+                                    }
+                                }
                             }
                         }
                     }
@@ -212,17 +339,23 @@ export component MailBoardPanel inherits BasePanel {
 
                     Rectangle { }
 
-                    MailActionButton {
+                    if MailBoardState.posts[MailBoardState.selected-index].can-reply: MailActionButton {
                         width: 52px;
                         label: "Reply";
-                        enabled: false;
+                        enabled: MailBoardState.deleting-post-id < 0 && !MailBoardState.compose-visible;
+                        clicked => {
+                            MailBoardState.reply-request();
+                        }
                     }
 
                     MailActionButton {
                         width: 56px;
                         label: "Delete";
                         emphasis: "danger";
-                        enabled: false;
+                        enabled: MailBoardState.posts[MailBoardState.selected-index].can-delete && MailBoardState.deleting-post-id < 0;
+                        clicked => {
+                            MailBoardState.delete-request(MailBoardState.selected-index, MailBoardState.posts[MailBoardState.selected-index].post-id);
+                        }
                     }
                 }
                 if MailBoardState.selected-index < 0: HorizontalLayout {

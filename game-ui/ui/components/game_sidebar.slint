@@ -37,7 +37,7 @@ component SidebarButton inherits Rectangle {
 
 export component GameSidebar inherits Rectangle {
     width: 64px;
-    height: 212px;
+    height: 288px;
     Rectangle {
         width: parent.width;
         height: parent.height + 30px;
@@ -109,6 +109,22 @@ export component GameSidebar inherits Rectangle {
                     PopupManagerState.close-request(PopupId.WorldList);
                     PopupManagerState.open-request(PopupId.Group);
                     GameState.request-self-profile();
+                }
+            }
+        }
+
+        SidebarButton {
+            active: PopupManagerState.mail-board-open;
+            icon: @image-url("../icons/mail.svg");
+            clicked => {
+                if (PopupManagerState.mail-board-open) {
+                    PopupManagerState.close-request(PopupId.MailBoard);
+                } else {
+                    PopupManagerState.close-request(PopupId.Inventory);
+                    PopupManagerState.close-request(PopupId.Skills);
+                    PopupManagerState.close-request(PopupId.Spells);
+                    PopupManagerState.close-request(PopupId.WorldList);
+                    PopupManagerState.open-request(PopupId.MailBoard);
                 }
             }
         }

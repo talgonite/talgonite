@@ -8,6 +8,45 @@ use game_types::SlotPanelType;
 use game_ui::{ActionId, LoginError};
 use slint::Model;
 
+fn to_slint_post(post: &game_ui::BoardPostUi) -> crate::MailBoardPost {
+    crate::MailBoardPost {
+        post_id: post.post_id,
+        author: slint::SharedString::from(post.author.as_str()),
+        month_of_year: post.month_of_year,
+        day_of_month: post.day_of_month,
+        title: slint::SharedString::from(post.title.as_str()),
+        message: RichText::parse(post.message.as_str()).to_slint_styled_text(),
+        is_unread: post.is_unread,
+        can_reply: post.can_reply,
+        can_delete: post.can_delete,
+    }
+}
+
+fn find_removed_row(
+    existing: &dyn Model<Data = crate::MailBoardPost>,
+    incoming: &[crate::MailBoardPost],
+) -> Option<usize> {
+    let mut incoming_index = 0usize;
+    let mut removed = None;
+    for row in 0..existing.row_count() {
+        let Some(entry) = existing.row_data(row) else {
+            return None;
+        };
+        if incoming_index < incoming.len() && incoming[incoming_index].post_id == entry.post_id {
+            incoming_index += 1;
+        } else if removed.is_none() {
+            removed = Some(row);
+        } else {
+            return None;
+        }
+    }
+    if incoming_index == incoming.len() {
+        removed
+    } else {
+        None
+    }
+}
+
 fn macro_display_name(action_id: &str) -> String {
     let raw = action_id.get(6..).unwrap_or(action_id);
     let mut spaced = String::with_capacity(raw.len() + 4);
@@ -302,7 +341,15 @@ pub fn sync_popup_to_slint(
 
     let state = slint::ComponentHandle::global::<crate::PopupManagerState>(&strong);
     let ids: Vec<crate::PopupId> = popup_manager.open_ids().map(PopupId::to_slint).collect();
-    state.set_open_popups(slint::ModelRc::new(slint::VecModel::from(ids)));
+    let current = state.get_open_popups();
+    let unchanged = current.row_count() == ids.len()
+        && current
+            .iter()
+            .zip(ids.iter())
+            .all(|(existing, id)| existing == *id);
+    if !unchanged {
+        state.set_open_popups(slint::ModelRc::new(slint::VecModel::from(ids)));
+    }
     let has_modal = popup_manager
         .open_ids()
         .any(|id| id.kind() == PopupKind::Modal);
@@ -864,51 +911,142 @@ pub fn apply_core_to_slint(
             crate::webui::ipc::CoreToUi::DisplayBoard(board_state) => {
                 let board = slint::ComponentHandle::global::<crate::MailBoardState>(&strong);
 
-                if board_state.session_token != board.get_session_token() {
-                    continue;
-                }
-
-                let mut slint_posts = Vec::with_capacity(board_state.posts.len());
-                for post in &board_state.posts {
-                    slint_posts.push(crate::MailBoardPost {
-                        post_id: post.post_id,
-                        author: slint::SharedString::from(post.author.as_str()),
-                        month_of_year: post.month_of_year,
-                        day_of_month: post.day_of_month,
-                        title: slint::SharedString::from(post.title.as_str()),
-                        message: RichText::parse(post.message.as_str()).to_slint_styled_text(),
-                        is_unread: post.is_unread,
-                        can_reply: post.can_reply,
-                        can_delete: post.can_delete,
-                    });
-                }
+                let slint_posts: Vec<crate::MailBoardPost> =
+                    board_state.posts.iter().map(to_slint_post).collect();
 
                 board.set_session_token(board_state.session_token);
                 board.set_board_name(slint::SharedString::from(board_state.board_name.as_str()));
+                board.set_can_post(board_state.can_post);
+                board.set_board_list_mode(board_state.board_list_mode);
+                board.set_board_loading(board_state.board_loading);
                 if board_state.visible {
-                    popup_manager.open(crate::slint_support::popups::PopupId::MailBoard);
+                    if !popup_manager.is_open(crate::slint_support::popups::PopupId::MailBoard) {
+                        popup_manager.open(crate::slint_support::popups::PopupId::MailBoard);
+                    }
                 } else {
                     popup_manager.close(crate::slint_support::popups::PopupId::MailBoard);
                 }
 
                 if board_state.append {
                     let existing_posts = board.get_posts();
-                    let mut combined_posts =
-                        Vec::with_capacity(existing_posts.row_count() + slint_posts.len());
-                    for index in 0..existing_posts.row_count() {
-                        if let Some(post) = existing_posts.row_data(index) {
-                            combined_posts.push(post);
+                    if let Some(model) = existing_posts
+                        .as_any()
+                        .downcast_ref::<slint::VecModel<crate::MailBoardPost>>()
+                    {
+                        model.extend(slint_posts);
+                    } else {
+                        let mut combined_posts =
+                            Vec::with_capacity(existing_posts.row_count() + slint_posts.len());
+                        for index in 0..existing_posts.row_count() {
+                            if let Some(post) = existing_posts.row_data(index) {
+                                combined_posts.push(post);
+                            }
                         }
+                        combined_posts.extend(slint_posts);
+                        board.set_posts(slint::ModelRc::new(slint::VecModel::from(combined_posts)));
                     }
-                    combined_posts.extend(slint_posts);
-                    board.set_posts(slint::ModelRc::new(slint::VecModel::from(combined_posts)));
-                    board.set_loading_post_id(board_state.loading_post_id);
-                    board.set_selected_index(board_state.selected_index);
                 } else {
-                    board.set_selected_index(-1);
-                    board.set_posts(slint::ModelRc::new(slint::VecModel::from(slint_posts)));
-                    board.set_loading_post_id(board_state.loading_post_id);
-                    board.set_selected_index(board_state.selected_index);
+                    let existing_posts = board.get_posts();
+                    let same_rows = existing_posts.row_count() == slint_posts.len()
+                        && existing_posts
+                            .iter()
+                            .zip(slint_posts.iter())
+                            .all(|(existing, incoming)| existing.post_id == incoming.post_id);
+                    if same_rows {
+                        if let Some(model) = existing_posts
+                            .as_any()
+                            .downcast_ref::<slint::VecModel<crate::MailBoardPost>>()
+                        {
+                            for (index, post) in slint_posts.iter().enumerate() {
+                                if existing_posts.row_data(index).as_ref() != Some(post) {
+                                    model.set_row_data(index, post.clone());
+                                }
+                            }
+                        } else {
+                            board
+                                .set_posts(slint::ModelRc::new(slint::VecModel::from(slint_posts)));
+                        }
+                    } else if let Some(removed_row) =
+                        find_removed_row(&existing_posts, &slint_posts)
+                    {
+                        if existing_posts
+                            .as_any()
+                            .downcast_ref::<slint::VecModel<crate::MailBoardPost>>()
+                            .is_some()
+                        {
+                            // row_removed destroys the row's component synchronously, which
+                            // re-enters the renderer and panics from inside the rendering
+                            // notifier (Bevy updates run there), so defer to the event loop.
+                            let model_rc = existing_posts.clone();
+                            slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+                                if let Some(model) = model_rc
+                                    .as_any()
+                                    .downcast_ref::<slint::VecModel<crate::MailBoardPost>>()
+                                {
+                                    model.remove(removed_row);
+                                }
+                            });
+                        } else {
+                            board
+                                .set_posts(slint::ModelRc::new(slint::VecModel::from(slint_posts)));
+                        }
+                    } else {
+                        board.set_posts(slint::ModelRc::new(slint::VecModel::from(slint_posts)));
+                    }
+                }
+                board.set_loading_post_id(board_state.loading_post_id);
+                board.set_selected_index(board_state.selected_index);
+            }
+            crate::webui::ipc::CoreToUi::BoardListUpdate {
+                boards,
+                selected_index,
+            } => {
+                let mail_board = slint::ComponentHandle::global::<crate::MailBoardState>(&strong);
+                let slint_boards: Vec<crate::MailBoardEntry> = boards
+                    .iter()
+                    .map(|entry| crate::MailBoardEntry {
+                        board_id: entry.board_id,
+                        name: slint::SharedString::from(entry.name.as_str()),
+                    })
+                    .collect();
+                mail_board.set_boards(slint::ModelRc::new(slint::VecModel::from(slint_boards)));
+                mail_board.set_selected_board_index(*selected_index);
+                mail_board.set_board_list_mode(true);
+            }
+            crate::webui::ipc::CoreToUi::BoardDeleteUpdate {
+                deleting_post_id,
+                message,
+            } => {
+                let mail_board = slint::ComponentHandle::global::<crate::MailBoardState>(&strong);
+                mail_board.set_deleting_post_id(*deleting_post_id);
+                mail_board.set_delete_message(slint::SharedString::from(message.as_str()));
+            }
+            crate::webui::ipc::CoreToUi::BoardComposeUpdate {
+                visible,
+                title,
+                name_label,
+                name,
+                name_editable,
+                subject,
+                waiting,
+                result,
+            } => {
+                let mail_board = slint::ComponentHandle::global::<crate::MailBoardState>(&strong);
+                mail_board.set_compose_visible(*visible);
+                mail_board.set_compose_title(slint::SharedString::from(title.as_str()));
+                mail_board.set_compose_name_label(slint::SharedString::from(name_label.as_str()));
+                let name = if name.is_empty() && !*name_editable {
+                    slint::ComponentHandle::global::<crate::GameState>(&strong).get_player_name()
+                } else {
+                    slint::SharedString::from(name.as_str())
+                };
+                mail_board.set_compose_name(name);
+                mail_board.set_compose_name_editable(*name_editable);
+                mail_board.set_compose_subject(slint::SharedString::from(subject.as_str()));
+                mail_board.set_compose_waiting(*waiting);
+                mail_board.set_compose_result(slint::SharedString::from(result.as_str()));
+                if *visible {
+                    mail_board.set_compose_body(slint::SharedString::from(""));
                 }
             }
             crate::webui::ipc::CoreToUi::SettingsSync {

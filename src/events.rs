@@ -54,14 +54,21 @@ pub enum HotbarEvent {}
 
 #[derive(Debug, Clone, Message)]
 pub enum AbilityEvent {
-    SkillCooldown { slot: u8, cooldown_secs: u32 },
+    SkillCooldown {
+        slot: u8,
+        cooldown_secs: u32,
+    },
     AddSkill(server::AddSkillToPane),
     RemoveSkill(server::RemoveSkillFromPane),
     AddSpell(server::AddSpellToPane),
     RemoveSpell(server::RemoveSpellFromPane),
     // Outbound
-    UseSkill { slot: u8 },
-    UseSpell { slot: u8 },
+    UseSkill {
+        slot: u8,
+    },
+    UseSpell {
+        slot: u8,
+    },
     UseSpellAt {
         slot: u8,
         target_entity: Option<u32>,

@@ -712,7 +712,10 @@ pub(crate) struct LoginResultComp(
 #[derive(Component)]
 pub(crate) struct LoginErrorComp(LoginError, LoginTaskInner);
 
-pub(crate) fn handle_login_tasks(mut commands: Commands, mut q: Query<(Entity, &mut LoginTaskEntity)>) {
+pub(crate) fn handle_login_tasks(
+    mut commands: Commands,
+    mut q: Query<(Entity, &mut LoginTaskEntity)>,
+) {
     for (e, mut task_wrap) in &mut q {
         if let Some(res) = future::block_on(future::poll_once(&mut task_wrap.0.task)) {
             println!("[webui] LoginTask completed: success={}.", res.is_ok());

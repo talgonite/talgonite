@@ -2,6 +2,9 @@
 // behind one shared dim backdrop.
 
 import { PopupManagerState, PopupId } from "../popup_manager.slint";
+import { MailBoardState } from "../mail_board_state.slint";
+import { Theme } from "../theme.slint";
+import { LineEdit, TextEdit } from "std-widgets.slint";
 import { NpcDialog } from "./menu_dialog.slint";
 import { SettingsPanel } from "settings/panel.slint";
 import { GameMenuPanel } from "settings/game_menu.slint";
@@ -12,7 +15,7 @@ import { GroupPanel } from "./group_panel.slint";
 import { ProfilePanel } from "./profile_panel.slint";
 import { WorldContextMenuOverlay } from "./world_context_menu.slint";
 import { GroupInvitePopup } from "./group_invite_popup.slint";
-import { MailBoardPanel } from "./mail_board_panel.slint";
+import { MailBoardPanel, MailActionButton } from "./mail_board_panel.slint";
 import { WorldMap } from "./world_map.slint";
 import { ExchangePanel } from "./exchange_panel.slint";
 
@@ -110,9 +113,217 @@ export component PopupLayer inherits Rectangle {
         }
     }
 
-    // Render open popups in stack order (later = on top).
     for id in PopupManagerState.open-popups: PopupHost {
         id: id;
         actions-tab: root.actions-tab;
+    }
+
+    if (MailBoardState.deleting-post-id >= 0): Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 100%;
+        background: #000a;
+
+        TouchArea { }
+
+        Rectangle {
+            width: 380px;
+            height: 200px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: Theme.panel-background;
+            border-radius: Theme.radius-large;
+            border-width: 1px;
+            border-color: Theme.border-panel;
+
+            VerticalLayout {
+                padding: Theme.spacing-large;
+                spacing: Theme.spacing-medium;
+                alignment: center;
+
+                Rectangle { }
+
+                Text {
+                    text: MailBoardState.delete-message == "" ? "Deleting post..." : MailBoardState.delete-message;
+                    color: Theme.foreground;
+                    font-size: Theme.font-size-medium;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+
+                if MailBoardState.delete-message == "": Text {
+                    text: "Waiting for the server to confirm...";
+                    color: Theme.foreground-muted;
+                    font-size: Theme.font-size-small;
+                    horizontal-alignment: center;
+                }
+
+                if MailBoardState.delete-message != "": MailActionButton {
+                    width: 120px;
+                    label: "OK";
+                    emphasis: "primary";
+                    clicked => {
+                        MailBoardState.delete-dismiss();
+                    }
+                }
+
+                Rectangle { }
+            }
+        }
+    }
+
+    if (MailBoardState.compose-visible): Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 100%;
+        background: #000a;
+
+        TouchArea { }
+
+        Rectangle {
+            width: 480px;
+            height: 420px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: Theme.panel-background;
+            border-radius: Theme.radius-large;
+            border-width: 1px;
+            border-color: Theme.border-panel;
+
+            VerticalLayout {
+                padding: Theme.spacing-large;
+                spacing: Theme.spacing-medium;
+
+                Text {
+                    text: MailBoardState.compose-title;
+                    color: Theme.foreground-strong;
+                    font-size: Theme.font-size-medium;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                }
+
+                if MailBoardState.compose-waiting: VerticalLayout {
+                    spacing: Theme.spacing-small;
+
+                    Rectangle { }
+
+                    Text {
+                        text: "Sending...";
+                        color: Theme.foreground-strong;
+                        font-size: Theme.font-size-medium;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                    }
+
+                    Text {
+                        text: "Waiting for the server to confirm.";
+                        color: Theme.foreground-muted;
+                        font-size: Theme.font-size-small;
+                        horizontal-alignment: center;
+                    }
+
+                    Rectangle { }
+                }
+
+                if MailBoardState.compose-result != "": VerticalLayout {
+                    spacing: Theme.spacing-medium;
+
+                    Rectangle { }
+
+                    Text {
+                        text: MailBoardState.compose-result;
+                        color: Theme.foreground;
+                        font-size: Theme.font-size-medium;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                    }
+
+                    MailActionButton {
+                        width: 120px;
+                        label: "OK";
+                        emphasis: "primary";
+                        clicked => {
+                            MailBoardState.compose-cancel();
+                        }
+                    }
+
+                    Rectangle { }
+                }
+
+                if !MailBoardState.compose-waiting && MailBoardState.compose-result == "": VerticalLayout {
+                    spacing: Theme.spacing-medium;
+
+                    HorizontalLayout {
+                        spacing: Theme.spacing-small;
+
+                        Text {
+                            width: 48px;
+                            text: MailBoardState.compose-name-label;
+                            color: Theme.foreground-muted;
+                            font-size: Theme.font-size-small;
+                            vertical-alignment: center;
+                        }
+
+                        LineEdit {
+                            text <=> MailBoardState.compose-name;
+                            enabled: MailBoardState.compose-name-editable;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: Theme.spacing-small;
+
+                        Text {
+                            width: 48px;
+                            text: "Subject";
+                            color: Theme.foreground-muted;
+                            font-size: Theme.font-size-small;
+                            vertical-alignment: center;
+                        }
+
+                        LineEdit {
+                            text <=> MailBoardState.compose-subject;
+                        }
+                    }
+
+                    Text {
+                        text: "Message";
+                        color: Theme.foreground-muted;
+                        font-size: Theme.font-size-small;
+                    }
+
+                    TextEdit {
+                        text <=> MailBoardState.compose-body;
+                        height: 150px;
+                    }
+
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: Theme.spacing-medium;
+
+                        MailActionButton {
+                            width: 120px;
+                            label: "Send";
+                            emphasis: "primary";
+                            clicked => {
+                                MailBoardState.compose-send();
+                            }
+                        }
+
+                        MailActionButton {
+                            width: 120px;
+                            label: "Cancel";
+                            clicked => {
+                                MailBoardState.compose-cancel();
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

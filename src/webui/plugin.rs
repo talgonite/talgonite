@@ -2,6 +2,7 @@ use bevy::input::ButtonInput;
 use bevy::input::mouse::MouseButton;
 use bevy::prelude::*;
 use game_ui::{CoreToUi, KeyboardEdges, UiToCore};
+use std::time::Duration;
 
 use crate::app_state::AppState;
 use crate::render_plugin::game::WebUi;
@@ -16,9 +17,9 @@ use crate::webui::inbound::{
 };
 use crate::webui::input::{clear_input_edges, clear_just_input, handle_input_bridge};
 use crate::webui::login::{
-    handle_character_creation_results, handle_character_creation_tasks, handle_login_results,
-    handle_login_tasks, handle_prelogin_connect_tasks, handle_ui_inbound_login,
-    PreLoginConnectionState,
+    PreLoginConnectionState, handle_character_creation_results, handle_character_creation_tasks,
+    handle_login_results, handle_login_tasks, handle_prelogin_connect_tasks,
+    handle_ui_inbound_login,
 };
 use crate::webui::settings::sync_settings_to_ui;
 
@@ -84,11 +85,48 @@ impl Plugin for UiBridgePlugin {
                     handle_character_creation_results,
                     update_skill_cooldowns,
                     sync_settings_to_ui,
+                    check_board_delete_timeout,
+                    check_board_compose_timeout,
                 ),
             )
             .add_systems(Last, (clear_input_edges, clear_just_input))
             .add_systems(Update, emit_snapshot_on_state_change);
     }
+}
+
+fn check_board_compose_timeout(
+    time: Res<Time>,
+    mut board_state: ResMut<BoardSessionState>,
+    mut outbound: MessageWriter<UiOutbound>,
+) {
+    let Some(submitted_at) = board_state.compose_submitted_at else {
+        return;
+    };
+    if time.elapsed().saturating_sub(submitted_at) < Duration::from_secs(5) {
+        return;
+    }
+    board_state.compose_waiting = false;
+    board_state.compose_submitted_at = None;
+    board_state.compose_result =
+        "The server did not respond. The message may not have been sent.".to_string();
+    outbound.write(UiOutbound(board_state.to_compose_msg()));
+}
+
+fn check_board_delete_timeout(
+    time: Res<Time>,
+    mut board_state: ResMut<BoardSessionState>,
+    mut outbound: MessageWriter<UiOutbound>,
+) {
+    let Some(requested_at) = board_state.delete_requested_at else {
+        return;
+    };
+    if time.elapsed().saturating_sub(requested_at) < Duration::from_secs(5) {
+        return;
+    }
+    board_state.delete_requested_at = None;
+    outbound.write(UiOutbound(board_state.to_delete_msg(
+        "The server did not respond. The post may still exist.",
+    )));
 }
 
 fn forward_outbound_to_webview(

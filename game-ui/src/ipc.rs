@@ -246,6 +246,25 @@ pub enum UiToCore {
         index: i32,
         post_id: i32,
     },
+    MailBoardDeletePost {
+        index: i32,
+        post_id: i32,
+    },
+    MailBoardDeleteDismiss,
+    MailBoardSelectBoard {
+        index: i32,
+    },
+    MailBoardComposeNew,
+    MailBoardComposeReply {
+        index: i32,
+        post_id: i32,
+    },
+    MailBoardComposeSend {
+        name: String,
+        subject: String,
+        body: String,
+    },
+    MailBoardComposeCancel,
     MailBoardClose,
     ExchangeAddItem {
         slot: u8,
@@ -381,6 +400,24 @@ pub enum CoreToUi {
         entries: Vec<MenuEntryUi>,
     },
     DisplayBoard(BoardStateUi),
+    BoardListUpdate {
+        boards: Vec<BoardEntryUi>,
+        selected_index: i32,
+    },
+    BoardDeleteUpdate {
+        deleting_post_id: i32,
+        message: String,
+    },
+    BoardComposeUpdate {
+        visible: bool,
+        title: String,
+        name_label: String,
+        name: String,
+        name_editable: bool,
+        subject: String,
+        waiting: bool,
+        result: String,
+    },
     SettingsSync {
         xray_size: u8,
         sfx_volume: f32,
@@ -397,6 +434,9 @@ pub enum CoreToUi {
 pub struct BoardStateUi {
     pub visible: bool,
     pub board_name: String,
+    pub can_post: bool,
+    pub board_list_mode: bool,
+    pub board_loading: bool,
     pub selected_index: i32,
     pub loading_post_id: i32,
     pub session_token: i32,
@@ -415,6 +455,12 @@ pub struct BoardPostUi {
     pub is_unread: bool,
     pub can_reply: bool,
     pub can_delete: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct BoardEntryUi {
+    pub board_id: i32,
+    pub name: String,
 }
 
 #[derive(Debug, Clone)]
