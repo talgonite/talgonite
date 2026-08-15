@@ -6,3 +6,4 @@ This is a list of issues in the official client that Talgonite fixes
 - Closing a board / post while it's loading extra pages it opens back up
 - Reaching the bottom of a board infinitely attempts to load more posts, then reopens empty when closed
 - Exchanges don't display more than 2 separate stacks of stackable items even when there are more
+- Attempting to delete a post you don't have access to delete leaves the client stuck
