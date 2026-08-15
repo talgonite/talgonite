@@ -10,6 +10,7 @@ use crate::{
         UnifiedInputBindings, gamepad_rebinding_system, sync_rebinding_state_from_slint,
     },
     network::PacketOutbox,
+    resources::ZoomState,
     settings_types::Settings,
     slint_support::popups::{PopupId, PopupManager},
 };
@@ -23,6 +24,10 @@ use std::time::Duration;
 pub struct InputPumpSet;
 
 pub struct InputPlugin;
+
+const ZOOM_STEPS: [f32; 8] = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0];
+// Slint reports one wheel notch as 60px (LineDelta * 60).
+const WHEEL_DELTA_PER_ZOOM_STEP: f32 = 60.0;
 
 const HOTBAR_SLOT_ACTIONS: [GameAction; 48] = [
     GameAction::HotbarSlot1,
@@ -127,6 +132,7 @@ impl Plugin for InputPlugin {
             .init_resource::<GamepadConfig>()
             .init_resource::<GilrsResource>()
             .init_resource::<RebindingState>()
+            .init_resource::<ScrollZoomAccumulator>()
             .init_resource::<UnifiedInputBindings>()
             .add_message::<bevy::input::mouse::MouseWheel>()
             .add_message::<bevy::input::gamepad::RawGamepadEvent>()
@@ -154,12 +160,62 @@ impl Plugin for InputPlugin {
                     input_handling_system.run_if(in_state(AppState::InGame)),
                     popup_control_system.run_if(in_state(AppState::InGame)),
                     reset_walk_timer_on_map_change_system.run_if(in_state(AppState::InGame)),
+                    zoom_with_scroll_system.run_if(in_state(AppState::InGame)),
                 )
                     .chain()
                     .after(InputPumpSet)
                     .in_set(GameSet::EventProcessing),
             );
     }
+}
+
+#[derive(Resource, Default)]
+struct ScrollZoomAccumulator {
+    y: f32,
+}
+
+fn zoom_with_scroll_system(
+    mut mouse_wheel_events: MessageReader<bevy::input::mouse::MouseWheel>,
+    mut settings: ResMut<Settings>,
+    mut zoom_state: ResMut<ZoomState>,
+    mut accumulator: ResMut<ScrollZoomAccumulator>,
+) {
+    let mut total = accumulator.y;
+    for event in mouse_wheel_events.read() {
+        total += event.y;
+    }
+
+    let steps = (total / WHEEL_DELTA_PER_ZOOM_STEP).trunc();
+    if steps == 0.0 {
+        accumulator.y = total;
+        return;
+    }
+    accumulator.y = total - steps * WHEEL_DELTA_PER_ZOOM_STEP;
+
+    let new_zoom = step_zoom(zoom_state.user_zoom, steps as i32);
+    if (new_zoom - zoom_state.user_zoom).abs() > f32::EPSILON {
+        zoom_state.set_zoom(new_zoom);
+        settings.graphics.scale = new_zoom;
+    }
+}
+
+fn step_zoom(current: f32, steps: i32) -> f32 {
+    let index = nearest_zoom_index(current);
+    let clamped = (index + steps).clamp(0, ZOOM_STEPS.len() as i32 - 1);
+    ZOOM_STEPS[clamped as usize]
+}
+
+fn nearest_zoom_index(zoom: f32) -> i32 {
+    let mut best = 0;
+    let mut best_distance = f32::INFINITY;
+    for (i, step) in ZOOM_STEPS.iter().enumerate() {
+        let distance = (step - zoom).abs();
+        if distance < best_distance {
+            best = i;
+            best_distance = distance;
+        }
+    }
+    best as i32
 }
 
 /// Gamepad Start ("back") + side-panel toggles; keyboard Escape is handled in
@@ -477,6 +533,23 @@ mod tests {
         let resolved = resolve_hotbar_slot_target(12, &panel_state, &settings);
 
         assert_eq!(resolved, Some((SlotPanelType::Hotbar, 12)));
+    }
+
+    #[test]
+    fn step_zoom_moves_one_step_per_notch() {
+        assert_eq!(step_zoom(1.0, 1), 1.5);
+        assert_eq!(step_zoom(3.0, -1), 2.5);
+    }
+
+    #[test]
+    fn step_zoom_clamps_at_ends() {
+        assert_eq!(step_zoom(0.5, -1), 0.5);
+        assert_eq!(step_zoom(5.0, 2), 5.0);
+    }
+
+    #[test]
+    fn step_zoom_snaps_to_nearest_step() {
+        assert_eq!(step_zoom(1.2, 1), 1.5);
     }
 }
 
