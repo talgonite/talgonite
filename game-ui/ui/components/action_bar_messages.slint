@@ -37,12 +37,10 @@ export component ActionBarMessages inherits Rectangle {
         spacing: 2px;
         padding: 4px;
 
-        for message in GameState.action-bar-messages: Text {
-            text: message;
-            color: Theme.foreground-strong;
-            font-size: Theme.font-size-caption;
-            font-weight: 500;
-            wrap: word-wrap;
+        for message in GameState.action-bar-messages: StyledText {
+            text: message.text;
+            default-color: message.color;
+            default-font-size: Theme.font-size-caption;
         }
     }
 }

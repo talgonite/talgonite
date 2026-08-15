@@ -629,31 +629,33 @@ pub fn apply_core_to_slint(
                 let mut chat_messages: Vec<crate::ChatMessage> = existing_chat.iter().collect();
 
                 let existing_action = game_state.get_action_bar_messages();
-                let mut action_bar_messages: Vec<slint::SharedString> =
+                let mut action_bar_messages: Vec<crate::ChatMessage> =
                     existing_action.iter().collect();
 
                 let mut action_bar_updated = false;
                 for entry in entries.iter() {
-                    if entry.show_in_message_box {
-                        let color_str = entry
-                            .color
-                            .as_ref()
-                            .map(|s| s.as_str())
-                            .unwrap_or("#d0d0d0");
-                        let color = parse_color_hex(color_str);
+                    let color_str = entry
+                        .color
+                        .as_ref()
+                        .map(|s| s.as_str())
+                        .unwrap_or("#d0d0d0");
+                    let color = parse_color_hex(color_str);
 
-                        let rich_text = crate::rich_text::RichText::parse(entry.text.as_str());
+                    let rich_text = crate::rich_text::RichText::parse(entry.text.as_str());
+                    let styled_text = rich_text.to_slint_styled_text();
+
+                    if entry.show_in_message_box {
                         chat_messages.push(crate::ChatMessage {
-                            text: rich_text.to_slint_styled_text(),
-                            color,
+                            text: styled_text.clone(),
+                            color: color.clone(),
                         });
                     }
 
                     if entry.show_in_action_bar {
-                        let rich_text = crate::rich_text::RichText::parse(entry.text.as_str());
-                        action_bar_messages.push(slint::SharedString::from(
-                            rich_text.to_plain_string().as_str(),
-                        ));
+                        action_bar_messages.push(crate::ChatMessage {
+                            text: styled_text,
+                            color,
+                        });
                         while action_bar_messages.len() > 4 {
                             action_bar_messages.remove(0);
                         }
