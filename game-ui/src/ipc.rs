@@ -238,6 +238,10 @@ pub enum UiToCore {
     LeaveGroup,
     /// Request fresh self profile (e.g. when opening group panel so group list is up to date).
     RequestSelfProfile,
+    /// Allocate a stat point to a primary stat (1=Str, 2=Dex, 4=Int, 8=Wis, 16=Con).
+    RaiseStat {
+        stat: u8,
+    },
     WorldContextMenuSelect {
         id: i32,
     },

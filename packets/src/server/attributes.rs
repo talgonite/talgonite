@@ -51,7 +51,7 @@ pub struct Attributes {
     pub is_admin_a: bool,
     pub is_admin_b: bool,
     pub is_swimming: bool,
-    pub has_unread_mail_flag: bool, // from top-level flag bit 0
+    pub has_unread_mail_flag: bool,
     pub primary: Option<AttributesPrimary>,
     pub vitality: Option<AttributesVitality>,
     pub exp_gold: Option<AttributesExpGold>,
@@ -63,8 +63,7 @@ impl TryFromBytes for Attributes {
         let mut cursor = Cursor::new(bytes);
         let flags = cursor.read_u8()?;
 
-        // Flag bits based on C# StatUpdateType
-        const UNREAD_MAIL: u8 = 1 << 0; // also reused inside secondary block as separate byte later
+        const UNREAD_MAIL: u8 = 1 << 0;
         const SECONDARY: u8 = 1 << 2;
         const EXP_GOLD: u8 = 1 << 3;
         const VITALITY: u8 = 1 << 4;
@@ -74,12 +73,10 @@ impl TryFromBytes for Attributes {
 
         let is_admin_a = flags & GM_A != 0;
         let is_admin_b = flags & GM_B != 0;
-        let is_swimming = (flags & (GM_A | GM_B)) == (GM_A | GM_B); // Swimming alias
-        let has_unread_mail_flag = flags & UNREAD_MAIL != 0; // top-level flag only
+        let is_swimming = (flags & (GM_A | GM_B)) == (GM_A | GM_B);
+        let has_unread_mail_flag = flags & UNREAD_MAIL != 0;
 
-        // Parse sections in same order as server serialization: Primary, Vitality, ExpGold, Secondary
         let primary = if flags & PRIMARY != 0 {
-            // Skip 3 unknown/padding bytes
             let mut skip = [0u8; 3];
             cursor.read_exact(&mut skip)?;
             let level = cursor.read_u8()?;
@@ -91,12 +88,10 @@ impl TryFromBytes for Attributes {
             let wis = cursor.read_u8()?;
             let con = cursor.read_u8()?;
             let dex = cursor.read_u8()?;
-            // has_unspent_points bool (discard, derive from unspent_points)
             let _has_unspent_bool = cursor.read_u8()?;
             let unspent_points = cursor.read_u8()?;
             let max_weight = cursor.read_i16::<BigEndian>()?;
             let current_weight = cursor.read_i16::<BigEndian>()?;
-            // trailing 4 unknown bytes
             let mut trailing = [0u8; 4];
             cursor.read_exact(&mut trailing)?;
             Some(AttributesPrimary {
@@ -140,20 +135,14 @@ impl TryFromBytes for Attributes {
         };
 
         let secondary = if flags & SECONDARY != 0 {
-            // Layout per C# serializer
-            // 1 unknown byte
             let _unknown1 = cursor.read_u8()?;
-            // blind stored as 8 if true else 0
             let blind = cursor.read_u8()? == 8;
-            // 3 unknown bytes
             let mut unk3 = [0u8; 3];
             cursor.read_exact(&mut unk3)?;
-            // mail flag byte (16 if has mail)
             let has_unread_mail = cursor.read_u8()? == 16;
             let offense_element = cursor.read_u8()?;
             let defense_element = cursor.read_u8()?;
             let magic_resistance = cursor.read_u8()?;
-            // 1 unknown byte
             let _unknown2 = cursor.read_u8()?;
             let ac = cursor.read_i8()?;
             let dmg = cursor.read_u8()?;
@@ -182,5 +171,81 @@ impl TryFromBytes for Attributes {
             exp_gold,
             secondary,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_attributes_primary_and_secondary() {
+        let raw = vec![
+            (1 << 5) | (1 << 2), // PRIMARY | SECONDARY flags
+            // Primary block
+            0,
+            0,
+            0,  // 3 skip bytes
+            99, // level
+            15, // ability
+            0,
+            0,
+            0x10,
+            0x00, // max_hp: 4096
+            0,
+            0,
+            0x08,
+            0x00, // max_mp: 2048
+            25,   // str
+            18,   // int
+            20,   // wis
+            30,   // con
+            22,   // dex
+            1,    // has_unspent_bool
+            3,    // unspent_points
+            0x01,
+            0x00, // max_weight: 256
+            0x00,
+            0x50, // current_weight: 80
+            0,
+            0,
+            0,
+            0, // 4 trailing skip bytes
+            // Secondary block
+            0, // unknown1
+            0, // blind (0 = false)
+            0,
+            0,
+            0,           // unk3
+            0,           // mail
+            1,           // offense_element
+            2,           // defense_element
+            15,          // magic_resistance
+            0,           // unknown2
+            -45i8 as u8, // ac
+            10,          // dmg
+            12,          // hit
+        ];
+
+        let parsed = Attributes::try_from_bytes(&raw).expect("parse attributes");
+        let primary = parsed.primary.expect("primary present");
+        assert_eq!(primary.level, 99);
+        assert_eq!(primary.ability, 15);
+        assert_eq!(primary.maximum_hp, 4096);
+        assert_eq!(primary.maximum_mp, 2048);
+        assert_eq!(primary.str, 25);
+        assert_eq!(primary.int, 18);
+        assert_eq!(primary.wis, 20);
+        assert_eq!(primary.con, 30);
+        assert_eq!(primary.dex, 22);
+        assert_eq!(primary.unspent_points, 3);
+        assert_eq!(primary.max_weight, 256);
+        assert_eq!(primary.current_weight, 80);
+
+        let secondary = parsed.secondary.expect("secondary present");
+        assert_eq!(secondary.ac, -45);
+        assert_eq!(secondary.dmg, 10);
+        assert_eq!(secondary.hit, 12);
+        assert_eq!(secondary.magic_resistance, 15);
     }
 }

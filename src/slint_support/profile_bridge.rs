@@ -10,10 +10,10 @@ use crate::{EquipmentSlotData, GameState, LegendMarkData, ProfileData};
 /// Event emitted when the player wants to show a profile panel
 #[derive(Debug, Clone, Message)]
 pub enum ShowSelfProfileEvent {
-    SelfRequested,  // User double-clicked self
-    SelfUpdate,     // Server sent SelfProfile packet
-    OtherRequested, // User double-clicked other (optimistic UI)
-    OtherUpdate,    // Server sent OtherProfile packet
+    SelfRequested,
+    SelfUpdate,
+    OtherRequested,
+    OtherUpdate,
 }
 
 /// Maps legend mark color string to Slint color.
@@ -164,13 +164,67 @@ fn assign_equipment(profile: &mut ProfileData, slots: [EquipmentSlotData; 18]) {
     profile.eq_over_armor = eq_over_armor;
 }
 
-/// System that syncs PlayerProfileState to Slint whenever it changes
+fn populate_profile_data(
+    profile: &mut ProfileData,
+    profile_state: &crate::webui::plugin::PlayerProfileState,
+    player_attrs: &crate::resources::PlayerAttributes,
+    eq_state: &crate::webui::plugin::EquipmentState,
+    asset_loader: &SlintAssetLoader,
+    game_files: &crate::game_files::GameFiles,
+) {
+    if !profile_state.name.is_empty() {
+        profile.name = slint::SharedString::from(profile_state.name.as_str());
+    }
+    profile.class = slint::SharedString::from(profile_state.class.as_str());
+    profile.guild = slint::SharedString::from(profile_state.guild.as_str());
+    profile.guild_rank = slint::SharedString::from(profile_state.guild_rank.as_str());
+    profile.title = slint::SharedString::from(profile_state.title.as_str());
+    profile.town = slint::SharedString::from(format!("{:?}", profile_state.nation));
+    profile.group_requests_enabled = profile_state.group_open;
+    profile.profile_text = slint::SharedString::from(profile_state.profile_text.to_plain_string());
+    profile.social_status = u8_to_social_status(profile_state.social_status as u8);
+
+    let legend_marks: Vec<LegendMarkData> = profile_state
+        .legend_marks
+        .iter()
+        .map(|m| LegendMarkData {
+            icon_name: slint::SharedString::from(format!("{:?}", m.icon)),
+            color: legend_mark_color(&format!("{:?}", m.color)),
+            text: slint::SharedString::from(m.text.as_str()),
+        })
+        .collect();
+    profile.legend_marks = slint::ModelRc::new(slint::VecModel::from(legend_marks));
+
+    if profile.is_self {
+        profile.str = player_attrs.str as i32;
+        profile.intel = player_attrs.int as i32;
+        profile.wis = player_attrs.wis as i32;
+        profile.con = player_attrs.con as i32;
+        profile.dex = player_attrs.dex as i32;
+        profile.stat_points = player_attrs.unspent_points as i32;
+        profile.ac = player_attrs.ac as i32;
+        profile.hit = player_attrs.hit as i32;
+        profile.dmg = player_attrs.dmg as i32;
+        profile.magic_resistance = player_attrs.magic_resistance as i32;
+        profile.current_weight = player_attrs.current_weight as i32;
+        profile.max_weight = player_attrs.max_weight as i32;
+        profile.level = player_attrs.level as i32;
+        profile.ability_level = player_attrs.ability as i32;
+    }
+
+    let is_other_player = !profile_state.name.is_empty();
+    let specs = collect_profile_slot_specs(is_other_player, &profile_state.equipment, &eq_state.0);
+    let slots = build_equipment_slots(asset_loader, game_files, &specs);
+    assign_equipment(profile, slots);
+}
+
 pub fn sync_profile_to_slint(
     win: Res<SlintWindow>,
     asset_loader: Res<SlintAssetLoaderRes>,
     game_files: Res<crate::game_files::GameFiles>,
     eq_state: Res<crate::webui::plugin::EquipmentState>,
     profile_state: Res<crate::webui::plugin::PlayerProfileState>,
+    player_attrs: Res<crate::resources::PlayerAttributes>,
     portrait_state: Res<crate::resources::ProfilePortraitState>,
     mut last_portrait_version: Local<u32>,
 ) {
@@ -187,7 +241,7 @@ pub fn sync_profile_to_slint(
         *last_portrait_version = portrait_state.version;
     }
 
-    if profile_state.is_changed() || portrait_image.is_some() {
+    if profile_state.is_changed() || portrait_image.is_some() || player_attrs.is_changed() {
         let game_state = slint::ComponentHandle::global::<GameState>(&strong);
         let mut profile = game_state.get_profile();
 
@@ -195,42 +249,19 @@ pub fn sync_profile_to_slint(
             profile.preview = img;
         }
 
-        if !profile_state.name.is_empty() {
-            profile.name = slint::SharedString::from(profile_state.name.as_str());
-        }
-        profile.class = slint::SharedString::from(profile_state.class.as_str());
-        profile.guild = slint::SharedString::from(profile_state.guild.as_str());
-        profile.guild_rank = slint::SharedString::from(profile_state.guild_rank.as_str());
-        profile.title = slint::SharedString::from(profile_state.title.as_str());
-        profile.town = slint::SharedString::from(format!("{:?}", profile_state.nation));
-        profile.group_requests_enabled = profile_state.group_open;
-        profile.profile_text =
-            slint::SharedString::from(profile_state.profile_text.to_plain_string());
-        profile.social_status = u8_to_social_status(profile_state.social_status as u8);
-
-        let legend_marks: Vec<LegendMarkData> = profile_state
-            .legend_marks
-            .iter()
-            .map(|m| LegendMarkData {
-                icon_name: slint::SharedString::from(format!("{:?}", m.icon)),
-                color: legend_mark_color(&format!("{:?}", m.color)),
-                text: slint::SharedString::from(m.text.as_str()),
-            })
-            .collect();
-        profile.legend_marks = slint::ModelRc::new(slint::VecModel::from(legend_marks));
-
-        // Sync equipment as well if changed
-        let is_other_player = !profile_state.name.is_empty();
-        let specs =
-            collect_profile_slot_specs(is_other_player, &profile_state.equipment, &eq_state.0);
-        let slots = build_equipment_slots(asset_loader, &game_files, &specs);
-        assign_equipment(&mut profile, slots);
+        populate_profile_data(
+            &mut profile,
+            &profile_state,
+            &player_attrs,
+            &eq_state,
+            asset_loader,
+            &game_files,
+        );
 
         game_state.set_profile(profile);
     }
 }
 
-/// System that handles ShowSelfProfileEvent to display the profile panel
 pub fn handle_show_self_profile(
     mut reader: MessageReader<ShowSelfProfileEvent>,
     win: Res<SlintWindow>,
@@ -238,6 +269,7 @@ pub fn handle_show_self_profile(
     game_files: Res<crate::game_files::GameFiles>,
     eq_state: Res<crate::webui::plugin::EquipmentState>,
     mut profile_state: ResMut<crate::webui::plugin::PlayerProfileState>,
+    player_attrs: Res<crate::resources::PlayerAttributes>,
     mut portrait_state: ResMut<crate::resources::ProfilePortraitState>,
     mut popup_manager: ResMut<crate::slint_support::popups::PopupManager>,
 ) {
@@ -249,43 +281,37 @@ pub fn handle_show_self_profile(
     for event in reader.read() {
         let game_state = slint::ComponentHandle::global::<GameState>(&strong);
 
+        let is_self_event = matches!(
+            event,
+            ShowSelfProfileEvent::SelfRequested | ShowSelfProfileEvent::SelfUpdate
+        );
+
         match event {
             ShowSelfProfileEvent::OtherRequested => {
-                // When requesting another player, clear stale state and HIDE the panel
-                // until we get the actual data from the server.
                 profile_state.clear();
                 popup_manager.close(crate::slint_support::popups::PopupId::Profile);
-
                 portrait_state.dirty = true;
                 continue;
             }
             ShowSelfProfileEvent::SelfRequested => {
-                // When requesting our own profile, clear the "other player" state so we use
-                // our own local EquipmentState and Name optimistically.
                 profile_state.clear();
-
+                profile_state.is_self = true;
                 portrait_state.dirty = true;
             }
             ShowSelfProfileEvent::SelfUpdate => {
-                // If this is a response from the server but the user closed the panel already, don't reopen it
                 if !popup_manager.is_open(crate::slint_support::popups::PopupId::Profile) {
                     continue;
                 }
-
                 portrait_state.dirty = true;
             }
             ShowSelfProfileEvent::OtherUpdate => {
-                // Server sent detail for another player - update and ensure it's handled below
                 portrait_state.dirty = true;
             }
         }
 
-        // Get current player name to use in profile
-        let player_name = game_state.get_player_name();
-
         let mut profile = ProfileData {
-            is_self: true,
-            name: player_name,
+            is_self: profile_state.is_self || is_self_event,
+            name: game_state.get_player_name(),
             preview: portrait_state
                 .texture
                 .clone()
@@ -294,41 +320,16 @@ pub fn handle_show_self_profile(
             ..Default::default()
         };
 
-        // Populate profile fields from state
-        if !profile_state.name.is_empty() {
-            profile.name = slint::SharedString::from(profile_state.name.as_str());
-        }
-        profile.is_self = profile_state.is_self;
-        profile.class = slint::SharedString::from(profile_state.class.as_str());
-        profile.guild = slint::SharedString::from(profile_state.guild.as_str());
-        profile.guild_rank = slint::SharedString::from(profile_state.guild_rank.as_str());
-        profile.title = slint::SharedString::from(profile_state.title.as_str());
-        profile.town = slint::SharedString::from(format!("{:?}", profile_state.nation));
-        profile.group_requests_enabled = profile_state.group_open;
-        profile.profile_text =
-            slint::SharedString::from(profile_state.profile_text.to_plain_string());
-        profile.social_status = u8_to_social_status(profile_state.social_status as u8);
-
-        let legend_marks: Vec<LegendMarkData> = profile_state
-            .legend_marks
-            .iter()
-            .map(|m| LegendMarkData {
-                icon_name: slint::SharedString::from(format!("{:?}", m.icon)),
-                color: legend_mark_color(&format!("{:?}", m.color)),
-                text: slint::SharedString::from(m.text.as_str()),
-            })
-            .collect();
-        profile.legend_marks = slint::ModelRc::new(slint::VecModel::from(legend_marks));
-
-        // Populate equipment if available
-        let is_other_player = !profile_state.name.is_empty();
-        let specs =
-            collect_profile_slot_specs(is_other_player, &profile_state.equipment, &eq_state.0);
-        let slots = build_equipment_slots(asset_loader, &game_files, &specs);
-        assign_equipment(&mut profile, slots);
+        populate_profile_data(
+            &mut profile,
+            &profile_state,
+            &player_attrs,
+            &eq_state,
+            asset_loader,
+            &game_files,
+        );
 
         game_state.set_profile(profile);
         popup_manager.open(crate::slint_support::popups::PopupId::Profile);
-        tracing::info!("Showing self profile panel");
     }
 }

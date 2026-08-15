@@ -217,6 +217,11 @@ pub(crate) fn handle_ui_inbound_world(
             UiToCore::RequestSelfProfile => {
                 outbox.send(&packets::client::SelfProfileRequest {});
             }
+            UiToCore::RaiseStat { stat } => {
+                if let Ok(stat_enum) = packets::client::Stat::try_from(*stat) {
+                    outbox.send(&packets::client::RaiseStat { stat: stat_enum });
+                }
+            }
             _ => {}
         }
     }

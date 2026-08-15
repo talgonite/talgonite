@@ -254,14 +254,7 @@ fn process_net_packets(
                 }
                 &server::Codes::Attributes => {
                     if let Some(attrs) = parse_packet::<server::Attributes>(data) {
-                        if let Some(vitality) = &attrs.vitality {
-                            player_attrs.current_hp = vitality.current_hp;
-                            player_attrs.current_mp = vitality.current_mp;
-                        }
-                        if let Some(primary) = &attrs.primary {
-                            player_attrs.max_hp = primary.maximum_hp;
-                            player_attrs.max_mp = primary.maximum_mp;
-                        }
+                        player_attrs.update(&attrs);
                     }
                 }
                 &server::Codes::Equipment => {

@@ -330,6 +330,12 @@ pub fn wire_game_callbacks(slint_app: &MainWindow, tx: Sender<UiToCore>) {
     }
     {
         let tx = tx.clone();
+        game_state.on_raise_stat(move |stat| {
+            let _ = tx.send(UiToCore::RaiseStat { stat: stat as u8 });
+        });
+    }
+    {
+        let tx = tx.clone();
         game_state.on_cancel_spell_targeting(move || {
             if tx.send(UiToCore::CancelSpellTargeting).is_err() {
                 tracing::error!("Failed to send CancelSpellTargeting message");

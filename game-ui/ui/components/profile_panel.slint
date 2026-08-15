@@ -108,14 +108,113 @@ component FolderTab inherits Rectangle {
     ]
 }
 
+component PrimaryStatRow inherits Rectangle {
+    in property <string> stat-name: "STR";
+    in property <int> value: 10;
+    in property <bool> can-increase: false;
+    callback increase();
+
+    height: 24px;
+    background: Theme.surface-muted;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: #ffffff0a;
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 6px;
+        spacing: 6px;
+        alignment: center;
+
+        Text {
+            text: stat-name;
+            font-size: Theme.font-size-caption;
+            font-weight: 700;
+            color: Theme.accent-muted;
+            vertical-alignment: center;
+        }
+
+        Rectangle { horizontal-stretch: 1; }
+
+        Text {
+            text: value;
+            font-size: Theme.font-size-label;
+            font-weight: 700;
+            color: Theme.foreground-strong;
+            vertical-alignment: center;
+        }
+
+        if can-increase: Rectangle {
+            width: 18px;
+            height: 18px;
+            y: (parent.height - self.height) / 2;
+            background: plus-touch.has-hover ? Theme.accent : Theme.accent-subtle;
+            border-radius: 3px;
+            border-width: 1px;
+            border-color: Theme.accent;
+            animate background { duration: 80ms; }
+
+            Text {
+                text: "+";
+                font-size: 13px;
+                font-weight: 800;
+                color: plus-touch.has-hover ? #1a1a2e : Theme.accent;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            plus-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.increase();
+                }
+            }
+        }
+    }
+}
+
+component SecondaryStatBadge inherits Rectangle {
+    in property <string> label: "AC";
+    in property <string> value: "0";
+
+    height: 22px;
+    background: Theme.surface-muted;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: #ffffff08;
+
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+        spacing: 4px;
+        alignment: center;
+
+        Text {
+            text: label + ":";
+            font-size: Theme.font-size-xsmall;
+            font-weight: 600;
+            color: Theme.foreground-muted;
+            vertical-alignment: center;
+        }
+
+        Text {
+            text: value;
+            font-size: Theme.font-size-caption;
+            font-weight: 700;
+            color: Theme.foreground;
+            vertical-alignment: center;
+        }
+    }
+}
+
 export component ProfilePanel inherits Rectangle {
     property <ProfileData> data: GameState.profile;
     property <string> active-tab: "profile";
     in property <float> preview-zoom: 2.0;
     // Local dropdown state for social status
     property <bool> status-dropdown-open: false;
-    width: 560px;
-    height: PlatformState.is-android ? 360px : 480px;
+    width: PlatformState.is-android ? 480px : 600px;
+    height: PlatformState.is-android ? 380px : 520px;
 
     // Prevent interactions from falling through
     TouchArea {
@@ -379,13 +478,15 @@ export component ProfilePanel inherits Rectangle {
             }
 
             VerticalLayout {
-                spacing: 12px;
+                spacing: 8px;
+                horizontal-stretch: 1;
 
+                // Character Identity Header
                 HorizontalLayout {
-                    spacing: 12px;
+                    spacing: 10px;
                     if data.portrait.width > 0: Rectangle {
-                        width: 68px;
-                        height: 88px;
+                        width: 56px;
+                        height: 72px;
                         background: #00000030;
                         border-radius: 6px;
                         border-width: 1px;
@@ -410,10 +511,19 @@ export component ProfilePanel inherits Rectangle {
                             color: Theme.foreground;
                         }
 
-                        Text {
-                            text: data.class;
-                            font-size: Theme.font-size-body;
-                            color: Theme.info-border;
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Text {
+                                text: data.class;
+                                font-size: Theme.font-size-body;
+                                color: Theme.info-border;
+                            }
+                            if data.is-self && data.level > 0: Text {
+                                text: "Lv." + data.level + (data.ability-level > 0 ? " (Ab." + data.ability-level + ")" : "");
+                                font-size: Theme.font-size-caption;
+                                color: Theme.accent;
+                                vertical-alignment: center;
+                            }
                         }
 
                         if data.guild != "" || data.title != "": VerticalLayout {
@@ -429,29 +539,180 @@ export component ProfilePanel inherits Rectangle {
                                 color: #c084fc;
                             }
                         }
+
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Rectangle {
+                                width: 18px;
+                                height: 12px;
+                                y: (parent.height - self.height) / 2;
+                                background: data.town-banner.width > 0 ? transparent : #4a5568;
+                                border-radius: 2px;
+                                if data.town-banner.width > 0: Image {
+                                    source: data.town-banner;
+                                    width: parent.width;
+                                    height: parent.height;
+                                    image-rendering: pixelated;
+                                }
+                            }
+
+                            Text {
+                                text: data.town;
+                                font-size: Theme.font-size-caption;
+                                color: Theme.neutral-faint;
+                                vertical-alignment: center;
+                            }
+                        }
                     }
                 }
 
-                HorizontalLayout {
-                    spacing: 8px;
-                    Rectangle {
-                        width: 20px;
-                        height: 14px;
-                        background: data.town-banner.width > 0 ? transparent : #4a5568;
-                        border-radius: 2px;
-                        if data.town-banner.width > 0: Image {
-                            source: data.town-banner;
-                            width: parent.width;
-                            height: parent.height;
-                            image-rendering: pixelated;
+                if data.is-self: VerticalLayout {
+                    spacing: 6px;
+
+                    if data.stat-points > 0: Rectangle {
+                        height: 24px;
+                        background: Theme.accent-subtle;
+                        border-radius: 4px;
+                        border-width: 1px;
+                        border-color: Theme.accent;
+
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 6px;
+                            Text {
+                                text: "✦ " + data.stat-points + (data.stat-points == 1 ? " Stat Point" : " Stat Points") + " Available";
+                                font-size: Theme.font-size-caption;
+                                font-weight: 700;
+                                color: Theme.accent;
+                                vertical-alignment: center;
+                            }
                         }
                     }
 
-                    Text {
-                        text: data.town;
-                        font-size: Theme.font-size-medium;
-                        color: Theme.neutral-faint;
-                        vertical-alignment: center;
+                    Rectangle {
+                        background: Theme.surface-card;
+                        border-radius: 6px;
+                        border-width: 1px;
+                        border-color: #ffffff0a;
+
+                        VerticalLayout {
+                            padding: 6px;
+                            spacing: 4px;
+
+                            Text {
+                                text: "PRIMARY ATTRIBUTES";
+                                font-size: Theme.font-size-xsmall;
+                                font-weight: 700;
+                                color: Theme.foreground-subtle;
+                            }
+
+                            HorizontalLayout {
+                                spacing: 6px;
+
+                                VerticalLayout {
+                                    spacing: 3px;
+                                    horizontal-stretch: 1;
+
+                                    PrimaryStatRow {
+                                        stat-name: "STR";
+                                        value: data.str;
+                                        can-increase: data.stat-points > 0;
+                                        increase => {
+                                            GameState.raise-stat(1);
+                                        }
+                                    }
+
+                                    PrimaryStatRow {
+                                        stat-name: "INT";
+                                        value: data.intel;
+                                        can-increase: data.stat-points > 0;
+                                        increase => {
+                                            GameState.raise-stat(4);
+                                        }
+                                    }
+
+                                    PrimaryStatRow {
+                                        stat-name: "WIS";
+                                        value: data.wis;
+                                        can-increase: data.stat-points > 0;
+                                        increase => {
+                                            GameState.raise-stat(8);
+                                        }
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    spacing: 3px;
+                                    horizontal-stretch: 1;
+
+                                    PrimaryStatRow {
+                                        stat-name: "CON";
+                                        value: data.con;
+                                        can-increase: data.stat-points > 0;
+                                        increase => {
+                                            GameState.raise-stat(16);
+                                        }
+                                    }
+
+                                    PrimaryStatRow {
+                                        stat-name: "DEX";
+                                        value: data.dex;
+                                        can-increase: data.stat-points > 0;
+                                        increase => {
+                                            GameState.raise-stat(2);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        background: Theme.surface-card;
+                        border-radius: 6px;
+                        border-width: 1px;
+                        border-color: #ffffff0a;
+
+                        VerticalLayout {
+                            padding: 6px;
+                            spacing: 4px;
+
+                            Text {
+                                text: "COMBAT & RESISTANCE";
+                                font-size: Theme.font-size-xsmall;
+                                font-weight: 700;
+                                color: Theme.foreground-subtle;
+                            }
+
+                            HorizontalLayout {
+                                spacing: 4px;
+                                SecondaryStatBadge {
+                                    label: "AC";
+                                    value: data.ac;
+                                }
+                                SecondaryStatBadge {
+                                    label: "Hit";
+                                    value: data.hit;
+                                }
+                                SecondaryStatBadge {
+                                    label: "Dmg";
+                                    value: data.dmg;
+                                }
+                                SecondaryStatBadge {
+                                    label: "MR";
+                                    value: data.magic-resistance + "%";
+                                }
+                            }
+
+                            if data.max-weight > 0: HorizontalLayout {
+                                spacing: 6px;
+                                Text {
+                                    text: "Weight: " + data.current-weight + " / " + data.max-weight;
+                                    font-size: Theme.font-size-xsmall;
+                                    color: Theme.neutral-faint;
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -460,22 +721,26 @@ export component ProfilePanel inherits Rectangle {
                     border-radius: 6px;
                     border-width: 1px;
                     border-color: #00000050;
+                    max-height: data.is-self ? 60px : 160px;
 
-                    VerticalLayout {
-                        padding: 6px;
-                        Text {
-                            text: data.profile-text;
-                            font-size: Theme.font-size-label;
-                            font-family: "JetBrains Mono";
-                            color: #b0b0b0;
-                            wrap: word-wrap;
+                    ScrollView {
+                        viewport-width: self.visible-width;
+                        VerticalLayout {
+                            padding: 6px;
+                            Text {
+                                text: data.profile-text;
+                                font-size: Theme.font-size-caption;
+                                font-family: "JetBrains Mono";
+                                color: #b0b0b0;
+                                wrap: word-wrap;
+                            }
                         }
                     }
                 }
 
                 Rectangle { }
 
-                if !GameState.profile.is-self: HorizontalLayout {
+                if !data.is-self: HorizontalLayout {
                     alignment: start;
                     Rectangle {
                         width: 150px;
@@ -505,7 +770,7 @@ export component ProfilePanel inherits Rectangle {
                     }
                 }
 
-                if GameState.profile.is-self: HorizontalLayout {
+                if data.is-self: HorizontalLayout {
                     alignment: start;
                     Rectangle {
                         width: 180px;

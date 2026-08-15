@@ -210,6 +210,22 @@ export struct ProfileData {
     social-status: SocialStatus,
     group-requests-enabled: bool,
     legend-marks: [LegendMarkData],
+    // Primary Stats & Points
+    str: int,
+    intel: int,
+    wis: int,
+    con: int,
+    dex: int,
+    stat-points: int,
+    // Secondary & Combat Stats
+    ac: int,
+    hit: int,
+    dmg: int,
+    magic-resistance: int,
+    current-weight: int,
+    max-weight: int,
+    level: int,
+    ability-level: int,
     // Equipment slots (22 slots total)
     // Row 1: Greaves, Boots, Belt
     eq-greaves: EquipmentSlotData,
@@ -337,6 +353,7 @@ export global GameState {
     callback kick-group-member(string);
     callback leave-group();
     callback request-self-profile();
+    callback raise-stat(int);
     callback cancel-spell-targeting();
 
     // Exchange callbacks

@@ -8,12 +8,77 @@ use wgpu;
 
 use std::ops::{Deref, DerefMut};
 
-#[derive(Resource, Default)]
+#[derive(Resource, Default, Debug, Clone)]
 pub struct PlayerAttributes {
     pub current_hp: u32,
     pub max_hp: u32,
     pub current_mp: u32,
     pub max_mp: u32,
+    pub level: u8,
+    pub ability: u8,
+    pub str: u8,
+    pub int: u8,
+    pub wis: u8,
+    pub con: u8,
+    pub dex: u8,
+    pub unspent_points: u8,
+    pub max_weight: i16,
+    pub current_weight: i16,
+    pub total_exp: u32,
+    pub to_next_level: u32,
+    pub total_ability: u32,
+    pub to_next_ability: u32,
+    pub game_points: u32,
+    pub gold: u32,
+    pub blind: bool,
+    pub has_unread_mail: bool,
+    pub offense_element: u8,
+    pub defense_element: u8,
+    pub magic_resistance: u8,
+    pub ac: i8,
+    pub dmg: u8,
+    pub hit: u8,
+}
+
+impl PlayerAttributes {
+    pub fn update(&mut self, attrs: &packets::server::Attributes) {
+        if let Some(vitality) = &attrs.vitality {
+            self.current_hp = vitality.current_hp;
+            self.current_mp = vitality.current_mp;
+        }
+        if let Some(primary) = &attrs.primary {
+            self.max_hp = primary.maximum_hp;
+            self.max_mp = primary.maximum_mp;
+            self.level = primary.level;
+            self.ability = primary.ability;
+            self.str = primary.str;
+            self.int = primary.int;
+            self.wis = primary.wis;
+            self.con = primary.con;
+            self.dex = primary.dex;
+            self.unspent_points = primary.unspent_points;
+            self.max_weight = primary.max_weight;
+            self.current_weight = primary.current_weight;
+        }
+        if let Some(exp_gold) = &attrs.exp_gold {
+            self.total_exp = exp_gold.total_exp;
+            self.to_next_level = exp_gold.to_next_level;
+            self.total_ability = exp_gold.total_ability;
+            self.to_next_ability = exp_gold.to_next_ability;
+            self.game_points = exp_gold.game_points;
+            self.gold = exp_gold.gold;
+        }
+        if let Some(secondary) = &attrs.secondary {
+            self.blind = secondary.blind;
+            self.has_unread_mail = secondary.has_unread_mail;
+            self.offense_element = secondary.offense_element;
+            self.defense_element = secondary.defense_element;
+            self.magic_resistance = secondary.magic_resistance;
+            self.ac = secondary.ac;
+            self.dmg = secondary.dmg;
+            self.hit = secondary.hit;
+        }
+    }
 }
 
 /// Per-frame counters for the debug console. Systems bump the `acc_*` fields
