@@ -473,6 +473,7 @@ fn send_client_actions(
             }
 
             AbilityEvent::UseSpell { .. }
+            | AbilityEvent::UseSpellAt { .. }
             | AbilityEvent::SkillCooldown { .. }
             | AbilityEvent::AddSkill(_)
             | AbilityEvent::RemoveSkill(_)

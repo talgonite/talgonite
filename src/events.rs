@@ -62,6 +62,12 @@ pub enum AbilityEvent {
     // Outbound
     UseSkill { slot: u8 },
     UseSpell { slot: u8 },
+    UseSpellAt {
+        slot: u8,
+        target_entity: Option<u32>,
+        target_x: u16,
+        target_y: u16,
+    },
 }
 
 #[derive(Debug, Clone, Message)]

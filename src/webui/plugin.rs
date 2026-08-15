@@ -1131,48 +1131,117 @@ fn handle_ui_inbound_ingame(
                     }
 
                     if matches!(src_category, SlotPanelType::Spell) {
-                        if let Some((_, entity_id, is_creature, _, _)) = hits.first() {
-                            if *is_creature {
-                                if let Some(eid) = entity_id {
-                                    if let Some(spell) = ability_state
-                                        .spells
-                                        .iter()
-                                        .find(|s| s.slot == *src_index as u8)
-                                    {
-                                        if spell.cast_lines == 0 {
-                                            outbox.send(&client::SpellUse {
-                                                source_slot: spell.slot,
-                                                args: client::SpellUseArgs::Targeted {
-                                                    target_id: eid.id,
-                                                    target_x: tile_i.0.max(0) as u16,
-                                                    target_y: tile_i.1.max(0) as u16,
-                                                },
-                                            });
-                                        } else {
-                                            outbox.send(&client::BeginChant {
-                                                cast_line_count: spell.cast_lines,
-                                            });
-                                            outbox.send(&client::SpellChant {
-                                                chant_message: "1".to_string(),
-                                            });
-                                        }
-                                    }
-                                }
-                            }
+                        if let Some(spell) = ability_state
+                            .spells
+                            .iter()
+                            .find(|s| s.slot == *src_index as u8)
+                        {
+                            let target_entity = if spell.spell_type
+                                == packets::server::SpellType::NoTarget
+                            {
+                                None
+                            } else {
+                                hits.first()
+                                    .filter(|hit| hit.2)
+                                    .and_then(|hit| hit.1.map(|eid| eid.id))
+                            };
+
+                            ability_events.write(AbilityEvent::UseSpellAt {
+                                slot: spell.slot,
+                                target_entity,
+                                target_x: tile_i.0.max(0) as u16,
+                                target_y: tile_i.1.max(0) as u16,
+                            });
                         }
                     }
 
                     if matches!(src_category, SlotPanelType::Hotbar) {
                         let bar = *src_index / 12;
                         let slot = *src_index % 12;
-                        hotbar_state.config.set_slot(bar, slot, "".to_string());
 
-                        settings.set_hotbars(
-                            session.server_id,
-                            &session.username,
-                            hotbar_state.config.clone(),
-                        );
-                        tracing::info!("Deallocated hotbar slot {} (dropped on world)", src_index);
+                        let Some(config_slot) = hotbar_state.config.get_slot(bar, slot) else {
+                            continue;
+                        };
+
+                        if config_slot.action_id.is_empty() {
+                            continue;
+                        }
+
+                        let action_id = ActionId::from_str(&config_slot.action_id);
+
+                        match action_id.panel_type() {
+                            SlotPanelType::Item => {
+                                let Some(item) =
+                                    inv_state.0.iter().find(|item| item.id == action_id)
+                                else {
+                                    continue;
+                                };
+
+                                let target = hits
+                                    .iter()
+                                    .find(|hit| !hit.3)
+                                    .map(|hit| (hit.1, hit.2));
+
+                                match target {
+                                    Some((Some(eid), true)) => {
+                                        outbox.send(&client::ItemDroppedOnCreature {
+                                            source_slot: item.slot,
+                                            target_id: eid.id,
+                                            count: if item.stackable { 0 } else { 1 },
+                                        });
+                                    }
+                                    _ => {
+                                        outbox.send(&client::ItemDrop {
+                                            source_slot: item.slot,
+                                            destination_point: (
+                                                tile_i.0.max(0) as u16,
+                                                tile_i.1.max(0) as u16,
+                                            ),
+                                            count: 1,
+                                        });
+                                    }
+                                }
+                            }
+                            SlotPanelType::Skill => {
+                                if let Some(skill) =
+                                    ability_state.skills.iter().find(|s| s.id == action_id)
+                                {
+                                    ability_events.write(AbilityEvent::UseSkill {
+                                        slot: skill.slot,
+                                    });
+                                }
+                            }
+                            SlotPanelType::Spell => {
+                                if let Some(spell) =
+                                    ability_state.spells.iter().find(|s| s.id == action_id)
+                                {
+                                    let target_entity = if spell.spell_type
+                                        == packets::server::SpellType::NoTarget
+                                    {
+                                        None
+                                    } else {
+                                        hits.first()
+                                            .filter(|hit| hit.2)
+                                            .and_then(|hit| hit.1.map(|eid| eid.id))
+                                    };
+
+                                    ability_events.write(AbilityEvent::UseSpellAt {
+                                        slot: spell.slot,
+                                        target_entity,
+                                        target_x: tile_i.0.max(0) as u16,
+                                        target_y: tile_i.1.max(0) as u16,
+                                    });
+                                }
+                            }
+                            SlotPanelType::Macro => {
+                                let macros =
+                                    settings.get_macros(session.server_id, &session.username);
+                                if let Some(script) = macros.get(action_id.as_str()) {
+                                    macro_manager.execute(script);
+                                }
+                            }
+                            _ => {}
+                        }
                     }
                 }
                 (SlotPanelType::Hotbar, SlotPanelType::None) => {
@@ -2996,7 +3065,7 @@ fn bridge_ability_events(
             AbilityEvent::RemoveSpell(pkt) => {
                 state.spells.retain(|s| s.slot != pkt.slot);
             }
-            AbilityEvent::UseSpell { .. } => {}
+            AbilityEvent::UseSpell { .. } | AbilityEvent::UseSpellAt { .. } => {}
         }
     }
 }

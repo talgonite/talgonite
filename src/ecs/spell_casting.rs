@@ -5,7 +5,7 @@ use packets::server::SpellType;
 use crate::ecs::interaction::HoveredEntity;
 use crate::events::{AbilityEvent, EntityClickEvent, TileClickEvent, WallClickEvent};
 use crate::network::PacketOutbox;
-use crate::webui::ipc::ActionId;
+use crate::webui::ipc::{ActionId, SpellUi};
 use crate::webui::plugin::AbilityState;
 
 use super::components::{EntityId, NPC, Player, Position, TargetingHover};
@@ -58,58 +58,85 @@ pub fn start_spell_cast(
     outbox: Res<PacketOutbox>,
 ) {
     for event in events.read() {
-        if let AbilityEvent::UseSpell { slot } = event {
-            let Some(ref ability_state) = ability_state else {
-                continue;
-            };
+        match event {
+            AbilityEvent::UseSpell { slot } => {
+                let Some(ref ability_state) = ability_state else {
+                    continue;
+                };
 
-            let Some(spell) = ability_state.spells.iter().find(|s| s.slot == *slot) else {
-                continue;
-            };
+                let Some(spell) = ability_state.spells.iter().find(|s| s.slot == *slot) else {
+                    continue;
+                };
 
-            if let Some(ref cast) = casting_state.active_cast {
-                if remaining_cast_time(cast) <= 0.2 {
-                    queue_state.queued_spell = Some(QueuedSpellCast {
+                if let Some(ref cast) = casting_state.active_cast {
+                    if remaining_cast_time(cast) <= 0.2 {
+                        queue_state.queued_spell = Some(QueuedSpellCast {
+                            spell_id: spell.id.clone(),
+                            slot: *slot,
+                        });
+                        continue;
+                    }
+                }
+
+                if spell.spell_type == SpellType::NoTarget {
+                    targeting_state.pending_target = None;
+                    queue_state.queued_spell = None;
+                    begin_spell_cast(spell, None, &mut casting_state, &outbox);
+                } else {
+                    targeting_state.pending_target = Some(PendingTargetSpell {
                         spell_id: spell.id.clone(),
-                        slot: *slot,
+                        total_cast_lines: spell.cast_lines,
                     });
+                }
+            }
+            AbilityEvent::UseSpellAt {
+                slot,
+                target_entity,
+                target_x,
+                target_y,
+            } => {
+                let Some(ref ability_state) = ability_state else {
+                    continue;
+                };
+
+                let Some(spell) = ability_state.spells.iter().find(|s| s.slot == *slot) else {
+                    continue;
+                };
+
+                if let Some(ref cast) = casting_state.active_cast {
+                    if remaining_cast_time(cast) <= 0.2 {
+                        queue_state.queued_spell = Some(QueuedSpellCast {
+                            spell_id: spell.id.clone(),
+                            slot: *slot,
+                        });
+                        continue;
+                    }
+                }
+
+                if spell.spell_type == SpellType::NoTarget {
+                    targeting_state.pending_target = None;
+                    queue_state.queued_spell = None;
+                    begin_spell_cast(spell, None, &mut casting_state, &outbox);
                     continue;
                 }
-            }
 
-            if spell.spell_type == SpellType::NoTarget {
+                let Some(entity_id) = target_entity else {
+                    continue;
+                };
+
                 targeting_state.pending_target = None;
                 queue_state.queued_spell = None;
-                casting_state.active_cast = None;
-
-                if spell.cast_lines == 0 {
-                    outbox.send(&SpellUse {
-                        source_slot: *slot,
-                        args: SpellUseArgs::None,
-                    });
-                } else {
-                    outbox.send(&BeginChant {
-                        cast_line_count: spell.cast_lines,
-                    });
-                    outbox.send(&SpellChant {
-                        chant_message: "1".to_string(),
-                    });
-
-                    casting_state.active_cast = Some(ActiveSpellCast {
-                        spell_id: spell.id.clone(),
-                        spell_type: spell.spell_type,
-                        total_cast_lines: spell.cast_lines,
-                        current_line: 1,
-                        time_since_last_chant: 0.0,
-                        target: None,
-                    });
-                }
-            } else {
-                targeting_state.pending_target = Some(PendingTargetSpell {
-                    spell_id: spell.id.clone(),
-                    total_cast_lines: spell.cast_lines,
-                });
+                begin_spell_cast(
+                    spell,
+                    Some(SpellTarget {
+                        entity_id: *entity_id,
+                        position: (*target_x, *target_y),
+                    }),
+                    &mut casting_state,
+                    &outbox,
+                );
             }
+            _ => {}
         }
     }
 }
@@ -211,52 +238,25 @@ pub fn handle_spell_targeting(
                 };
 
                 let target_spell_id = pending_target.spell_id.clone();
-                let target_cast_lines = pending_target.total_cast_lines;
 
                 targeting_state.pending_target = None;
                 queue_state.queued_spell = None;
 
-                if target_cast_lines == 0 {
-                    let Some(ref ability_state) = ability_state else {
-                        casting_state.active_cast = None;
-                        return;
-                    };
-
-                    let Some(spell) = ability_state
-                        .spells
-                        .iter()
-                        .find(|s| s.id == target_spell_id)
-                    else {
-                        casting_state.active_cast = None;
-                        return;
-                    };
-
-                    outbox.send(&SpellUse {
-                        source_slot: spell.slot,
-                        args: SpellUseArgs::Targeted {
-                            target_id: target.entity_id,
-                            target_x: target.position.0,
-                            target_y: target.position.1,
-                        },
-                    });
+                let Some(ref ability_state) = ability_state else {
                     casting_state.active_cast = None;
-                } else {
-                    outbox.send(&BeginChant {
-                        cast_line_count: target_cast_lines,
-                    });
-                    outbox.send(&SpellChant {
-                        chant_message: "1".to_string(),
-                    });
+                    return;
+                };
 
-                    casting_state.active_cast = Some(ActiveSpellCast {
-                        spell_id: target_spell_id,
-                        spell_type: SpellType::Targeted,
-                        total_cast_lines: target_cast_lines,
-                        current_line: 1,
-                        time_since_last_chant: 0.0,
-                        target: Some(target),
-                    });
-                }
+                let Some(spell) = ability_state
+                    .spells
+                    .iter()
+                    .find(|s| s.id == target_spell_id)
+                else {
+                    casting_state.active_cast = None;
+                    return;
+                };
+
+                begin_spell_cast(spell, Some(target), &mut casting_state, &outbox);
 
                 break;
             } else {
@@ -269,6 +269,8 @@ pub fn handle_spell_targeting(
 pub fn update_targeting_hover(
     targeting_state: Res<SpellTargetingState>,
     active_drag: Res<crate::ecs::interaction::ActiveDragState>,
+    ability_state: Option<Res<AbilityState>>,
+    hotbar_state: Option<Res<crate::ecs::hotbar::HotbarState>>,
     hovered_entity: Res<HoveredEntity>,
     mut commands: Commands,
     targetable_query: Query<(
@@ -279,17 +281,31 @@ pub fn update_targeting_hover(
     )>,
     with_hover: Query<Entity, With<TargetingHover>>,
 ) {
+    let is_dragging_item = active_drag.is_dragging
+        && match active_drag.source_panel {
+            game_types::SlotPanelType::Item => true,
+            game_types::SlotPanelType::Hotbar => dragged_hotbar_panel_type(
+                &active_drag,
+                hotbar_state.as_deref(),
+            ) == Some(game_types::SlotPanelType::Item),
+            _ => false,
+        };
+
+    let is_dragging_targeted_spell = active_drag.is_dragging
+        && dragged_spell(
+            &active_drag,
+            ability_state.as_deref(),
+            hotbar_state.as_deref(),
+        )
+        .is_some_and(|spell| spell.spell_type == SpellType::Targeted);
+
     let is_targeting = targeting_state.pending_target.is_some();
-    let is_dragging_action = active_drag.is_dragging
-        && (active_drag.source_panel == game_types::SlotPanelType::Item
-            || active_drag.source_panel == game_types::SlotPanelType::Spell);
+    let is_dragging_action = is_dragging_item || is_dragging_targeted_spell;
 
     if is_targeting || is_dragging_action {
         if let Some(hovered) = hovered_entity.0 {
             if let Ok((entity, player, npc, local_player)) = targetable_query.get(hovered) {
-                let valid = if active_drag.is_dragging
-                    && active_drag.source_panel == game_types::SlotPanelType::Item
-                {
+                let valid = if is_dragging_item {
                     (player.is_some() && local_player.is_none()) || npc.is_some()
                 } else {
                     player.is_some() || npc.is_some()
@@ -313,6 +329,48 @@ pub fn update_targeting_hover(
     }
 }
 
+fn dragged_spell<'a>(
+    active_drag: &crate::ecs::interaction::ActiveDragState,
+    ability_state: Option<&'a AbilityState>,
+    hotbar_state: Option<&crate::ecs::hotbar::HotbarState>,
+) -> Option<&'a SpellUi> {
+    match active_drag.source_panel {
+        game_types::SlotPanelType::Spell => ability_state?
+            .spells
+            .iter()
+            .find(|spell| spell.slot == active_drag.source_index as u8),
+        game_types::SlotPanelType::Hotbar => {
+            let action_id = dragged_hotbar_action_id(active_drag, hotbar_state)?;
+            if action_id.panel_type() != game_types::SlotPanelType::Spell {
+                return None;
+            }
+            ability_state?
+                .spells
+                .iter()
+                .find(|spell| spell.id == action_id)
+        }
+        _ => None,
+    }
+}
+
+fn dragged_hotbar_action_id(
+    active_drag: &crate::ecs::interaction::ActiveDragState,
+    hotbar_state: Option<&crate::ecs::hotbar::HotbarState>,
+) -> Option<ActionId> {
+    let config = &hotbar_state?.config;
+    let bar = active_drag.source_index.div_euclid(12) as usize;
+    let slot = active_drag.source_index.rem_euclid(12) as usize;
+    let action_id = config.get_slot(bar, slot)?.action_id.clone();
+    (!action_id.is_empty()).then(|| ActionId::from_str(&action_id))
+}
+
+fn dragged_hotbar_panel_type(
+    active_drag: &crate::ecs::interaction::ActiveDragState,
+    hotbar_state: Option<&crate::ecs::hotbar::HotbarState>,
+) -> Option<game_types::SlotPanelType> {
+    dragged_hotbar_action_id(active_drag, hotbar_state).map(|action| action.panel_type())
+}
+
 fn remaining_cast_time(cast: &ActiveSpellCast) -> f32 {
     if cast.total_cast_lines == 0 {
         return 0.0;
@@ -321,6 +379,46 @@ fn remaining_cast_time(cast: &ActiveSpellCast) -> f32 {
     let chant_lines_remaining = cast.total_cast_lines.saturating_sub(cast.current_line) as f32;
     let time_until_next_line = (1.0 - cast.time_since_last_chant).clamp(0.0, 1.0);
     chant_lines_remaining + time_until_next_line
+}
+
+fn begin_spell_cast(
+    spell: &SpellUi,
+    target: Option<SpellTarget>,
+    casting_state: &mut ResMut<SpellCastingState>,
+    outbox: &Res<PacketOutbox>,
+) {
+    casting_state.active_cast = None;
+
+    if spell.cast_lines == 0 {
+        let args = match target {
+            Some(target) => SpellUseArgs::Targeted {
+                target_id: target.entity_id,
+                target_x: target.position.0,
+                target_y: target.position.1,
+            },
+            None => SpellUseArgs::None,
+        };
+        outbox.send(&SpellUse {
+            source_slot: spell.slot,
+            args,
+        });
+    } else {
+        outbox.send(&BeginChant {
+            cast_line_count: spell.cast_lines,
+        });
+        outbox.send(&SpellChant {
+            chant_message: "1".to_string(),
+        });
+
+        casting_state.active_cast = Some(ActiveSpellCast {
+            spell_id: spell.id.clone(),
+            spell_type: spell.spell_type,
+            total_cast_lines: spell.cast_lines,
+            current_line: 1,
+            time_since_last_chant: 0.0,
+            target,
+        });
+    }
 }
 
 fn try_start_queued_spell(
@@ -354,28 +452,7 @@ fn try_start_queued_spell(
             });
         }
         _ => {
-            if spell.cast_lines == 0 {
-                outbox.send(&SpellUse {
-                    source_slot: queued_spell.slot,
-                    args: SpellUseArgs::None,
-                });
-            } else {
-                outbox.send(&BeginChant {
-                    cast_line_count: spell.cast_lines,
-                });
-                outbox.send(&SpellChant {
-                    chant_message: "1".to_string(),
-                });
-
-                casting_state.active_cast = Some(ActiveSpellCast {
-                    spell_id: spell.id.clone(),
-                    spell_type: spell.spell_type,
-                    total_cast_lines: spell.cast_lines,
-                    current_line: 1,
-                    time_since_last_chant: 0.0,
-                    target: None,
-                });
-            }
+            begin_spell_cast(spell, None, casting_state, outbox);
         }
     }
 }
