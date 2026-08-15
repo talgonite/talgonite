@@ -1,5 +1,10 @@
+pub mod bridge;
+pub mod inbound;
+pub mod input;
 pub mod ipc;
 pub mod keyring;
+pub mod login;
 pub mod plugin;
+pub mod popups;
 pub mod settings;
 pub mod state;

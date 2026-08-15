@@ -173,8 +173,9 @@ Slint rendering_notifier(BeforeRendering)
 
 | File                                | Purpose                                                                         |
 | ----------------------------------- | ------------------------------------------------------------------------------- |
-| `src/slint_plugin.rs`               | Main bridge (~46KB): rendering_notifier callback, frame exchange, UI state sync |
-| `src/render_plugin/game.rs`         | Bevy plugin: draw_frame(), GPU init, resize handling                            |
+| `src/slint_plugin.rs`               | Slint window bridge: rendering_notifier callback, frame exchange              |
+| `src/webui/`                       | UI bridge (no Slint dependency): state resources, inbound dispatch, event bridges, login pipeline |
+| `src/slint_support/state_bridge.rs`| Slint-specific UI state sync on top of the `webui` bridge                   |
 | `src/ecs/systems/rendering.rs`      | Syncs ECS state to GPU batches each frame                                       |
 | `src/ecs/plugin.rs`                 | System ordering via GameSet phases                                              |
 | `src/session/runtime.rs`            | Network session, login flow, main game loop                                     |
