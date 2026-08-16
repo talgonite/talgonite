@@ -33,13 +33,15 @@ pub fn handle_before_rendering<W: slint::ComponentHandle>(
         }
     }
 
-    let (render_size, is_pixel_perfect, camera_zoom) = app
+    let (render_size, camera_zoom) = app
         .world()
         .get_resource::<ZoomState>()
-        .map(|zs| (zs.render_size, zs.is_pixel_perfect, zs.camera_zoom))
-        .unwrap_or(((display_width, display_height), true, 1.0));
+        .map(|zs| (zs.render_size, zs.camera_zoom))
+        .unwrap_or(((display_width, display_height), 1.0));
 
-    set_pixelated_filtering(slint_app, is_pixel_perfect);
+    // Non-integer zooms render at integer scale and are upscaled by Slint, so
+    // the frame texture is always sampled with nearest filtering.
+    set_pixelated_filtering(slint_app, true);
 
     if let Some(ch) = app.world().get_resource::<FrameChannels>() {
         let in_game = app

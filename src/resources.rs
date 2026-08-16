@@ -664,7 +664,6 @@ pub struct ZoomState {
     pub display_size: (u32, u32),
     pub render_size: (u32, u32),
     pub camera_zoom: f32,
-    pub is_pixel_perfect: bool,
     pub high_quality_scaling: bool,
 }
 
@@ -690,7 +689,6 @@ impl ZoomState {
             display_size: (display_w, display_h),
             render_size: (display_w, display_h),
             camera_zoom: 1.0,
-            is_pixel_perfect: true,
             high_quality_scaling,
         };
         state.recalculate();
@@ -723,46 +721,74 @@ impl ZoomState {
     }
 
     pub fn cursor_to_render_scale(&self) -> f32 {
-        if self.high_quality_scaling {
-            self.dpi_scale
-        } else {
-            self.dpi_scale / self.user_zoom.max(1.0)
-        }
+        let display_w = self.display_size.0.max(1) as f32;
+        self.dpi_scale * self.render_size.0 as f32 / display_w
     }
 
     pub fn display_scale(&self) -> f32 {
-        if self.high_quality_scaling {
-            1.0
-        } else if self.is_pixel_perfect {
-            self.user_zoom
-        } else {
-            1.0
-        }
+        self.display_size.0.max(1) as f32 / self.render_size.0.max(1) as f32
     }
 
     fn recalculate(&mut self) {
         let zoom = self.user_zoom.clamp(0.1, 5.0);
 
-        const MIN_RENDER_DIM: u32 = 320;
-
-        if self.high_quality_scaling {
+        if zoom < 0.5 {
             self.render_size = self.display_size;
             self.camera_zoom = zoom;
-            self.is_pixel_perfect = true; // Always native, so no interest in "blowing up" pixel-perfectly
-        } else if zoom < 1.0 {
-            self.render_size = self.display_size;
-            self.camera_zoom = zoom;
-            self.is_pixel_perfect = false;
-        } else {
-            let render_w = ((self.display_size.0 as f32 / zoom).round() as u32).max(MIN_RENDER_DIM);
-            let render_h =
-                ((self.display_size.1 as f32 / zoom).round() as u32).max(MIN_RENDER_DIM / 2);
-
-            self.render_size = (render_w, render_h);
-            self.camera_zoom = 1.0;
-
-            let frac = zoom.fract();
-            self.is_pixel_perfect = frac < 0.01 || frac > 0.99;
+            return;
         }
+
+        let render_w = (self.display_size.0 as f32 / zoom).round().max(1.0);
+        let render_h = (self.display_size.1 as f32 / zoom).round().max(1.0);
+        self.render_size = (render_w as u32, render_h as u32);
+        self.camera_zoom = 1.0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ZoomState;
+
+    fn state(display: (u32, u32), zoom: f32) -> ZoomState {
+        ZoomState::new(display.0, display.1, 1.0, zoom, true)
+    }
+
+    #[test]
+    fn fractional_zoom_renders_at_display_over_zoom() {
+        let s = state((1280, 800), 1.5);
+        assert_eq!(s.render_size, (853, 533));
+        assert_eq!(s.camera_zoom, 1.0);
+        assert!((s.display_scale() - 1280.0 / 853.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn integer_zoom_renders_at_exact_scale() {
+        let s = state((1280, 800), 2.0);
+        assert_eq!(s.render_size, (640, 400));
+        assert_eq!(s.camera_zoom, 1.0);
+        assert!((s.display_scale() - 2.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn zoom_out_renders_larger_than_display() {
+        let s = state((1280, 800), 0.5);
+        assert_eq!(s.render_size, (2560, 1600));
+        assert_eq!(s.camera_zoom, 1.0);
+        assert!((s.display_scale() - 0.5).abs() < 1e-3);
+    }
+
+    #[test]
+    fn deep_zoom_out_falls_back_to_native_render() {
+        let s = state((1280, 800), 0.25);
+        assert_eq!(s.render_size, (1280, 800));
+        assert!((s.camera_zoom - 0.25).abs() < 1e-3);
+    }
+
+    #[test]
+    fn cursor_scale_matches_render_ratio() {
+        let mut s = state((1280, 800), 1.5);
+        s.dpi_scale = 2.0;
+        let expected = 2.0 * 853.0 / 1280.0;
+        assert!((s.cursor_to_render_scale() - expected).abs() < 1e-3);
     }
 }

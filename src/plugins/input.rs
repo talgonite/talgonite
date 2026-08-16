@@ -11,7 +11,7 @@ use crate::{
     },
     network::PacketOutbox,
     resources::ZoomState,
-    settings_types::Settings,
+    settings_types::{Settings, SCALE_LEVELS},
     slint_support::popups::{PopupId, PopupManager},
 };
 use bevy::prelude::MessageReader;
@@ -25,7 +25,6 @@ pub struct InputPumpSet;
 
 pub struct InputPlugin;
 
-const ZOOM_STEPS: [f32; 8] = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0];
 // Slint reports one wheel notch as 60px (LineDelta * 60).
 const WHEEL_DELTA_PER_ZOOM_STEP: f32 = 60.0;
 
@@ -201,14 +200,14 @@ fn zoom_with_scroll_system(
 
 fn step_zoom(current: f32, steps: i32) -> f32 {
     let index = nearest_zoom_index(current);
-    let clamped = (index + steps).clamp(0, ZOOM_STEPS.len() as i32 - 1);
-    ZOOM_STEPS[clamped as usize]
+    let clamped = (index + steps).clamp(0, SCALE_LEVELS.len() as i32 - 1);
+    SCALE_LEVELS[clamped as usize]
 }
 
 fn nearest_zoom_index(zoom: f32) -> i32 {
     let mut best = 0;
     let mut best_distance = f32::INFINITY;
-    for (i, step) in ZOOM_STEPS.iter().enumerate() {
+    for (i, step) in SCALE_LEVELS.iter().enumerate() {
         let distance = (step - zoom).abs();
         if distance < best_distance {
             best = i;
@@ -539,6 +538,8 @@ mod tests {
     fn step_zoom_moves_one_step_per_notch() {
         assert_eq!(step_zoom(1.0, 1), 1.5);
         assert_eq!(step_zoom(3.0, -1), 2.5);
+        assert_eq!(step_zoom(3.0, 1), 3.5);
+        assert_eq!(step_zoom(4.5, 1), 5.0);
     }
 
     #[test]
